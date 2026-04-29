@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+frontend/dist/
+html/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Databases and runtime state
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+backend/peeper.db
+backend/peeper.db-*
+peeper.db
+peeper.db-*
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Deploy archives
+*.zip
+*.tar
+*.tar.gz
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

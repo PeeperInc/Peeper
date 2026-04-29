@@ -1,0 +1,101 @@
+/**
+ * API client - wraps all backend calls.
+ * Automatically injects Telegram initData as auth header.
+ */
+
+const BASE = '/api';
+
+function getInitData() {
+  if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
+    return window.Telegram.WebApp.initData;
+  }
+
+  return 'dev_mode=1&user=%7B%22id%22%3A999999%2C%22first_name%22%3A%22Dev%22%2C%22username%22%3A%22devuser%22%7D&auth_date=9999999999&hash=devhash';
+}
+
+async function request(method, path, body) {
+  const resp = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Telegram-Init-Data': getInitData(),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const data = await resp.json().catch(() => ({}));
+
+  if (!resp.ok) {
+    throw { status: resp.status, message: data.error || 'Unknown error', data };
+  }
+
+  return data;
+}
+
+const get = (path) => request('GET', path);
+const post = (path, body) => request('POST', path, body);
+
+export const login = () => post('/auth/login');
+
+export const getGameState = () => get('/game/state');
+export const getCasinoState = () => get('/game/casino/state');
+export const spinCasino = () => post('/game/casino/spin', {});
+export const getBlackjackLobbies = () => get('/blackjack/lobbies');
+export const createBlackjackLobby = (visibility) => post('/blackjack/lobbies', { visibility });
+export const joinBlackjackLobby = (lobbyId) => post('/blackjack/lobbies/join', { lobbyId });
+export const joinBlackjackLobbyByCode = (payload) => post('/blackjack/lobbies/join-by-code', payload);
+export const inviteBlackjackPlayer = (lobbyId, targetUserId) => post(`/blackjack/lobbies/${lobbyId}/invite`, { targetUserId });
+export const joinBlackjackInvite = (token) => post('/blackjack/invites/join', { token });
+export const leaveBlackjackLobby = (lobbyId) => post(`/blackjack/lobbies/${lobbyId}/leave`, {});
+export const getBlackjackLobbyState = (lobbyId) => get(`/blackjack/lobbies/${lobbyId}/state`);
+export const placeBlackjackBet = (lobbyId) => post(`/blackjack/lobbies/${lobbyId}/bet`, {});
+export const actBlackjack = (lobbyId, action) => post(`/blackjack/lobbies/${lobbyId}/action`, { action });
+export const feedPeeper = (foodType) => post('/game/feed', { foodType });
+export const playPeeper = ({ gameId, coinsEarned, gameWon }) => post('/game/play', { gameId, coinsEarned, gameWon });
+export const removePeeperPoop = () => post('/game/cleanup/poop', {});
+export const completePeeperCleaning = () => post('/game/cleanup/complete', {});
+export const revivePeeper = () => post('/game/revive');
+export const updateOutfit = (slots) => post('/game/outfit', slots);
+
+export const buyPersonalHome = () => post('/home/buy');
+export const getPersonalHomeState = () => get('/home/state');
+export const getHomeCatalog = () => get('/home/catalog');
+export const buyHomeItem = (itemId) => post('/home/buy-item', { itemId });
+export const updateHomeLayout = (payload) => post('/home/layout', payload);
+export const toggleBackDecor = (itemId, enabled) => post('/home/back-decor/toggle', { itemId, enabled });
+export const reorderBackDecor = (itemIds) => post('/home/back-decor/reorder', { itemIds });
+export const getVisitHome = (userId) => get(`/home/visit/${userId}`);
+export const sendVisitHomePhoto = (userId) => post(`/home/visit/${userId}/photo`, {});
+
+export const getShopItems = () => get('/shop/items');
+export const buyItem = (itemId) => post('/shop/buy', { itemId });
+
+export const getGiftCatalog = () => get('/gifts/catalog');
+export const searchUsersForGift = (q) => get(`/gifts/search?q=${encodeURIComponent(q)}`);
+export const sendGift = (recipientId, giftId, message = null, isPrivate = false) =>
+  post('/gifts/send', { recipientId, giftId, message, isPrivate });
+export const getUserGifts = (userId) => get(`/gifts/received/${userId}`);
+export const markGiftSeen = (giftId) => post(`/gifts/seen/${giftId}`, {});
+
+export const searchUsers = (q) => get(`/users/search?q=${encodeURIComponent(q)}`);
+export const getUserProfile = (userId) => get(`/users/${userId}/profile`);
+export const getLongevityBoard = () => get('/users/leaderboard/longevity');
+export const getGiftsBoard = () => get('/users/leaderboard/gifts');
+
+export const getItems = () => get('/items');
+
+export const getMyFamily = () => get('/family/me');
+export const createFamily = (name) => post('/family/create', { name });
+export const joinFamily = (inviteCode) => post('/family/join', { inviteCode });
+export const leaveFamily = () => post('/family/leave');
+export const kickMember = (userId) => post('/family/kick', { userId });
+export const feedFamilyMember = (targetUserId) => post('/family/feed', { targetUserId });
+export const triggerFamilyBigFeast = () => post('/family/big-feast', {});
+export const getFamilyMessages = () => get('/family/messages');
+export const markFamilyMessagesRead = () => post('/family/messages/read', {});
+export const sendFamilyMessage = (message) => post('/family/message', { message });
+export const getFamilyUnread = () => get('/family/unread');
+export const getFamilyLeaderboard = (limit = 10) => get(`/family/leaderboard?limit=${limit}`);
+export const getFamilyProfile = (familyId) => get(`/family/${familyId}/profile`);
+export const inviteFamilyMember = (targetUserId) => post('/family/invite', { targetUserId });
+export const getPendingInvites = () => get('/family/invites/pending');

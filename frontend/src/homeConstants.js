@@ -1,0 +1,11 @@
+export const HOME_PRICE_COINS = 1000;
+export const HOME_CANVAS_WIDTH = 600;
+export const HOME_CANVAS_HEIGHT = 840;
+export const HOME_SCENE_ASPECT = HOME_CANVAS_WIDTH / HOME_CANVAS_HEIGHT;
+export const HOME_PEEPER_SIZE = 255;
+export const HOME_BUILTIN_WALL_PATH = '/sprites/basewall.png';
+export const HOME_BUILTIN_FLOOR_PATH = '/sprites/basefloor.png';
+export const VISIT_HOME_PEEPER_SIZE = 160;
+export const VISIT_HOME_VIEWER_CENTER_X = 172;
+export const VISIT_HOME_OWNER_CENTER_X = 428;
+export const VISIT_HOME_PEEPER_CENTER_Y = 548;

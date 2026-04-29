@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#FAF7F2" />
+    <title>Peeper 🐸</title>
+
+    <!--
+      Telegram Mini App SDK — MUST be loaded before any app code.
+      This script provides window.Telegram.WebApp which is the bridge
+      between the web app and the Telegram client.
+    -->
+    <script src="https://telegram.org/js/telegram-web-app.js" async></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <!-- Huawei/HarmonyOS WebView scroll fix:
+         Some Huawei devices block touchmove on elements with overflow:auto.
+         This re-enables native scroll by allowing touchmove on scrollable containers. -->
+    <script>
+      document.addEventListener('touchmove', function(e) {
+        var el = e.target;
+        while (el && el !== document.body) {
+          var style = window.getComputedStyle(el);
+          var overflow = style.overflow + style.overflowY;
+          if (overflow.indexOf('scroll') !== -1 || overflow.indexOf('auto') !== -1) {
+            return; // allow scroll on this element
+          }
+          el = el.parentElement;
+        }
+        // No scrollable parent found — prevent default (stops page bounce)
+        if (e.cancelable) e.preventDefault();
+      }, { passive: false });
+    </script>
+  </body>
+</html>
