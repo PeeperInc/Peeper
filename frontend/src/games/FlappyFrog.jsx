@@ -11,6 +11,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { assetUrl } from '../utils/assetUrl';
+import { generateCityWindowLayout } from './flappyScene.mjs';
 
 const MAX_COINS  = 10;
 const FROG_SYMBOL = '\u{1F438}';
@@ -52,9 +53,11 @@ export default function FlappyFrog({ onComplete, onClose }) {
     // ── State ────────────────────────────────────────────────────────
     let frog, obstacles, sausages, particles, clouds, stars;
     let cityFarBuildings, cityNearBuildings;
+    let cityFarWindows, cityNearWindows;
     let cityOffset, frame, gameSpeed;
     let nextObs, nextSausage;
     let collected = 0;
+    let skyGradient, groundGlowGradient;
 
     function ts() { return Math.floor(Date.now() / 1000); }
 
@@ -140,10 +143,8 @@ export default function FlappyFrog({ onComplete, onClose }) {
 
     // ── Draw helpers ──────────────────────────────────────────────────
     function drawSky() {
-      const g = ctx.createLinearGradient(0,0,0,H);
-      g.addColorStop(0,'#03071e'); g.addColorStop(0.4,'#0d1b4e');
-      g.addColorStop(0.75,'#1a2a6e'); g.addColorStop(1,'#0a1535');
-      ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = skyGradient;
+      ctx.fillRect(0,0,W,H);
       // Moon
       ctx.save();
       ctx.shadowColor='rgba(255,240,180,0.5)'; ctx.shadowBlur=24;
@@ -162,21 +163,21 @@ export default function FlappyFrog({ onComplete, onClose }) {
       ctx.globalAlpha = 1;
     }
 
-    function drawCityLayer(buildings, offsetX, yBase, color, winColor, alpha) {
+    function drawCityLayer(buildings, windowLayout, offsetX, yBase, color, winColor, alpha) {
       ctx.save(); ctx.globalAlpha = alpha;
       const totalW = buildings.reduce((s,b)=>s+b.w+4,0);
       const off = ((offsetX % totalW)+totalW) % totalW;
       for (let pass=0; pass<3; pass++) {
         let dx = -off + pass*totalW;
-        for (const b of buildings) {
+        for (let index = 0; index < buildings.length; index += 1) {
+          const b = buildings[index];
+          const windows = windowLayout[index] || [];
           const bh=b.h, bw=b.w, by=yBase-bh;
           ctx.fillStyle=color; ctx.fillRect(dx,by,bw,bh);
           ctx.fillStyle='rgba(255,255,255,0.06)'; ctx.fillRect(dx,by,bw,3);
           ctx.fillStyle=winColor;
-          const wW=Math.max(3,bw*0.18), wH=Math.max(3,bw*0.18);
-          const cols=Math.floor(bw/(wW+4)), rows=Math.floor(bh/(wH+5));
-          for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
-            if (Math.random()>0.38) ctx.fillRect(dx+4+c*(wW+4), by+6+r*(wH+5), wW, wH);
+          for (const windowRect of windows) {
+            ctx.fillRect(dx + windowRect.x, by + windowRect.y, windowRect.w, windowRect.h);
           }
           dx += bw+4;
         }
@@ -187,9 +188,7 @@ export default function FlappyFrog({ onComplete, onClose }) {
     function drawGround() {
       const gy = H-32;
       ctx.fillStyle='#0a0f1a'; ctx.fillRect(0,gy,W,32);
-      const sg = ctx.createLinearGradient(0,gy,0,H);
-      sg.addColorStop(0,'rgba(255,120,30,0.15)'); sg.addColorStop(1,'rgba(0,0,0,0)');
-      ctx.fillStyle=sg; ctx.fillRect(0,gy,W,32);
+      ctx.fillStyle=groundGlowGradient; ctx.fillRect(0,gy,W,32);
     }
 
     function drawPipe(o) {
@@ -351,9 +350,9 @@ export default function FlappyFrog({ onComplete, onClose }) {
     function draw() {
       drawSky();
       drawStarLayer();
-      drawCityLayer(cityFarBuildings, cityOffset*0.25, H-32, '#0e1a30','rgba(255,230,120,0.7)',0.5);
+      drawCityLayer(cityFarBuildings, cityFarWindows, cityOffset*0.25, H-32, '#0e1a30','rgba(255,230,120,0.7)',0.5);
       for (const c of clouds) drawCloud(c);
-      drawCityLayer(cityNearBuildings, cityOffset*0.6, H-32, '#060d1a','rgba(255,200,80,0.55)',0.82);
+      drawCityLayer(cityNearBuildings, cityNearWindows, cityOffset*0.6, H-32, '#060d1a','rgba(255,200,80,0.55)',0.82);
       drawGround();
       for (const o of obstacles) drawPipe(o);
       for (const s of sausages)  drawSausage(s);
@@ -390,8 +389,18 @@ export default function FlappyFrog({ onComplete, onClose }) {
     // ── Boot ──────────────────────────────────────────────────────────
     makeStars();
     makeClouds();
+    skyGradient = ctx.createLinearGradient(0,0,0,H);
+    skyGradient.addColorStop(0,'#03071e');
+    skyGradient.addColorStop(0.4,'#0d1b4e');
+    skyGradient.addColorStop(0.75,'#1a2a6e');
+    skyGradient.addColorStop(1,'#0a1535');
+    groundGlowGradient = ctx.createLinearGradient(0,H-32,0,H);
+    groundGlowGradient.addColorStop(0,'rgba(255,120,30,0.15)');
+    groundGlowGradient.addColorStop(1,'rgba(0,0,0,0)');
     cityFarBuildings  = genCityLayer(40,120,260,22,55);
     cityNearBuildings = genCityLayer(25,60,140,35,80);
+    cityFarWindows = generateCityWindowLayout(cityFarBuildings);
+    cityNearWindows = generateCityWindowLayout(cityNearBuildings);
     reset();
     loop();
 

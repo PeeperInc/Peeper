@@ -2928,12 +2928,10 @@ export default function SniperGame({ onComplete, onClose }) {
 
       crosshairRef.current = { x: cx, y: cy };
       if (crosshairElRef.current) {
-        crosshairElRef.current.style.transform =
-          `translate(calc(-50% + ${bobX + cx}px), calc(-50% + ${bobY + cy}px))`;
+        crosshairElRef.current.style.translate = `${bobX + cx}px ${bobY + cy}px`;
       }
       if (targetElRef.current) {
-        targetElRef.current.style.transform =
-          `translate(calc(-50% + ${bobX}px), calc(-50% + ${bobY}px))`;
+        targetElRef.current.style.translate = `${bobX}px ${bobY}px`;
       }
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -3030,11 +3028,12 @@ export default function SniperGame({ onComplete, onClose }) {
         transform:`translate(-50%, -50%)`,
         width:TARGET_D, height:TARGET_D,
         userSelect:'none', pointerEvents:'none',
-        filter:'drop-shadow(0 6px 28px rgba(0,0,0,0.8))',
         willChange:'transform',
       }}>
         <svg width={TARGET_D} height={TARGET_D}
           viewBox={`${-R_OUTER} ${-R_OUTER} ${TARGET_D} ${TARGET_D}`}>
+          <circle cx="8" cy="10" r={R_OUTER - 4} fill="rgba(0,0,0,0.18)"/>
+          <circle cx="8" cy="10" r={R_MID + 6} fill="rgba(0,0,0,0.08)"/>
           {/* Outer ring - pre-computed */}
           {OUTER_PATHS.map((p,i) => <path key={i} d={p.d} fill={p.fill} />)}
           {/* Middle ring */}

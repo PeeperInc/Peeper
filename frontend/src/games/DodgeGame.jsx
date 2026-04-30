@@ -38,8 +38,13 @@ export default function DodgeGame({ onComplete, onClose }) {
       tx = (src.clientX - r.left) * (W / r.width);
       ty = (src.clientY - r.top)  * (H / r.height);
     }
-    canvas.addEventListener('pointermove', ptr);
-    canvas.addEventListener('touchmove', e => { e.preventDefault(); ptr(e); }, { passive: false });
+    function handlePointerMove(event) {
+      ptr(event);
+    }
+    function handleTouchMove(event) {
+      event.preventDefault();
+      ptr(event);
+    }
 
     // ── Spawn ──────────────────────────────────────────────────────────
     function spawn() {
@@ -170,8 +175,20 @@ export default function DodgeGame({ onComplete, onClose }) {
 
     startGameRef.current = startGame;
 
-    canvas.addEventListener('pointerdown', e => { ptr(e); if (state !== 'playing') startGame(); });
-    canvas.addEventListener('touchstart', e => { e.preventDefault(); ptr(e); if (state !== 'playing') startGame(); }, { passive: false });
+    function handlePointerDown(event) {
+      ptr(event);
+      if (state !== 'playing') startGame();
+    }
+    function handleTouchStart(event) {
+      event.preventDefault();
+      ptr(event);
+      if (state !== 'playing') startGame();
+    }
+
+    canvas.addEventListener('pointermove', handlePointerMove);
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('pointerdown', handlePointerDown);
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
 
     // Initial screen
     ctx.fillStyle = '#0d1520'; ctx.fillRect(0, 0, W, H);
@@ -188,7 +205,10 @@ export default function DodgeGame({ onComplete, onClose }) {
     return () => {
       cancelAnimationFrame(rafId);
       clearInterval(timerInterval);
-      canvas.removeEventListener('pointermove', ptr);
+      canvas.removeEventListener('pointermove', handlePointerMove);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('pointerdown', handlePointerDown);
+      canvas.removeEventListener('touchstart', handleTouchStart);
     };
   }, []);
 

@@ -10,6 +10,7 @@ import StatusBars from '../components/StatusBars';
 import PersonalHomeScreen from './PersonalHomeScreen';
 import { HOME_PRICE_COINS } from '../homeConstants';
 import { avatarUrl } from '../utils/avatarUrl';
+import { shouldPauseHomeRuntime } from '../utils/gameplayRuntime.mjs';
 
 const EMPTY_HOME_SCENE = { slots: {} };
 const UPDATES_CHANNEL_URL = 'https://t.me/peeperupdates';
@@ -649,6 +650,7 @@ export default function HomeScreen({
   onViewProfile,
   blackjackInviteToken = null,
   onBlackjackInviteConsumed = null,
+  onGameplayOpenChange = null,
   isActive = true,
   topGifts = [],
   hasNewGifts = false,
@@ -792,7 +794,8 @@ export default function HomeScreen({
     }
   }, [buyPersonalHome, getPersonalHomeState]);
 
-  const live = useLiveStats(peeper);
+  const liveStatsPaused = shouldPauseHomeRuntime({ isActive, gameplayOpen });
+  const live = useLiveStats(peeper, { isActive, gameplayOpen });
   const awaitingServerState = live.needsServerSync && peeper?.alive !== false;
   const dirtyState = peeper?.dirty_state || 'clean';
   const isDirty = dirtyState !== 'clean';
@@ -842,6 +845,13 @@ export default function HomeScreen({
     const timeoutId = window.setTimeout(preloadSniper, 900);
     return () => window.clearTimeout(timeoutId);
   }, [gameplayOpen, isActive]);
+
+  useEffect(() => {
+    onGameplayOpenChange?.(gameplayOpen);
+    return () => {
+      onGameplayOpenChange?.(false);
+    };
+  }, [gameplayOpen, onGameplayOpenChange]);
 
   useEffect(() => {
     if (!isActive || gameplayOpen) return;
@@ -909,6 +919,7 @@ export default function HomeScreen({
   }, [dirtyState]);
 
   useLayoutEffect(() => {
+    if (liveStatsPaused) return undefined;
     const content = contentRef.current;
     const top = topStackRef.current;
     const bottom = bottomStackRef.current;
@@ -938,7 +949,7 @@ export default function HomeScreen({
       resizeObserver?.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [dirtyState, hasNewGifts, homeSummary?.owned, peeper?.alive]);
+  }, [dirtyState, hasNewGifts, homeSummary?.owned, liveStatsPaused, peeper?.alive]);
 
   useEffect(() => {
     if (!homeSummary?.owned) {

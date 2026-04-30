@@ -237,11 +237,13 @@ function Reel({ column, plan, animate }) {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          transform: `translateY(${translate})`,
+          transform: `translate3d(0, ${translate}, 0)`,
           transition: plan
             ? `transform ${plan.durationMs}ms cubic-bezier(0.1, 0.9, 0.2, 1)`
             : 'none',
           willChange: plan ? 'transform' : 'auto',
+          backfaceVisibility: 'hidden',
+          contain: 'layout paint style',
         }}
       >
         {sequence.map((symbolId, index) => (
@@ -658,8 +660,8 @@ export default function CasinoGame({ onClose }) {
           100% { transform: scale(1); box-shadow: 0 0 0 rgba(255,218,117,0); }
         }
         @keyframes casino-cabinet-glow {
-          0%, 100% { box-shadow: 0 18px 48px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.1); }
-          50% { box-shadow: 0 24px 56px rgba(255,214,102,0.16), inset 0 1px 0 rgba(255,255,255,0.14); }
+          0%, 100% { opacity: 0.16; transform: scale(0.985); }
+          50% { opacity: 0.38; transform: scale(1); }
         }
       `}</style>
 
@@ -826,10 +828,23 @@ export default function CasinoGame({ onClose }) {
                   background: 'linear-gradient(180deg, rgba(83,121,57,0.92) 0%, rgba(39,69,36,0.96) 100%)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   boxShadow: '0 22px 52px rgba(0,0,0,0.26)',
-                  animation: spinning ? 'casino-cabinet-glow 1.15s ease-in-out infinite' : 'none',
                   overflow: 'hidden',
                 }}
               >
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: -8,
+                    borderRadius: 32,
+                    background: 'radial-gradient(circle at 50% 18%, rgba(255,214,102,0.22) 0%, rgba(255,214,102,0.1) 22%, rgba(255,214,102,0) 58%)',
+                    opacity: 0,
+                    transform: 'scale(0.985)',
+                    transformOrigin: 'center top',
+                    animation: spinning ? 'casino-cabinet-glow 1.15s ease-in-out infinite' : 'none',
+                    willChange: 'opacity, transform',
+                    pointerEvents: 'none',
+                  }}
+                />
                 <div
                   style={{
                     position: 'absolute',

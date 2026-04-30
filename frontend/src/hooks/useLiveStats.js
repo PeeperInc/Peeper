@@ -6,6 +6,7 @@
  * using server-aligned time when `peeper.server_now` is available.
  */
 import { useState, useEffect, useRef } from 'react';
+import { shouldPauseLiveStats } from '../utils/gameplayRuntime.mjs';
 
 const HUNGER_DRAIN      = 8   * 3600;
 const FUN_DRAIN         = 100 * 60;
@@ -89,7 +90,9 @@ function computePreview(peeper, serverOffsetSeconds) {
   };
 }
 
-export function useLiveStats(peeper) {
+export function useLiveStats(peeper, options = {}) {
+  const { isActive = true, gameplayOpen = false } = options;
+  const paused = shouldPauseLiveStats({ isActive, gameplayOpen });
   const peeperRef = useRef(peeper);
   const serverOffsetRef = useRef(0);
   const [stats, setStats] = useState(() => computePreview(peeper, serverOffsetRef.current));
@@ -107,9 +110,10 @@ export function useLiveStats(peeper) {
       setStats(computePreview(peeperRef.current, serverOffsetRef.current));
     };
     tick();
+    if (paused) return undefined;
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [paused]);
 
   useEffect(() => {
     const onVisible = () => {

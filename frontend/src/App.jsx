@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import * as api from './api';
 import { AppRoot } from '@telegram-apps/telegram-ui';
 import { AppProvider, useApp } from './context/AppContext';
+import { shouldPauseAppPolling } from './utils/gameplayRuntime.mjs';
 import HomeScreen       from './screens/HomeScreen';
 import { isAdmin }      from './adminConfig';
 import WardrobeScreen   from './screens/WardrobeScreen';
@@ -138,6 +139,7 @@ function AppContent() {
   const [giftRecipient,   setGiftRecipient]   = useState(null);  // pre-fill gift recipient
   const [familyUnreadCount, setFamilyUnreadCount] = useState(0);
   const [blackjackInviteToken, setBlackjackInviteToken] = useState(null);
+  const [gameplayOpen, setGameplayOpen] = useState(false);
   const tabBarRef = useRef(null);
 
   const [topGifts,    setTopGifts]    = useState([]);
@@ -157,10 +159,10 @@ function AppContent() {
 
   // Poll for new gifts every 30s so badge appears without page reload
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || shouldPauseAppPolling({ gameplayOpen })) return;
     const interval = setInterval(fetchTopGifts, 30000);
     return () => clearInterval(interval);
-  }, [user?.id, fetchTopGifts]);
+  }, [user?.id, fetchTopGifts, gameplayOpen]);
 
   const fetchFamilyUnread = useCallback(async () => {
     if (!user?.id) {
@@ -180,10 +182,10 @@ function AppContent() {
   }, [fetchFamilyUnread]);
 
   useEffect(() => {
-    if (!user?.id || activeTab === 'family') return;
+    if (!user?.id || activeTab === 'family' || shouldPauseAppPolling({ gameplayOpen })) return;
     const interval = setInterval(fetchFamilyUnread, 15000);
     return () => clearInterval(interval);
-  }, [user?.id, activeTab, fetchFamilyUnread]);
+  }, [user?.id, activeTab, fetchFamilyUnread, gameplayOpen]);
 
   const hasNewGifts = topGifts.some(g => !g.is_seen);
 
@@ -311,6 +313,7 @@ function AppContent() {
             onViewProfile={(uid) => openProfile(uid)}
             blackjackInviteToken={blackjackInviteToken}
             onBlackjackInviteConsumed={() => setBlackjackInviteToken(null)}
+            onGameplayOpenChange={setGameplayOpen}
             isActive={activeTab === 'home' && !showProfile}
             topGifts={topGifts}
             hasNewGifts={hasNewGifts}
