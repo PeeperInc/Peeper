@@ -19,6 +19,17 @@ function Avatar({ telegramId, name, size = 44, fontSize = 22 }) {
   return <div className="avatar-circle" style={{ width: size, height: size, fontSize, flexShrink: 0 }}>🐸</div>;
 }
 
+const profileSmallTextStyle = {
+  color: 'var(--text-secondary)',
+  fontWeight: 600,
+};
+
+const profileLabelTextStyle = {
+  color: 'var(--text-secondary)',
+  fontWeight: 700,
+  letterSpacing: '0.01em',
+};
+
 function formatRank(rank) {
   return rank ? `#${rank}` : '—';
 }
@@ -34,7 +45,7 @@ function ProfileRanks({ ranks }) {
   };
 
   return (
-    <div style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ padding: '0 16px 12px' }}>
       <div
         className="card"
         style={{
@@ -42,19 +53,17 @@ function ProfileRanks({ ranks }) {
           gridTemplateColumns: '1fr 1fr',
           gap: 10,
           padding: '12px 14px',
-          width: '100%',
-          maxWidth: 340,
           textAlign: 'center',
         }}
       >
         <div style={rankColumnStyle}>
-          <div style={{ fontSize: 11, color: 'var(--text-hint)', fontWeight: 700 }}>Longest Alive</div>
+          <div style={{ ...profileLabelTextStyle, fontSize: 11 }}>Longest Alive</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--accent)', marginTop: 2 }}>
             {formatRank(ranks.longevityRank)}
           </div>
         </div>
         <div style={rankColumnStyle}>
-          <div style={{ fontSize: 11, color: 'var(--text-hint)', fontWeight: 700 }}>Top Giftees</div>
+          <div style={{ ...profileLabelTextStyle, fontSize: 11 }}>Top Giftees</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--accent)', marginTop: 2 }}>
             {formatRank(ranks.giftRank)}
           </div>
@@ -110,7 +119,7 @@ function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewPro
         </button>
       </div>
 
-      {loading && <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-hint)' }}>Loading profile…</div>}
+      {loading && <div style={{ ...profileSmallTextStyle, textAlign: 'center', padding: 60 }}>Loading profile…</div>}
       {error   && (
         <div style={{ textAlign: 'center', padding: 40 }}>
           <p style={{ color: 'var(--danger)' }}>{error}</p>
@@ -125,7 +134,7 @@ function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewPro
             <div>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{profile.user.first_name}</div>
               {profile.user.username && (
-                <div style={{ color: 'var(--text-hint)', fontSize: 13 }}>@{profile.user.username}</div>
+                <div style={{ ...profileSmallTextStyle, fontSize: 13 }}>@{profile.user.username}</div>
               )}
             </div>
             {!isSelf && onSendGift && profile?.user && (
@@ -148,15 +157,15 @@ function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewPro
           <div style={{ display: 'flex', gap: 10, padding: '0 16px 16px' }}>
             <div className="card" style={{ flex: 1, textAlign: 'center', padding: '14px 12px' }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)', letterSpacing: '-0.02em' }}>{profile.ageDays}d</div>
-              <div style={{ fontSize: 11, color: 'var(--text-hint)', marginTop: 4, fontWeight: 500 }}>Peeper Age</div>
+              <div style={{ ...profileLabelTextStyle, fontSize: 11, marginTop: 4 }}>Peeper Age</div>
             </div>
             <div className="card" style={{ flex: 1, textAlign: 'center', padding: '14px 12px' }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)', letterSpacing: '-0.02em' }}>{profile.totalGifts}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-hint)', marginTop: 4, fontWeight: 500 }}>Gifts</div>
+              <div style={{ ...profileLabelTextStyle, fontSize: 11, marginTop: 4 }}>Gifts</div>
             </div>
             <div className="card" style={{ flex: 1, textAlign: 'center', padding: '14px 12px' }}>
               <div style={{ fontSize: 20 }}>{profile.peeper?.alive ? '💚' : '💀'}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-hint)', marginTop: 4, fontWeight: 500 }}>{profile.peeper?.alive ? 'Alive' : 'Passed'}</div>
+              <div style={{ ...profileLabelTextStyle, fontSize: 11, marginTop: 4 }}>{profile.peeper?.alive ? 'Alive' : 'Passed'}</div>
             </div>
           </div>
 
@@ -169,10 +178,10 @@ function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewPro
                   cursor: onViewFamily ? 'pointer' : 'default' }}>
                 <span style={{ fontSize: 22 }}>👨‍👩‍👧</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-hint)' }}>Family</div>
+                  <div style={{ ...profileLabelTextStyle, fontSize: 11 }}>Family</div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{profile.family.name}</div>
                 </div>
-                {onViewFamily && <span style={{ color: 'var(--text-hint)' }}>→</span>}
+                {onViewFamily && <span style={{ color: 'var(--text-secondary)' }}>→</span>}
               </div>
             </div>
           )}
@@ -191,15 +200,15 @@ function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewPro
               >
                 <span style={{ fontSize: 22 }}>🏠</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-hint)' }}>Home</div>
+                  <div style={{ ...profileLabelTextStyle, fontSize: 11 }}>Home</div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>Visit Home</div>
                 </div>
-                {onVisitHome && <span style={{ color: 'var(--text-hint)' }}>→</span>}
+                {onVisitHome && <span style={{ color: 'var(--text-secondary)' }}>→</span>}
               </div>
             </div>
           )}
 
-          <div className="section-label">Gift Gallery</div>
+          <div className="section-label" style={profileLabelTextStyle}>Gift Gallery</div>
           <div style={{ padding: '0 16px' }}>
             <GiftGallery
               topGifts={gifts.topGifts}
@@ -334,7 +343,7 @@ export default function ProfileScreen({ onClose, initialViewUserId = null, topGi
         <Avatar telegramId={user?.telegram_id} name={user?.first_name} size={52} fontSize={28} />
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>{user?.first_name}</div>
-          {user?.username && <div style={{ color: 'var(--text-hint)', fontSize: 13 }}>@{user.username}</div>}
+          {user?.username && <div style={{ ...profileSmallTextStyle, fontSize: 13 }}>@{user.username}</div>}
         </div>
         <div className="coins-badge" style={{ marginLeft: 'auto' }}>✦ {user?.coins ?? 0}</div>
       </div>
@@ -347,10 +356,10 @@ export default function ProfileScreen({ onClose, initialViewUserId = null, topGi
 
       <ProfileRanks ranks={myProfile?.ranks} />
 
-      <div className="section-label">My Gift Gallery</div>
+      <div className="section-label" style={profileLabelTextStyle}>My Gift Gallery</div>
       <div style={{ padding: '0 16px 16px' }}>
         {giftsLoading
-          ? <div style={{ color: 'var(--text-hint)', fontSize: 13, padding: '12px 0' }}>Loading gifts…</div>
+          ? <div style={{ ...profileSmallTextStyle, fontSize: 13, padding: '12px 0' }}>Loading gifts…</div>
           : <GiftGallery
               topGifts={myGifts.topGifts}
               totalGifts={myGifts.totalCount}
@@ -361,7 +370,7 @@ export default function ProfileScreen({ onClose, initialViewUserId = null, topGi
         }
       </div>
 
-      <div className="section-label">Find Another Peeper</div>
+      <div className="section-label" style={profileLabelTextStyle}>Find Another Peeper</div>
       <div style={{ padding: '0 16px 12px', display: 'flex', gap: 8 }}>
         <input className="search-input" style={{ flex: 1 }} placeholder="@username or name…"
           value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
@@ -377,17 +386,17 @@ export default function ProfileScreen({ onClose, initialViewUserId = null, topGi
           <Avatar telegramId={u.telegram_id} name={u.first_name} size={36} fontSize={18} />
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, fontSize: 14 }}>{u.first_name}</div>
-            {u.username && <div style={{ fontSize: 12, color: 'var(--text-hint)' }}>@{u.username}</div>}
+            {u.username && <div style={{ ...profileSmallTextStyle, fontSize: 12 }}>@{u.username}</div>}
           </div>
           <span style={{ color: 'var(--accent)', fontSize: 13 }}>View →</span>
         </div>
       ))}
 
       {searchQuery.trim().length > 0 && searchQuery.trim().length < 3 && (
-        <div style={{ padding: '0 16px', color: 'var(--text-hint)', fontSize: 13 }}>Type at least 3 characters…</div>
+        <div style={{ ...profileSmallTextStyle, padding: '0 16px', fontSize: 13 }}>Type at least 3 characters…</div>
       )}
       {searchResults.length === 0 && !searching && searchQuery.trim().length >= 3 && (
-        <div style={{ padding: '0 16px', color: 'var(--text-hint)', fontSize: 13 }}>No users found for "{searchQuery.trim()}"</div>
+        <div style={{ ...profileSmallTextStyle, padding: '0 16px', fontSize: 13 }}>No users found for "{searchQuery.trim()}"</div>
       )}
     </div>
   );
