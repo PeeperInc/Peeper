@@ -30,6 +30,10 @@ function UserAvatar({ telegramId, name }) {
   );
 }
 
+function formatGiftCount(count) {
+  const value = Number(count || 0);
+  return `${value} gift${value === 1 ? '' : 's'}`;
+}
 
 function FamilyLeaderboardTab({ onViewProfile, onSelectFamily }) {
   const [rows, setRows]       = useState([]);
@@ -111,8 +115,13 @@ function LeaderboardList({ rows, type, onViewProfile }) {
               </div>
             </div>
           ) : (
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent)', flexShrink: 0 }}>
-              🎁 {row.gift_count}
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent)' }}>
+                ✦ {row.gift_value || 0}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-hint)', marginTop: 2 }}>
+                {formatGiftCount(row.gift_count)}
+              </div>
             </div>
           )}
           <span style={{ fontSize: 12, color: 'var(--text-hint)', marginLeft: 4 }}>→</span>
@@ -156,7 +165,7 @@ export default function LeaderboardScreen({ onViewProfile }) {
           ⏳ Longest Alive
         </button>
         <button className={`inner-tab${activeTab === 'gifts' ? ' active' : ''}`} onClick={() => setActiveTab('gifts')}>
-          🎁 Most Gifts
+          🎁 Top Giftees
         </button>
         <button className={`inner-tab${activeTab === 'families' ? ' active' : ''}`} onClick={() => setActiveTab('families')}>
           👨‍👩‍👧 Families

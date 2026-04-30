@@ -32,6 +32,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local agent and server ops scripts
+.codex/
+ops/
+
 # Deploy archives
 *.zip
 *.tar

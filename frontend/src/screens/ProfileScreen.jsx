@@ -19,6 +19,41 @@ function Avatar({ telegramId, name, size = 44, fontSize = 22 }) {
   return <div className="avatar-circle" style={{ width: size, height: size, fontSize, flexShrink: 0 }}>🐸</div>;
 }
 
+function formatRank(rank) {
+  return rank ? `#${rank}` : '—';
+}
+
+function ProfileRanks({ ranks }) {
+  if (!ranks) return null;
+
+  return (
+    <div style={{ padding: '0 16px 12px' }}>
+      <div
+        className="card"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 10,
+          padding: '12px 14px',
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-hint)', fontWeight: 700 }}>Longest Alive</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--accent)', marginTop: 2 }}>
+            {formatRank(ranks.longevityRank)}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-hint)', fontWeight: 700 }}>Top Giftees</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--accent)', marginTop: 2 }}>
+            {formatRank(ranks.giftRank)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Other user's profile ───────────────────────────────────────────────────
 function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewProfile, onViewFamily, onVisitHome }) {
   const [profile, setProfile] = useState(null);
@@ -115,6 +150,8 @@ function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewPro
             </div>
           </div>
 
+          <ProfileRanks ranks={profile.ranks} />
+
           {profile.family && (
             <div style={{ padding: '0 16px 12px' }}>
               <div className="card" onClick={() => onViewFamily && onViewFamily(profile.family.id)}
@@ -181,6 +218,7 @@ export default function ProfileScreen({ onClose, initialViewUserId = null, topGi
   const [viewingUserId, setViewingUserId] = useState(initialViewUserId);
   const [viewingHomeUserId, setViewingHomeUserId] = useState(null);
   const [myGiftsLocal,  setMyGiftsLocal]  = useState({ topGifts: [], totalCount: 0 });
+  const [myProfile,     setMyProfile]     = useState(null);
   const [giftsLoading,  setGiftsLoading]  = useState(true);
 
   // Use external topGifts from App if provided (shared state), otherwise use local
@@ -192,8 +230,16 @@ export default function ProfileScreen({ onClose, initialViewUserId = null, topGi
     if (!user?.id) return;
     let cancelled = false;
     setGiftsLoading(true);
-    api.getUserGifts(user.id)
-      .then(d => { if (!cancelled) setMyGiftsLocal({ topGifts: d.topGifts || [], totalCount: d.totalCount || 0 }); })
+    Promise.all([
+      api.getUserGifts(user.id),
+      api.getUserProfile(user.id),
+    ])
+      .then(([giftData, profileData]) => {
+        if (!cancelled) {
+          setMyGiftsLocal({ topGifts: giftData.topGifts || [], totalCount: giftData.totalCount || 0 });
+          setMyProfile(profileData);
+        }
+      })
       .catch(console.error)
       .finally(() => { if (!cancelled) setGiftsLoading(false); });
     return () => { cancelled = true; };
@@ -288,6 +334,8 @@ export default function ProfileScreen({ onClose, initialViewUserId = null, topGi
           <PeeperSprite peeper={peeper} size={180} />
         </div>
       )}
+
+      <ProfileRanks ranks={myProfile?.ranks} />
 
       <div className="section-label">My Gift Gallery</div>
       <div style={{ padding: '0 16px 16px' }}>

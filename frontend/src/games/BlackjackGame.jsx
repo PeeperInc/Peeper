@@ -1661,13 +1661,10 @@ function TableView({
               <div
                 style={{
                   width: heroCenterWidth,
-                  minHeight: isWideLayout ? 62 : isCompactPhone ? 48 : 54,
-                  borderRadius: 22,
+                  minHeight: isWideLayout ? 52 : isCompactPhone ? 40 : 45,
                   display: 'grid',
                   placeItems: 'center',
-                  background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.06) 100%)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  padding: isCompactPhone ? '2px 8px' : '3px 10px',
+                  padding: 0,
                 }}
               >
                 <BlackjackMascot

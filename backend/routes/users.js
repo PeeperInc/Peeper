@@ -3,6 +3,60 @@ const router = express.Router();
 const db = require('../database');
 const { validateTelegramInit } = require('../auth');
 const { getHomeSummary } = require('../homeState');
+const { liveStats } = require('../gameLogic');
+
+function getAliveLongevityRows() {
+  const raw = db.prepare(`
+    SELECT u.id, u.telegram_id, u.username, u.first_name, u.photo_url,
+           p.alive, p.born_at, p.hp, p.last_fed, p.last_played,
+           p.fridge_owned, p.fridge_food_until, p.fridge_purchased_at,
+           CAST((strftime('%s','now') - p.born_at) AS INTEGER) AS age_seconds
+    FROM users u
+    INNER JOIN peepers p ON p.user_id = u.id
+    WHERE p.alive = 1
+    ORDER BY age_seconds DESC, u.id ASC
+  `).all();
+
+  return raw.filter(r => liveStats(r).alive);
+}
+
+function getGiftValueRows(limit = null) {
+  const limitClause = Number.isInteger(limit) ? 'LIMIT ?' : '';
+  const stmt = db.prepare(`
+    SELECT u.id, u.telegram_id, u.username, u.first_name, u.photo_url,
+           COUNT(gr.id) AS gift_count,
+           COALESCE(SUM(gr.gift_price), 0) AS gift_value
+    FROM users u
+    LEFT JOIN gifts_received gr ON gr.recipient_id = u.id
+    GROUP BY u.id
+    HAVING COALESCE(SUM(gr.gift_price), 0) > 0
+    ORDER BY gift_value DESC, gift_count DESC, u.id ASC
+    ${limitClause}
+  `);
+  return Number.isInteger(limit) ? stmt.all(limit) : stmt.all();
+}
+
+function getUserRanks(userId, peeper = null) {
+  const longevityRows = peeper?.alive ? getAliveLongevityRows() : [];
+  const longevityIndex = longevityRows.findIndex(row => row.id === userId);
+
+  const giftRows = getGiftValueRows();
+  const giftIndex = giftRows.findIndex(row => row.id === userId);
+  const giftRow = giftIndex >= 0 ? giftRows[giftIndex] : null;
+
+  const giftStats = giftRow || db.prepare(`
+    SELECT COUNT(*) AS gift_count, COALESCE(SUM(gift_price), 0) AS gift_value
+    FROM gifts_received
+    WHERE recipient_id = ?
+  `).get(userId);
+
+  return {
+    longevityRank: longevityIndex >= 0 ? longevityIndex + 1 : null,
+    giftRank: giftRow ? giftIndex + 1 : null,
+    giftValue: Number(giftStats?.gift_value || 0),
+    giftCount: Number(giftStats?.gift_count || 0),
+  };
+}
 
 /**
  * GET /api/users/search?q=username
@@ -70,6 +124,7 @@ router.get('/:userId/profile', validateTelegramInit, (req, res) => {
     topGifts,
     totalGifts,
     ageDays,
+    ranks: getUserRanks(userId, peeper),
     family: familyRow || null,
     homeSummary: getHomeSummary(userId),
   });
@@ -80,34 +135,12 @@ router.get('/:userId/profile', validateTelegramInit, (req, res) => {
  * Top 50 players with longest living (or lived) Peepers.
  */
 router.get('/leaderboard/longevity', validateTelegramInit, (req, res) => {
-  // Only show alive peepers. The notifier marks dead ones every 60s,
-  // but as extra safety we also compute liveStats here.
-  const { liveStats } = require('../gameLogic');
-  const raw = db.prepare(`
-    SELECT u.id, u.telegram_id, u.username, u.first_name, u.photo_url,
-           p.alive, p.born_at, p.hp, p.last_fed, p.last_played,
-           CAST((strftime('%s','now') - p.born_at) AS INTEGER) AS age_seconds
-    FROM users u
-    INNER JOIN peepers p ON p.user_id = u.id
-    WHERE p.alive = 1
-    ORDER BY age_seconds DESC
-    LIMIT 100
-  `).all();
-  // Double-check with liveStats to catch peepers that died but user never logged in
-  const rows = raw.filter(r => liveStats(r).alive).slice(0, 50);
+  const rows = getAliveLongevityRows().slice(0, 50);
   res.json({ leaderboard: rows });
 });
 
 router.get('/leaderboard/gifts', validateTelegramInit, (req, res) => {
-  const rows = db.prepare(`
-    SELECT u.id, u.telegram_id, u.username, u.first_name, u.photo_url,
-           COUNT(gr.id) AS gift_count
-    FROM users u
-    LEFT JOIN gifts_received gr ON gr.recipient_id = u.id
-    GROUP BY u.id
-    ORDER BY gift_count DESC
-    LIMIT 50
-  `).all();
+  const rows = getGiftValueRows(50);
   res.json({ leaderboard: rows });
 });
 
