@@ -26,8 +26,15 @@ function formatRank(rank) {
 function ProfileRanks({ ranks }) {
   if (!ranks) return null;
 
+  const rankColumnStyle = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+  };
+
   return (
-    <div style={{ padding: '0 16px 12px' }}>
+    <div style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'center' }}>
       <div
         className="card"
         style={{
@@ -35,15 +42,18 @@ function ProfileRanks({ ranks }) {
           gridTemplateColumns: '1fr 1fr',
           gap: 10,
           padding: '12px 14px',
+          width: '100%',
+          maxWidth: 340,
+          textAlign: 'center',
         }}
       >
-        <div>
+        <div style={rankColumnStyle}>
           <div style={{ fontSize: 11, color: 'var(--text-hint)', fontWeight: 700 }}>Longest Alive</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--accent)', marginTop: 2 }}>
             {formatRank(ranks.longevityRank)}
           </div>
         </div>
-        <div>
+        <div style={rankColumnStyle}>
           <div style={{ fontSize: 11, color: 'var(--text-hint)', fontWeight: 700 }}>Top Giftees</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--accent)', marginTop: 2 }}>
             {formatRank(ranks.giftRank)}
