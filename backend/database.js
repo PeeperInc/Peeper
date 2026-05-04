@@ -426,6 +426,70 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_blackjack_round_players_round ON blackjack_round_players(round_id, seat_index);
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS arena_matches (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    status            TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'countdown', 'active', 'finished', 'cancelled')),
+    visibility        TEXT NOT NULL DEFAULT 'open' CHECK(visibility IN ('open', 'private')),
+    join_code         TEXT UNIQUE DEFAULT NULL,
+    player1_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    player2_id        INTEGER DEFAULT NULL REFERENCES users(id) ON DELETE CASCADE,
+    stake             INTEGER NOT NULL DEFAULT 25,
+    current_round     INTEGER NOT NULL DEFAULT 0,
+    player1_hp        INTEGER NOT NULL DEFAULT 100,
+    player2_hp        INTEGER NOT NULL DEFAULT 100,
+    winner_id         INTEGER DEFAULT NULL REFERENCES users(id),
+    result            TEXT DEFAULT NULL CHECK(result IN ('p1_win', 'p2_win', 'draw', 'forfeit', NULL)),
+    round_deadline    INTEGER DEFAULT NULL,
+    countdown_ends_at INTEGER DEFAULT NULL,
+    created_at        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    finished_at       INTEGER DEFAULT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS arena_rounds (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id          INTEGER NOT NULL REFERENCES arena_matches(id) ON DELETE CASCADE,
+    round_number      INTEGER NOT NULL,
+    p1_attack         TEXT DEFAULT NULL CHECK(p1_attack IN ('fire','water','earth','air', NULL)),
+    p1_defense        TEXT DEFAULT NULL CHECK(p1_defense IN ('fire','water','earth','air', NULL)),
+    p2_attack         TEXT DEFAULT NULL CHECK(p2_attack IN ('fire','water','earth','air', NULL)),
+    p2_defense        TEXT DEFAULT NULL CHECK(p2_defense IN ('fire','water','earth','air', NULL)),
+    p1_damage_dealt   INTEGER DEFAULT NULL,
+    p2_damage_dealt   INTEGER DEFAULT NULL,
+    p1_multiplier     REAL DEFAULT NULL,
+    p2_multiplier     REAL DEFAULT NULL,
+    p1_hp_after       INTEGER DEFAULT NULL,
+    p2_hp_after       INTEGER DEFAULT NULL,
+    resolved          INTEGER NOT NULL DEFAULT 0,
+    created_at        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    UNIQUE(match_id, round_number)
+  );
+
+  CREATE TABLE IF NOT EXISTS arena_queue (
+    user_id   INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    queued_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS arena_match_invites (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id    INTEGER NOT NULL REFERENCES arena_matches(id) ON DELETE CASCADE,
+    inviter_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    invitee_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token       TEXT NOT NULL UNIQUE,
+    status      TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'cancelled')),
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    used_at     INTEGER DEFAULT NULL,
+    UNIQUE(match_id, invitee_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_arena_matches_status ON arena_matches(status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_arena_matches_players ON arena_matches(player1_id, player2_id, status);
+  CREATE INDEX IF NOT EXISTS idx_arena_rounds_match ON arena_rounds(match_id, round_number);
+  CREATE INDEX IF NOT EXISTS idx_arena_queue_time ON arena_queue(queued_at);
+  CREATE INDEX IF NOT EXISTS idx_arena_invites_match ON arena_match_invites(match_id, invitee_id, status);
+  CREATE INDEX IF NOT EXISTS idx_arena_invites_token ON arena_match_invites(token);
+`);
+
 db.prepare(`
   INSERT OR IGNORE INTO home_shop_items (item_id, name, slot, price, is_free, is_active)
   VALUES (?, 'Starter Home', 'wall_base', 0, 1, 1)

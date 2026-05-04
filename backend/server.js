@@ -29,6 +29,7 @@ app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/family',  require('./routes/family'));
 app.use('/api/home',    require('./routes/home'));
 app.use('/api/blackjack', require('./routes/blackjack'));
+app.use('/api/arena', require('./routes/arena'));
 
 // Items catalog (no auth needed for the list itself)
 const { CLOTHING_ITEMS, GIFT_ITEMS } = require('./items');

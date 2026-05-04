@@ -10,7 +10,18 @@ function getInitData() {
     return window.Telegram.WebApp.initData;
   }
 
-  return 'dev_mode=1&user=%7B%22id%22%3A999999%2C%22first_name%22%3A%22Dev%22%2C%22username%22%3A%22devuser%22%7D&auth_date=9999999999&hash=devhash';
+  const params = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : new URLSearchParams();
+  const devUser = params.get('devUser') || '999999';
+  const devName = params.get('devName') || 'Dev';
+  const devUsername = params.get('devUsername') || `dev${devUser}`;
+
+  return `dev_mode=1&user=${encodeURIComponent(JSON.stringify({
+    id: Number(devUser),
+    first_name: devName,
+    username: devUsername,
+  }))}&auth_date=9999999999&hash=devhash`;
 }
 
 async function request(method, path, body) {
@@ -50,6 +61,19 @@ export const leaveBlackjackLobby = (lobbyId) => post(`/blackjack/lobbies/${lobby
 export const getBlackjackLobbyState = (lobbyId) => get(`/blackjack/lobbies/${lobbyId}/state`);
 export const placeBlackjackBet = (lobbyId) => post(`/blackjack/lobbies/${lobbyId}/bet`, {});
 export const actBlackjack = (lobbyId, action) => post(`/blackjack/lobbies/${lobbyId}/action`, { action });
+export const arenaJoinQueue = () => post('/arena/queue', {});
+export const arenaLeaveQueue = () => request('DELETE', '/arena/queue');
+export const arenaQueueStatus = () => get('/arena/queue/status');
+export const arenaPublicQueueStatus = () => get('/arena/queue/public-status');
+export const arenaCurrent = () => get('/arena/current');
+export const arenaLeaderboard = () => get('/arena/leaderboard');
+export const arenaCreateRoom = () => post('/arena/create', {});
+export const arenaJoinRoom = (code) => post('/arena/join', { code });
+export const arenaJoinInvite = (token) => post('/arena/invites/join', { token });
+export const arenaGetState = (matchId) => get(`/arena/state/${matchId}`);
+export const arenaChoose = (matchId, attack, defense) => post(`/arena/choose/${matchId}`, { attack, defense });
+export const arenaForfeit = (matchId) => post(`/arena/forfeit/${matchId}`, {});
+export const arenaInvitePlayer = (matchId, targetUserId) => post(`/arena/matches/${matchId}/invite`, { targetUserId });
 export const feedPeeper = (foodType) => post('/game/feed', { foodType });
 export const playPeeper = ({ gameId, coinsEarned, gameWon }) => post('/game/play', { gameId, coinsEarned, gameWon });
 export const removePeeperPoop = () => post('/game/cleanup/poop', {});

@@ -11,6 +11,7 @@ import PersonalHomeScreen from './PersonalHomeScreen';
 import { HOME_PRICE_COINS } from '../homeConstants';
 import { avatarUrl } from '../utils/avatarUrl';
 import { shouldPauseHomeRuntime } from '../utils/gameplayRuntime.mjs';
+import * as api from '../api';
 
 const EMPTY_HOME_SCENE = { slots: {} };
 const UPDATES_CHANNEL_URL = 'https://t.me/peeperupdates';
@@ -38,6 +39,7 @@ function formatFridgeRemaining(seconds = 0) {
 
 const GAMES = [
   { id: 'casino', emoji: '🎰', name: 'caSino', desc: 'Every spin wins 8–15 ✦.', reward: '8–15 ✦', color: '#f1b74d', energy: 1 },
+  { id: 'arena', emoji: '⚔️', name: 'Arena', desc: 'PvP elemental battles · 25 ✦ stake.', reward: 'Win 50 ✦', color: '#e05555', energy: 0 },
   { id: 'blackjack', emoji: '🃏', name: 'Blackjack', desc: 'Online tables · 10 ✦ stake.', reward: 'Table Pot', color: '#5fcf97', energy: 0 },
   { id: 'sniper', emoji: '🎯', name: 'Sniper', desc: '3 shots at a moving target.', reward: 'Up to 10 ✦', color: '#8e44ad', energy: 1 },
   { id: 'flappy', emoji: '🐸', name: 'Flappy Frog', desc: 'Dodge pipes, collect sausages!', reward: 'Up to 10 ✦', color: '#27ae60', energy: 1 },
@@ -55,6 +57,7 @@ const GAME_LOADERS = {
   dodge: () => import('../games/DodgeGame'),
   sniper: () => import('../games/SniperGame'),
   casino: () => import('../games/CasinoGame'),
+  arena: () => import('../games/ArenaGame'),
   blackjack: () => import('../games/BlackjackGame'),
 };
 
@@ -66,6 +69,7 @@ const GAME_COMPONENTS = {
   dodge: lazy(GAME_LOADERS.dodge),
   sniper: lazy(GAME_LOADERS.sniper),
   casino: lazy(GAME_LOADERS.casino),
+  arena: lazy(GAME_LOADERS.arena),
   blackjack: lazy(GAME_LOADERS.blackjack),
 };
 
@@ -83,6 +87,9 @@ function canLaunchGame(game, { isDirty, canPlayBase }) {
 function canOpenAnyGameMenu({ isDirty, canPlayBase }) {
   return GAMES.some((game) => canLaunchGame(game, { isDirty, canPlayBase }));
 }
+
+const ENERGY_GAMES = GAMES.filter((game) => gameNeedsEnergy(game));
+const FREE_GAMES = GAMES.filter((game) => !gameNeedsEnergy(game));
 
 function preloadGame(gameId) {
   const loader = GAME_LOADERS[gameId];
@@ -432,8 +439,16 @@ function HintSheet({ onClose }) {
   );
 }
 
-function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClose, casinoJackpot = 0 }) {
+function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClose, casinoJackpot = 0, arenaQueueActive = false }) {
   const showBlockedBanner = isDirty;
+  const [activeTab, setActiveTab] = useState(energy > 0 ? 'energy' : 'free');
+  const visibleGames = activeTab === 'energy' ? ENERGY_GAMES : FREE_GAMES;
+
+  useEffect(() => {
+    if (energy === 0 && activeTab === 'energy') {
+      setActiveTab('free');
+    }
+  }, [activeTab, energy]);
 
   return (
     <BottomSheet
@@ -457,6 +472,30 @@ function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClo
       <div style={{ fontSize: 12, color: 'var(--text-hint)', marginBottom: 16 }}>
         {energy} energ{energy === 1 ? 'y' : 'ies'} available — most games cost 1 ⚡
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+        {[
+          { id: 'energy', label: `Energy (${energy})` },
+          { id: 'free', label: 'Free' },
+        ].map((tab) => {
+          const selected = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                background: selected ? 'var(--accent-light)' : 'var(--bg-card)',
+                color: selected ? 'var(--accent)' : 'var(--text-secondary)',
+                borderRadius: 14,
+                padding: '9px 10px',
+                fontWeight: 900,
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
       {showBlockedBanner && (
         <div style={{
           marginBottom: 12,
@@ -471,6 +510,16 @@ function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClo
         </div>
       )}
 
+      <style>{`
+        @keyframes arena-menu-pulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 2px 12px rgba(224,85,85,0.14), 0 1px 3px rgba(0,0,0,0.05); }
+          50% { transform: scale(1.012); box-shadow: 0 8px 26px rgba(224,85,85,0.28), 0 1px 3px rgba(0,0,0,0.08); }
+        }
+        @keyframes home-arena-sword-badge {
+          0%, 100% { transform: scale(1) rotate(-8deg); }
+          50% { transform: scale(1.2) rotate(8deg); }
+        }
+      `}</style>
       <div
         style={{
           display: 'flex',
@@ -485,8 +534,9 @@ function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClo
           paddingRight: 2,
         }}
       >
-        {GAMES.map((game) => {
+        {visibleGames.map((game) => {
           const playable = canLaunchGame(game, { isDirty, canPlayBase });
+          const arenaHot = arenaQueueActive && game.id === 'arena';
           return (
           <button
             key={game.id}
@@ -506,10 +556,12 @@ function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClo
               transition: 'transform 0.12s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s',
               WebkitTapHighlightColor: 'transparent',
               opacity: playable ? 1 : 0.58,
+              animation: arenaHot ? 'arena-menu-pulse 1.15s ease-in-out infinite' : undefined,
             }}
           >
             <div
               style={{
+                position: 'relative',
                 width: 52,
                 height: 52,
                 borderRadius: 14,
@@ -650,6 +702,8 @@ export default function HomeScreen({
   onViewProfile,
   blackjackInviteToken = null,
   onBlackjackInviteConsumed = null,
+  arenaInviteToken = null,
+  onArenaInviteConsumed = null,
   onGameplayOpenChange = null,
   isActive = true,
   topGifts = [],
@@ -688,6 +742,7 @@ export default function HomeScreen({
   const [playUnlocking, setPlayUnlocking] = useState(false);
   const [cleanupProgress, setCleanupProgress] = useState(0);
   const [cleanupDockBounds, setCleanupDockBounds] = useState({ top: 120, bottom: 140 });
+  const [arenaQueueActive, setArenaQueueActive] = useState(false);
   const lastServerSyncRef = useRef(0);
   const lastDirtyStateRef = useRef(peeper?.dirty_state || 'clean');
   const contentRef = useRef(null);
@@ -867,6 +922,25 @@ export default function HomeScreen({
   }, [gameplayOpen, isActive, refreshGameState]);
 
   useEffect(() => {
+    if (!isActive || gameplayOpen) return undefined;
+    let cancelled = false;
+    const refreshArenaQueue = async () => {
+      try {
+        const result = await api.arenaPublicQueueStatus();
+        if (!cancelled) setArenaQueueActive(Boolean(result?.active));
+      } catch {
+        if (!cancelled) setArenaQueueActive(false);
+      }
+    };
+    refreshArenaQueue();
+    const id = setInterval(refreshArenaQueue, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [gameplayOpen, isActive]);
+
+  useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible' && isActive && !gameplayOpen) {
         refreshGameState();
@@ -999,6 +1073,11 @@ export default function HomeScreen({
     if (!blackjackInviteToken || activeGame === 'blackjack' || loadingGame === 'blackjack') return;
     handleGameSelect('blackjack');
   }, [activeGame, blackjackInviteToken, handleGameSelect, loadingGame]);
+
+  useEffect(() => {
+    if (!arenaInviteToken || activeGame === 'arena' || loadingGame === 'arena') return;
+    handleGameSelect('arena');
+  }, [activeGame, arenaInviteToken, handleGameSelect, loadingGame]);
   const ageSeconds = Math.floor(Date.now() / 1000) - peeper.born_at;
   const ageDays = Math.floor(ageSeconds / 86400);
   const ageHours = Math.floor((ageSeconds % 86400) / 3600);
@@ -1147,7 +1226,10 @@ export default function HomeScreen({
                       </div>
                     </div>
 
-                    <div className={`home-screen-action-card play-lock-shell${isDirty ? ' locked' : ''}${playUnlocking ? ' unlocking' : ''}`}>
+                    <div
+                      className={`home-screen-action-card play-lock-shell${isDirty ? ' locked' : ''}${playUnlocking ? ' unlocking' : ''}`}
+                      style={{ position: 'relative', overflow: 'visible' }}
+                    >
                       <button
                         className={`btn btn-full home-screen-action-btn ${canOpenGames ? 'home-screen-action-play ready' : 'home-screen-action-muted'}${isDirty ? ' home-screen-play-disabled' : ''}`}
                         onClick={() => {
@@ -1156,12 +1238,35 @@ export default function HomeScreen({
                       >
                         🎮 Play
                       </button>
+                      {arenaQueueActive && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            right: 12,
+                            top: -10,
+                            zIndex: 4,
+                            width: 28,
+                            height: 28,
+                            borderRadius: '50%',
+                            display: 'grid',
+                            placeItems: 'center',
+                            background: '#ffcf6b',
+                            border: '2px solid white',
+                            fontSize: 15,
+                            boxShadow: '0 8px 20px rgba(224,85,85,0.34)',
+                            animation: 'home-arena-sword-badge 0.9s ease-in-out infinite',
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          ⚔️
+                        </span>
+                      )}
                       <div className={`home-screen-action-caption ${canOpenGames && !isDirty ? 'energy' : ''}${isDirty ? ' danger' : ''}`}>
                         {isDirty
                           ? 'Peeper is dirty - clean first'
                           : canPlay
                           ? `${'⚡'.repeat(energy)} ${energy} energ${energy === 1 ? 'y' : 'ies'}`
-                          : 'No energy • Blackjack available'}
+                          : 'No energy • Free games available'}
                       </div>
                     </div>
                   </div>
@@ -1233,6 +1338,7 @@ export default function HomeScreen({
             isDirty={isDirty}
             blockedReason={gameBlockedReason}
             casinoJackpot={casinoJackpot}
+            arenaQueueActive={arenaQueueActive}
             onSelect={handleGameSelect}
             onClose={() => setShowGameMenu(false)}
           />
@@ -1245,8 +1351,8 @@ export default function HomeScreen({
             onComplete={handleGameComplete}
             onClose={handleGameQuit}
             onViewProfile={onViewProfile}
-            inviteToken={activeGame === 'blackjack' ? blackjackInviteToken : null}
-            onInviteTokenConsumed={onBlackjackInviteConsumed}
+            inviteToken={activeGame === 'blackjack' ? blackjackInviteToken : activeGame === 'arena' ? arenaInviteToken : null}
+            onInviteTokenConsumed={activeGame === 'blackjack' ? onBlackjackInviteConsumed : activeGame === 'arena' ? onArenaInviteConsumed : null}
           />
         </Suspense>
       )}
@@ -1273,5 +1379,3 @@ export default function HomeScreen({
     </div>
   );
 }
-
-

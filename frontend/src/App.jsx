@@ -139,6 +139,7 @@ function AppContent() {
   const [giftRecipient,   setGiftRecipient]   = useState(null);  // pre-fill gift recipient
   const [familyUnreadCount, setFamilyUnreadCount] = useState(0);
   const [blackjackInviteToken, setBlackjackInviteToken] = useState(null);
+  const [arenaInviteToken, setArenaInviteToken] = useState(null);
   const [gameplayOpen, setGameplayOpen] = useState(false);
   const tabBarRef = useRef(null);
 
@@ -233,12 +234,18 @@ function AppContent() {
 
     const params = new URLSearchParams(window.location.search || '');
     const urlInvite = params.get('bjInvite');
+    const urlArenaInvite = params.get('arenaInvite');
     const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param || '';
     const startInvite = String(startParam).startsWith('bjInvite_')
       ? String(startParam).slice('bjInvite_'.length)
       : '';
+    const startArenaInvite = String(startParam).startsWith('arenaInvite_')
+      ? String(startParam).slice('arenaInvite_'.length)
+      : '';
     const token = urlInvite || startInvite;
     if (token) setBlackjackInviteToken(token);
+    const arenaToken = urlArenaInvite || startArenaInvite;
+    if (arenaToken) setArenaInviteToken(arenaToken);
   }, []);
 
   useEffect(() => {
@@ -313,6 +320,8 @@ function AppContent() {
             onViewProfile={(uid) => openProfile(uid)}
             blackjackInviteToken={blackjackInviteToken}
             onBlackjackInviteConsumed={() => setBlackjackInviteToken(null)}
+            arenaInviteToken={arenaInviteToken}
+            onArenaInviteConsumed={() => setArenaInviteToken(null)}
             onGameplayOpenChange={setGameplayOpen}
             isActive={activeTab === 'home' && !showProfile}
             topGifts={topGifts}

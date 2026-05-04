@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { assetUrl } from '../utils/assetUrl';
 
 /**
@@ -224,6 +224,24 @@ function SlotLayer({ itemId }) {
   // );
 }
 
+function ArenaArmorLayer({ armorElement }) {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    setHidden(false);
+  }, [armorElement]);
+
+  if (!armorElement || hidden) return null;
+
+  return (
+    <img
+      src={assetUrl(`/sprites/arena_armor_${armorElement}.png`)}
+      style={LAYER_STYLE}
+      alt=""
+      onError={() => setHidden(true)}
+    />
+  );
+}
+
 // ── Dead overlay ────────────────────────────────────────────────────────────
 function DeadOverlay() {
   const [useFallback, setUseFallback] = useState(false);
@@ -254,8 +272,9 @@ function DeadOverlay() {
  * @param {object}  peeper    - peeper DB row with slot_* and stat fields
  * @param {number}  size      - rendered CSS size in px (default 300)
  * @param {boolean} showDead  - overlay skull when HP=0
+ * @param {string}  armorElement - optional Arena armor overlay
  */
-export default function PeeperSprite({ peeper, size = 300, showDead = true }) {
+export default function PeeperSprite({ peeper, size = 300, showDead = true, armorElement = null }) {
   if (!peeper) return null;
 
   const { slot_head, slot_body, slot_hands, slot_fren, slot_face, alive } = peeper;
@@ -279,6 +298,7 @@ export default function PeeperSprite({ peeper, size = 300, showDead = true }) {
           <SlotLayer itemId={slot_body}  />
           <SlotLayer itemId={slot_face}  />
           <SlotLayer itemId={slot_head}  />
+          <ArenaArmorLayer armorElement={armorElement} />
           <SlotLayer itemId={slot_hands} />
           <SlotLayer itemId={slot_fren}  />
         </>
@@ -292,6 +312,7 @@ export default function PeeperSprite({ peeper, size = 300, showDead = true }) {
           <SlotLayer itemId={slot_body}  />
           <SlotLayer itemId={slot_face}  />
           <SlotLayer itemId={slot_head}  />
+          <ArenaArmorLayer armorElement={armorElement} />
           <SlotLayer itemId={slot_hands} />
           <SlotLayer itemId={slot_fren}  />
         </>
