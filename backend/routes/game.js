@@ -35,6 +35,7 @@ const {
   getFridgeState,
   extendFridgeFoodUntil,
 } = require('../fridgeState');
+const { getFarmSummary } = require('../farmState');
 const { getNextDirtyAt } = require('../dirtyCycle');
 const { isNotificationEnabled } = require('../notificationSettings');
 const APP_URL = 'https://peeper.frenzyradio.online';
@@ -94,6 +95,7 @@ function buildResponse(userId) {
     fridge: getFridgeState(peeper),
     cooldowns: { feed: 0, play: 0, action: 0 },
     homeSummary: getHomeSummary(userId),
+    farmSummary: getFarmSummary(userId),
     ...getPublicAppSettings(),
   };
 }
@@ -272,6 +274,7 @@ router.get('/state', validateTelegramInit, (req, res) => {
     fridge: getFridgeState(peeper),
     cooldowns: { feed: 0, play: 0, action: 0 },
     homeSummary: getHomeSummary(user.id),
+    farmSummary: getFarmSummary(user.id),
     ...getPublicAppSettings(),
   });
 });

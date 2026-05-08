@@ -30,6 +30,7 @@ app.use('/api/family',  require('./routes/family'));
 app.use('/api/home',    require('./routes/home'));
 app.use('/api/blackjack', require('./routes/blackjack'));
 app.use('/api/arena', require('./routes/arena'));
+app.use('/api/farm', require('./routes/farm'));
 
 // Items catalog (no auth needed for the list itself)
 const { CLOTHING_ITEMS, GIFT_ITEMS } = require('./items');
@@ -66,7 +67,11 @@ app.listen(PORT, () => {
     fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ url: webhookUrl, secret_token: webhookSecret }),
+      body:    JSON.stringify({
+        url: webhookUrl,
+        secret_token: webhookSecret,
+        allowed_updates: ['message', 'callback_query', 'inline_query'],
+      }),
     })
       .then(r => r.json())
       .then(d => console.log('[webhook] registered:', d.description || d.ok))

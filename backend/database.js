@@ -490,6 +490,40 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_arena_invites_token ON arena_match_invites(token);
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS farms (
+    user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    purchased_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS farm_slots (
+    user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    slot_index         INTEGER NOT NULL,
+    slot_type          TEXT DEFAULT NULL CHECK(slot_type IN ('plot', 'pen', NULL)),
+    crop_type          TEXT DEFAULT NULL,
+    planted_at         INTEGER DEFAULT NULL,
+    grow_seconds       INTEGER DEFAULT NULL,
+    water_available_at INTEGER DEFAULT NULL,
+    animal_type        TEXT DEFAULT NULL,
+    animal_bought_at   INTEGER DEFAULT NULL,
+    animal_ready_at    INTEGER DEFAULT NULL,
+    animal_expires_at  INTEGER DEFAULT NULL,
+    updated_at         INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (user_id, slot_index)
+  );
+
+  CREATE TABLE IF NOT EXISTS farm_inventory (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    product_id TEXT NOT NULL,
+    quantity   INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (user_id, product_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_farm_slots_user ON farm_slots(user_id, slot_index);
+  CREATE INDEX IF NOT EXISTS idx_farm_inventory_user ON farm_inventory(user_id, product_id);
+`);
+
 db.prepare(`
   INSERT OR IGNORE INTO home_shop_items (item_id, name, slot, price, is_free, is_active)
   VALUES (?, 'Starter Home', 'wall_base', 0, 1, 1)

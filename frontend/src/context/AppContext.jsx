@@ -9,6 +9,16 @@ const EMPTY_HOME_SUMMARY = {
   purchased_at: null,
 };
 
+const EMPTY_FARM_SUMMARY = {
+  owned: false,
+  purchasedAt: null,
+  purchaseCost: 1000,
+  builtSlots: 0,
+  slotCount: 9,
+  hasAction: false,
+  actionCount: 0,
+};
+
 const INITIAL = {
   initialized: false,
   loading: true,
@@ -19,6 +29,7 @@ const INITIAL = {
   ownedItems: [],
   ownedHomeItems: [],
   homeSummary: EMPTY_HOME_SUMMARY,
+  farmSummary: EMPTY_FARM_SUMMARY,
   assetVersion: FALLBACK_ASSET_VERSION,
   casinoJackpot: 0,
   casinoFreeSpins: 0,
@@ -45,6 +56,7 @@ function reducer(state, action) {
         ownedItems: action.payload.ownedItems || [],
         ownedHomeItems: action.payload.ownedHomeItems || [],
         homeSummary: action.payload.homeSummary || EMPTY_HOME_SUMMARY,
+        farmSummary: action.payload.farmSummary || EMPTY_FARM_SUMMARY,
         assetVersion: action.payload.assetVersion || state.assetVersion,
         casinoJackpot: action.payload.casinoJackpot ?? state.casinoJackpot,
         casinoFreeSpins: action.payload.casinoFreeSpins ?? state.casinoFreeSpins,
@@ -61,6 +73,7 @@ function reducer(state, action) {
         peeper: action.payload.peeper ?? state.peeper,
         cooldowns: action.payload.cooldowns ?? state.cooldowns,
         homeSummary: action.payload.homeSummary ?? state.homeSummary,
+        farmSummary: action.payload.farmSummary ?? state.farmSummary,
         assetVersion: action.payload.assetVersion || state.assetVersion,
         casinoJackpot: action.payload.casinoJackpot ?? state.casinoJackpot,
         casinoFreeSpins: action.payload.casinoFreeSpins ?? state.casinoFreeSpins,
@@ -130,6 +143,7 @@ export function AppProvider({ children }) {
           peeper: result.peeper,
           cooldowns: result.cooldowns,
           homeSummary: result.homeSummary,
+          farmSummary: result.farmSummary,
           assetVersion: result.assetVersion,
           casinoJackpot: result.casinoJackpot,
           casinoFreeSpins: result.casinoFreeSpins,

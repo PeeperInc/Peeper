@@ -18,6 +18,7 @@ const express = require('express');
 const router  = express.Router();
 const path    = require('path');
 const fs      = require('fs');
+const crypto  = require('crypto');
 const db      = require('../database');
 const { authorizeTelegramWebhookRequest } = require('../telegramWebhookAuth');
 const {
@@ -45,6 +46,9 @@ const {
 
 const APP_URL     = 'https://peeper.frenzyradio.online';
 const PROD_HTML_DIR = '/var/www/peeper.frenzyradio.online/html';
+const BOT_USERNAME = 'Peepergochi_bot';
+const INLINE_CACHE_DIR = path.join(getHtmlRoot(), 'generated', 'inline');
+const INLINE_CACHE_URL = `${APP_URL}/generated/inline`;
 const CANVAS_SIZE = 500;
 const HOME_PEEPER_SIZE = 255;
 const HOME_PEEPER_CENTER_X = HOME_CANVAS_WIDTH / 2;
@@ -81,6 +85,34 @@ function resolvePublicAsset(publicPath) {
   const relativePath = publicPath.split('?')[0].replace(/^\/+/, '');
   const absolutePath = path.join(getHtmlRoot(), relativePath);
   return fs.existsSync(absolutePath) ? absolutePath : null;
+}
+
+function ensureInlineCacheDir() {
+  fs.mkdirSync(INLINE_CACHE_DIR, { recursive: true });
+  const cutoff = Date.now() - 3 * 24 * 60 * 60 * 1000;
+  for (const entry of fs.readdirSync(INLINE_CACHE_DIR, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.png')) continue;
+    const fullPath = path.join(INLINE_CACHE_DIR, entry.name);
+    try {
+      if (fs.statSync(fullPath).mtimeMs < cutoff) fs.unlinkSync(fullPath);
+    } catch {}
+  }
+}
+
+function shortHash(input) {
+  return crypto.createHash('sha1').update(String(input)).digest('hex').slice(0, 14);
+}
+
+async function writeInlineCachePng(kind, userId, fingerprint, renderBuffer) {
+  ensureInlineCacheDir();
+  const fileName = `${kind}-${userId}-${shortHash(fingerprint)}.png`;
+  const filePath = path.join(INLINE_CACHE_DIR, fileName);
+  if (!fs.existsSync(filePath)) {
+    const buffer = await renderBuffer();
+    if (!buffer) return null;
+    fs.writeFileSync(filePath, buffer);
+  }
+  return `${INLINE_CACHE_URL}/${fileName}`;
 }
 
 function syncUserIdentityFromTelegram(tgUser) {
@@ -203,6 +235,256 @@ async function answerCallbackQuery(callbackQueryId, text, showAlert = false) {
   } catch (e) {
     console.error('[webhook] answerCallbackQuery error:', e.message);
   }
+}
+
+async function answerInlineQuery(inlineQueryId, results, options = {}) {
+  const token = botToken();
+  if (!token || token === 'dev') return;
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${token}/answerInlineQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inline_query_id: inlineQueryId,
+        results,
+        cache_time: options.cacheTime ?? 5,
+        is_personal: options.isPersonal ?? true,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      console.warn('[webhook] answerInlineQuery failed:', err.description || resp.status);
+    }
+  } catch (e) {
+    console.error('[webhook] answerInlineQuery error:', e.message);
+  }
+}
+
+function buildInlineArticle({ id, title, description, message }) {
+  return {
+    type: 'article',
+    id,
+    title,
+    description,
+    input_message_content: {
+      message_text: message,
+      parse_mode: 'HTML',
+    },
+  };
+}
+
+function buildInlinePhoto({ id, title, description, photoUrl, caption }) {
+  return {
+    type: 'photo',
+    id,
+    title,
+    description,
+    photo_url: photoUrl,
+    thumbnail_url: photoUrl,
+    caption,
+    parse_mode: 'HTML',
+    reply_markup: {
+      inline_keyboard: [[{ text: 'Open Peeper', url: `https://t.me/${BOT_USERNAME}` }]],
+    },
+  };
+}
+
+function peeperAppearanceFingerprint(peeper, live = {}) {
+  return JSON.stringify({
+    alive: Boolean(live.alive ?? peeper?.alive ?? true),
+    slot_body: peeper?.slot_body || null,
+    slot_face: peeper?.slot_face || null,
+    slot_head: peeper?.slot_head || null,
+    slot_hands: peeper?.slot_hands || null,
+    slot_fren: peeper?.slot_fren || null,
+  });
+}
+
+async function buildInlinePeeperResult(user) {
+  const peeper = db.prepare('SELECT * FROM peepers WHERE user_id = ?').get(user.id);
+  if (!peeper) return null;
+  const live = liveStats(peeper);
+  const peeperWithLive = { ...peeper, ...live };
+  const photoUrl = await writeInlineCachePng(
+    'peeper',
+    user.id,
+    peeperAppearanceFingerprint(peeper, live),
+    () => renderPeeper(peeperWithLive),
+  );
+  if (!photoUrl) return null;
+
+  return buildInlinePhoto({
+    id: `peeper_${user.id}`,
+    title: 'Show My Peeper',
+    description: 'Share your current Peeper.',
+    photoUrl,
+    caption: `🐸 <b>${user.first_name || 'My'}'s Peeper</b>`,
+  });
+}
+
+async function buildInlineHomeResult(user) {
+  const peeper = db.prepare('SELECT * FROM peepers WHERE user_id = ?').get(user.id);
+  const homeState = getFullHomeState(user.id);
+  if (!peeper || !homeState?.home?.owned) return null;
+  const live = liveStats(peeper);
+  const peeperWithLive = { ...peeper, ...live };
+  const photoUrl = await writeInlineCachePng(
+    'home',
+    user.id,
+    JSON.stringify({ home: homeState.home, peeper: peeperAppearanceFingerprint(peeper, live) }),
+    () => renderHomeScene(homeState.home, peeperWithLive),
+  );
+  if (!photoUrl) return null;
+
+  return buildInlinePhoto({
+    id: `home_${user.id}`,
+    title: 'Show My Home',
+    description: 'Share your current home scene.',
+    photoUrl,
+    caption: `🏠 <b>${user.first_name || 'My'}'s Home</b>`,
+  });
+}
+
+async function renderSimpleFamilyInlineImage(family, members) {
+  let createCanvas, loadImage;
+  try { ({ createCanvas, loadImage } = require('canvas')); }
+  catch (e) {
+    console.warn('[webhook] inline family canvas unavailable:', e.message);
+    return null;
+  }
+
+  const W = 1200;
+  const H = 760;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#143326');
+  bg.addColorStop(1, '#07120d');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.fillStyle = '#eaffea';
+  ctx.font = 'bold 42px Noto, NotoEmoji, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(family.name || 'Peeper Family', W / 2, 72);
+  ctx.font = 'bold 22px Noto, NotoEmoji, sans-serif';
+  ctx.fillStyle = 'rgba(234,255,234,0.72)';
+  ctx.fillText(`${members.length}/10 members`, W / 2, 108);
+  ctx.restore();
+
+  const shown = members.slice(0, 10);
+  const cols = Math.min(5, Math.max(1, shown.length));
+  const rows = Math.ceil(shown.length / cols);
+  const size = rows <= 1 ? 245 : 205;
+  const gapX = Math.min(42, Math.max(18, (W - cols * size) / (cols + 1)));
+  const startY = rows <= 1 ? 210 : 170;
+
+  for (let index = 0; index < shown.length; index += 1) {
+    const member = shown[index];
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const x = Math.round(gapX + col * (size + gapX));
+    const y = Math.round(startY + row * (size + 66));
+    await renderPeeperOnto(ctx, member, x, y, size, loadImage, false);
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.58)';
+    ctx.beginPath();
+    ctx.roundRect(x + 20, y + size - 6, size - 40, 36, 16);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px Noto, NotoEmoji, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText((member.first_name || '?').slice(0, 14), x + size / 2, y + size + 18);
+    ctx.restore();
+  }
+
+  return canvas.toBuffer('image/png');
+}
+
+async function buildInlineFamilyResult(user) {
+  const family = db.prepare(`
+    SELECT f.* FROM families f
+    JOIN family_members fm ON fm.family_id = f.id
+    WHERE fm.user_id = ?
+  `).get(user.id);
+  if (!family) return null;
+
+  const members = db.prepare(`
+    SELECT u.id, u.first_name, fm.joined_at,
+           p.slot_head, p.slot_body, p.slot_hands, p.slot_fren, p.slot_face, p.alive
+    FROM family_members fm
+    JOIN users u ON u.id = fm.user_id
+    LEFT JOIN peepers p ON p.user_id = u.id
+    WHERE fm.family_id = ?
+    ORDER BY CASE WHEN u.id = ? THEN 0 ELSE 1 END, fm.joined_at ASC
+  `).all(family.id, family.founder_id);
+  if (!members.length) return null;
+
+  const photoUrl = await writeInlineCachePng(
+    'family',
+    user.id,
+    JSON.stringify({ family: family.name, members: members.map((member) => peeperAppearanceFingerprint(member, member)) }),
+    () => renderSimpleFamilyInlineImage(family, members),
+  );
+  if (!photoUrl) return null;
+
+  return buildInlinePhoto({
+    id: `family_${user.id}`,
+    title: 'Show My Family',
+    description: 'Share your family portrait.',
+    photoUrl,
+    caption: `👨‍👩‍👧 <b>${family.name}</b> family`,
+  });
+}
+
+async function handleInlineQuery(inlineQuery) {
+  if (!inlineQuery?.id) return;
+  syncUserIdentityFromTelegram(inlineQuery.from);
+
+  const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(String(inlineQuery.from?.id || ''));
+  if (!user) {
+    await answerInlineQuery(inlineQuery.id, [
+      buildInlineArticle({
+        id: 'open_peeper_first',
+        title: 'Open Peeper first',
+        description: 'Create your Peeper before sharing it inline.',
+        message: `🐸 <b>Come meet my Peeper!</b>\nOpen @${BOT_USERNAME} to play.`,
+      }),
+    ], { cacheTime: 2, isPersonal: true });
+    return;
+  }
+
+  const normalizedQuery = String(inlineQuery.query || '').trim().toLowerCase();
+  const allResults = (await Promise.all([
+    buildInlinePeeperResult(user),
+    buildInlineHomeResult(user),
+    buildInlineFamilyResult(user),
+  ])).filter(Boolean);
+
+  if (!allResults.length) {
+    await answerInlineQuery(inlineQuery.id, [
+      buildInlineArticle({
+        id: 'nothing_to_share',
+        title: 'Nothing to share yet',
+        description: 'Open Peeper to create your frog, home, or family.',
+        message: `🐸 <b>Come meet my Peeper!</b>\nOpen @${BOT_USERNAME} to play.`,
+      }),
+    ], { cacheTime: 2, isPersonal: true });
+    return;
+  }
+
+  const results = normalizedQuery
+    ? allResults.filter((result) => {
+        const haystack = `${result.title} ${result.description}`.toLowerCase();
+        return haystack.includes(normalizedQuery);
+      })
+    : allResults;
+
+  await answerInlineQuery(inlineQuery.id, results.length ? results : allResults, {
+    cacheTime: 2,
+    isPersonal: true,
+  });
 }
 
 async function sendNotificationSettingsMenu(chatId, user, messageId = null) {
@@ -1266,6 +1548,11 @@ router.post('/', express.json(), async (req, res) => {
 
   try {
     const update  = req.body;
+
+    if (update?.inline_query) {
+      await handleInlineQuery(update.inline_query);
+      return;
+    }
 
     // Handle inline button callbacks (family invites)
     if (update?.callback_query) {

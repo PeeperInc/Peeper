@@ -8,6 +8,7 @@ import HomeScene from '../components/HomeScene';
 import BottomSheet from '../components/BottomSheet';
 import StatusBars from '../components/StatusBars';
 import PersonalHomeScreen from './PersonalHomeScreen';
+import FarmScreen from './FarmScreen';
 import { HOME_PRICE_COINS } from '../homeConstants';
 import { avatarUrl } from '../utils/avatarUrl';
 import { shouldPauseHomeRuntime } from '../utils/gameplayRuntime.mjs';
@@ -716,6 +717,7 @@ export default function HomeScreen({
     energyDrink,
     fridge,
     homeSummary,
+    farmSummary,
     feedPeeper,
     playPeeper,
     removePeeperPoop,
@@ -732,6 +734,7 @@ export default function HomeScreen({
   const [showHint, setShowHint] = useState(false);
   const [showHomePurchase, setShowHomePurchase] = useState(false);
   const [showPersonalHome, setShowPersonalHome] = useState(false);
+  const [showFarm, setShowFarm] = useState(false);
   const [homeBackdrop, setHomeBackdrop] = useState(null);
   const [activeGame, setActiveGame] = useState(null);
   const [loadingGame, setLoadingGame] = useState(null);
@@ -749,14 +752,15 @@ export default function HomeScreen({
   const topStackRef = useRef(null);
   const bottomStackRef = useRef(null);
 
-  const gameplayOpen = Boolean(activeGame || loadingGame);
+  const gameplayOpen = Boolean(activeGame || loadingGame || showFarm);
   const overlayOpen = Boolean(
     gameplayOpen ||
     showFoodMenu ||
     showGameMenu ||
     showHint ||
     showHomePurchase ||
-    showPersonalHome
+    showPersonalHome ||
+    showFarm
   );
 
   useEffect(() => {
@@ -814,6 +818,10 @@ export default function HomeScreen({
 
     setShowHomePurchase(true);
   }, [homeSummary?.owned, showToast, user?.coins]);
+
+  const handleFarmPress = useCallback(() => {
+    setShowFarm(true);
+  }, []);
 
 
 
@@ -1085,8 +1093,7 @@ export default function HomeScreen({
   const homeStagePeeperSize = Math.min(300, Math.max(248, viewportWidth - 92));
   const livePeeper = { ...peeper, hunger, fun, hp: live.hp, alive: live.alive };
   const hasHome = Boolean(homeSummary?.owned);
-  const canAffordHome = (user?.coins ?? 0) >= HOME_PRICE_COINS;
-  const homeButtonMeta = buyingHome ? '...' : hasHome ? null : `${HOME_PRICE_COINS} ✦`;
+  const hasFarm = Boolean(farmSummary?.owned);
   const ageLabel = ageDays >= 10 ? `Age: ${ageDays}d` : `Age: ${ageDays}d ${ageHours}h`;
   const homeScene = homeBackdrop || EMPTY_HOME_SCENE;
   const ActiveGameComponent = activeGame ? GAME_COMPONENTS[activeGame] : null;
@@ -1157,37 +1164,24 @@ export default function HomeScreen({
                     <div className="home-screen-profile-subtitle">
                       {user?.username ? `@${user.username}` : 'Open profile'}
                     </div>
+                    {hasNewGifts && <div className="home-screen-gifts-badge">New gifts</div>}
                   </div>
-                  {hasNewGifts && <div className="home-screen-gifts-badge">New gifts</div>}
                 </button>
 
-                <div className="coins-badge home-screen-coins-pill">✦ {user?.coins ?? 0}</div>
-              </div>
-
-              <div className="home-screen-status-card">
-                <div className="home-screen-meta-row">
-                  <button
-                    type="button"
-                    className={`home-cta home-cta-top home-screen-house-btn ${hasHome ? 'owned' : 'locked'} ${!hasHome && !canAffordHome ? 'insufficient' : ''}`}
-                    onClick={handleHomePress}
-                    disabled={buyingHome}
-                  >
-                    <span className="home-cta-icon">🏠</span>
-                    <span className="home-cta-title">Home</span>
-                    {homeButtonMeta && <span className="home-cta-chip">{homeButtonMeta}</span>}
-                  </button>
-
+                <div className="home-screen-top-controls">
                   <div className="home-screen-age-pill">🌱 {ageLabel}</div>
-
                   <button
                     type="button"
                     className="home-screen-meta-btn"
                     onClick={() => setShowHint(true)}
                   >
-                    💡 Guide
+                    💡 Tip
                   </button>
+                  <div className="coins-badge home-screen-coins-pill">✦ {user?.coins ?? 0}</div>
                 </div>
+              </div>
 
+              <div className="home-screen-status-card">
                 {awaitingServerState && (
                   <div className="home-screen-inline-notice warning">
                     Syncing with server...
@@ -1213,6 +1207,30 @@ export default function HomeScreen({
               {isAlive ? (
                 <div className="home-screen-actions-panel">
                   <div className="home-screen-actions-grid">
+                    <div className="home-screen-action-card">
+                      <button
+                        className={`btn btn-full home-screen-action-btn ${hasHome ? 'home-screen-action-home ready' : 'home-screen-action-muted'}`}
+                        onClick={handleHomePress}
+                        disabled={buyingHome}
+                      >
+                        {buyingHome ? '…' : hasHome ? '🏠 Home' : `🏠 Home · ${HOME_PRICE_COINS} ${COIN_SYMBOL}`}
+                      </button>
+                    </div>
+
+                    <div className="home-screen-action-card home-screen-farm-card">
+                      <button
+                        className={`btn btn-full home-screen-action-btn ${hasFarm ? 'home-screen-action-farm ready' : 'home-screen-action-muted'}`}
+                        onClick={handleFarmPress}
+                      >
+                        {hasFarm ? '🌾 Farm' : `🌾 Farm · ${farmSummary?.purchaseCost || 1000} ${COIN_SYMBOL}`}
+                      </button>
+                      {farmSummary?.hasAction && (
+                        <span className="home-screen-farm-badge">
+                          {farmSummary.actionCount || '!'}
+                        </span>
+                      )}
+                    </div>
+
                     <div className="home-screen-action-card">
                       <button
                         className={`btn btn-full home-screen-action-btn ${canFeed ? 'home-screen-action-feed ready' : 'home-screen-action-muted'}`}
@@ -1355,6 +1373,16 @@ export default function HomeScreen({
             onInviteTokenConsumed={activeGame === 'blackjack' ? onBlackjackInviteConsumed : activeGame === 'arena' ? onArenaInviteConsumed : null}
           />
         </Suspense>
+      )}
+      {showFarm && (
+        <FarmScreen
+          onClose={() => {
+            setShowFarm(false);
+            refreshGameState();
+          }}
+          onStateChange={() => refreshGameState()}
+          showToast={showToast}
+        />
       )}
       {showPersonalHome && (
         <div

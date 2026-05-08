@@ -81,6 +81,21 @@ export const completePeeperCleaning = () => post('/game/cleanup/complete', {});
 export const revivePeeper = () => post('/game/revive');
 export const updateOutfit = (slots) => post('/game/outfit', slots);
 
+export const getFarmState = () => get('/farm/state');
+export const buyFarm = () => post('/farm/buy', {});
+export const buildFarmSlot = (slotIndex, type, options = {}) => post(`/farm/slots/${slotIndex}/build`, {
+  type,
+  rebuild: Boolean(options.rebuild),
+});
+export const plantFarmCrop = (slotIndex, cropType) => post(`/farm/slots/${slotIndex}/plant`, { cropType });
+export const waterFarmSlot = (slotIndex) => post(`/farm/slots/${slotIndex}/water`, {});
+export const harvestFarmSlot = (slotIndex) => post(`/farm/slots/${slotIndex}/harvest`, {});
+export const buyFarmAnimal = (slotIndex, animalType) => post(`/farm/slots/${slotIndex}/buy-animal`, { animalType });
+export const feedFarmAnimal = (slotIndex, method = 'coins') => post(`/farm/slots/${slotIndex}/feed-animal`, { method });
+export const collectFarmAnimal = (slotIndex) => post(`/farm/slots/${slotIndex}/collect-animal`, {});
+export const sellFarmInventory = (productId, quantity = 1) => post('/farm/inventory/sell', { productId, quantity });
+export const stockFarmFridge = (recipeType) => post('/farm/inventory/stock-fridge', { recipeType });
+
 export const buyPersonalHome = () => post('/home/buy');
 export const getPersonalHomeState = () => get('/home/state');
 export const getHomeCatalog = () => get('/home/catalog');
