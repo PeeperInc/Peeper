@@ -4,10 +4,12 @@ const db = require('../database');
 const { validateTelegramInit } = require('../auth');
 const { getHomeSummary } = require('../homeState');
 const { liveStats } = require('../gameLogic');
+const { getSupporterSummary } = require('../supportState');
 
 function getAliveLongevityRows() {
   const raw = db.prepare(`
     SELECT u.id, u.telegram_id, u.username, u.first_name, u.photo_url,
+           u.supporter_since, u.supporter_stars,
            p.alive, p.born_at, p.hp, p.last_fed, p.last_played,
            p.fridge_owned, p.fridge_food_until, p.fridge_purchased_at,
            CAST((strftime('%s','now') - p.born_at) AS INTEGER) AS age_seconds
@@ -24,6 +26,7 @@ function getGiftValueRows(limit = null) {
   const limitClause = Number.isInteger(limit) ? 'LIMIT ?' : '';
   const stmt = db.prepare(`
     SELECT u.id, u.telegram_id, u.username, u.first_name, u.photo_url,
+           u.supporter_since, u.supporter_stars,
            COUNT(gr.id) AS gift_count,
            COALESCE(SUM(gr.gift_price), 0) AS gift_value
     FROM users u
@@ -70,6 +73,7 @@ router.get('/search', validateTelegramInit, (req, res) => {
 
   const users = db.prepare(`
     SELECT u.id, u.telegram_id, u.username, u.first_name, u.photo_url,
+           u.supporter_since, u.supporter_stars,
            p.alive, p.born_at,
            (SELECT COUNT(*) FROM gifts_received WHERE recipient_id = u.id) AS gift_count
     FROM users u
@@ -88,14 +92,17 @@ router.get('/search', validateTelegramInit, (req, res) => {
 router.get('/:userId/profile', validateTelegramInit, (req, res) => {
   const userId = parseInt(req.params.userId, 10);
 
-  const user = db.prepare('SELECT id, telegram_id, username, first_name, photo_url FROM users WHERE id = ?').get(userId);
+  const user = db.prepare('SELECT id, telegram_id, username, first_name, photo_url, supporter_since, supporter_stars FROM users WHERE id = ?').get(userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const peeper = db.prepare('SELECT * FROM peepers WHERE user_id = ?').get(userId);
 
   const topGifts = db.prepare(`
     SELECT gr.gift_id, gr.gift_price, gr.sent_at,
-           u.username AS sender_username, u.first_name AS sender_name
+           u.id AS sender_id,
+           u.username AS sender_username, u.first_name AS sender_name,
+           u.supporter_since AS sender_supporter_since,
+           u.supporter_stars AS sender_supporter_stars
     FROM gifts_received gr
     LEFT JOIN users u ON gr.sender_id = u.id
     WHERE gr.recipient_id = ?
@@ -119,7 +126,10 @@ router.get('/:userId/profile', validateTelegramInit, (req, res) => {
   `).get(userId);
 
   res.json({
-    user,
+    user: {
+      ...user,
+      supporter: getSupporterSummary(user),
+    },
     peeper,
     topGifts,
     totalGifts,

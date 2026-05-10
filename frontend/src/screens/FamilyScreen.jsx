@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import FamilyProfile from '../components/FamilyProfile';
 import BottomSheet from '../components/BottomSheet';
+import SupporterStar from '../components/SupporterStar';
 import { useApp } from '../context/AppContext';
 import * as api from '../api';
 import { avatarUrl } from '../utils/avatarUrl';
@@ -385,7 +386,10 @@ function InviteSheet({ family, memberCount, onClose, onInvited }) {
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-card)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🐸</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{u.first_name}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 14 }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.first_name}</span>
+                <SupporterStar user={u} size={12} />
+              </div>
               {u.username && <div style={{ fontSize: 12, color: 'var(--text-hint)' }}>@{u.username}</div>}
             </div>
             {confirm?.id === u.id && <span style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 700 }}>Selected ✓</span>}
@@ -543,7 +547,8 @@ function MembersTab({
             <Avatar telegramId={m.telegram_id} name={m.first_name} size={40} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 14 }}>{m.first_name}</span>
+                <span style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.first_name}</span>
+                <SupporterStar user={m} size={12} />
                 {family.founder_id === m.id && (
                   <span style={{ fontSize: 10, fontWeight: 800, color: '#b8860b',
                     background: 'rgba(255,215,0,0.2)', border: '1px solid rgba(255,215,0,0.5)',
@@ -663,8 +668,9 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
               {!isMe && <Avatar telegramId={m.telegram_id} name={m.first_name} size={28} />}
               <div style={{ maxWidth: '72%' }}>
                 {!isMe && (
-                  <div style={{ fontSize: 11, color: 'var(--text-hint)', marginBottom: 2, paddingLeft: 4 }}>
-                    {m.first_name}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-hint)', marginBottom: 2, paddingLeft: 4 }}>
+                    <span>{m.first_name}</span>
+                    <SupporterStar user={m} size={10} />
                   </div>
                 )}
                 <div style={{

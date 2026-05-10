@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import SupporterStar from '../components/SupporterStar';
 import * as api from '../api';
 import { avatarUrl } from '../utils/avatarUrl';
 
@@ -287,7 +288,10 @@ export default function GiftScreen({ initialRecipient = null }) {
             <div key={u.id} className="lb-row" style={{ cursor: 'pointer' }} onClick={() => selectRecipient(u)}>
               <UserAvatar telegramId={u.telegram_id} name={u.first_name} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{u.first_name}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 14 }}>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.first_name}</span>
+                  <SupporterStar user={u} size={12} />
+                </div>
                 {u.username && <div style={{ fontSize: 12, color: 'var(--text-hint)' }}>@{u.username}</div>}
               </div>
               <span style={{ color: 'var(--accent)', fontSize: 13 }}>Select →</span>
@@ -315,7 +319,10 @@ export default function GiftScreen({ initialRecipient = null }) {
             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>→</span>
             <UserAvatar telegramId={recipient?.telegram_id} name={recipient?.first_name} size={32} />
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{recipient?.first_name}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 14 }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recipient?.first_name}</span>
+                <SupporterStar user={recipient} size={12} />
+              </div>
               {recipient?.username && <div style={{ fontSize: 11, color: 'var(--text-hint)' }}>@{recipient.username}</div>}
             </div>
             {!initialRecipient && (

@@ -124,7 +124,7 @@ function getInviteByToken(token) {
 
 function getLobbyMembers(lobbyId) {
   return db.prepare(`
-    SELECT m.*, u.username, u.first_name, u.photo_url
+    SELECT m.*, u.username, u.first_name, u.photo_url, u.supporter_since, u.supporter_stars
     FROM blackjack_lobby_members m
     JOIN users u ON u.id = m.user_id
     WHERE m.lobby_id = ?
@@ -151,7 +151,7 @@ function getRoundById(roundId) {
 
 function getRoundPlayers(roundId) {
   return db.prepare(`
-    SELECT rp.*, u.username, u.first_name, u.photo_url
+    SELECT rp.*, u.username, u.first_name, u.photo_url, u.supporter_since, u.supporter_stars
     FROM blackjack_round_players rp
     JOIN users u ON u.id = rp.user_id
     WHERE rp.round_id = ?
@@ -1213,6 +1213,8 @@ function serializeLobbyState(lobbyId, userId) {
       firstName: tableMember.first_name,
       username: tableMember.username,
       photoUrl: tableMember.photo_url || null,
+      supporter_since: tableMember.supporter_since,
+      supporter_stars: tableMember.supporter_stars,
       displayName: formatUserLabel(tableMember),
       isSelf,
       status: buildSeatStatus({

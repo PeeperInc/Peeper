@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import FamilyProfile from '../components/FamilyProfile';
+import SupporterStar from '../components/SupporterStar';
 import * as api from '../api';
 import { avatarUrl } from '../utils/avatarUrl';
 
@@ -100,8 +101,11 @@ function LeaderboardList({ rows, type, onViewProfile }) {
           <RankBadge rank={i + 1} />
           <UserAvatar telegramId={row.telegram_id} name={row.first_name} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, fontWeight: 600, fontSize: 14 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {row.first_name}
+              </span>
+              <SupporterStar user={row} size={12} />
             </div>
             {row.username && (
               <div style={{ fontSize: 12, color: 'var(--text-hint)' }}>@{row.username}</div>

@@ -36,6 +36,7 @@ const {
   extendFridgeFoodUntil,
 } = require('../fridgeState');
 const { getFarmSummary } = require('../farmState');
+const { getSupporterSummary } = require('../supportState');
 const { getNextDirtyAt } = require('../dirtyCycle');
 const { isNotificationEnabled } = require('../notificationSettings');
 const APP_URL = 'https://peeper.frenzyradio.online';
@@ -89,6 +90,7 @@ function buildResponse(userId) {
   const user   = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   return {
     coins: user.coins,
+    supporter: getSupporterSummary(user),
     casinoFreeSpins: normalizeFreeSpins(user.casino_free_spins),
     peeper,
     energyDrink: getEnergyDrinkState(userId, peeper),
@@ -269,6 +271,7 @@ router.get('/state', validateTelegramInit, (req, res) => {
   const fresh = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
   res.json({
     coins: fresh.coins,
+    supporter: getSupporterSummary(fresh),
     peeper,
     energyDrink: getEnergyDrinkState(user.id, peeper),
     fridge: getFridgeState(peeper),

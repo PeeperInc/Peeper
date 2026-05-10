@@ -68,7 +68,11 @@ function reducer(state, action) {
       return {
         ...state,
         user: state.user
-          ? { ...state.user, coins: action.payload.coins ?? state.user.coins }
+          ? {
+              ...state.user,
+              coins: action.payload.coins ?? state.user.coins,
+              supporter: action.payload.supporter ?? state.user.supporter,
+            }
           : state.user,
         peeper: action.payload.peeper ?? state.peeper,
         cooldowns: action.payload.cooldowns ?? state.cooldowns,
@@ -140,6 +144,7 @@ export function AppProvider({ children }) {
         type: 'UPDATE_GAME',
         payload: {
           coins: result.coins,
+          supporter: result.supporter,
           peeper: result.peeper,
           cooldowns: result.cooldowns,
           homeSummary: result.homeSummary,

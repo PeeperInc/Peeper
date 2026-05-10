@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as api from '../api';
 import { avatarUrl } from '../utils/avatarUrl';
+import SupporterStar from './SupporterStar';
 
 function Avatar({ telegramId, name, size = 42 }) {
   const [err, setErr] = useState(false);
@@ -111,7 +112,8 @@ export default function FamilyProfile({ familyId, onBack, onViewProfile }) {
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>{m.first_name}</span>
+              <span style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.first_name}</span>
+              <SupporterStar user={m} size={12} />
               {family.founder_id === m.id && (
                 <span style={{ fontSize: 10, fontWeight: 800, color: '#b8860b',
                   background: 'rgba(255,215,0,0.2)', border: '1px solid rgba(255,215,0,0.5)',
