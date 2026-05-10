@@ -9,6 +9,7 @@ const { getPublicAppSettings } = require('../appSettings');
 const { getEnergyDrinkState } = require('../energyDrinkState');
 const { getFridgeState } = require('../fridgeState');
 const { getFarmSummary } = require('../farmState');
+const { getSupporterSummary } = require('../supportState');
 const { getNextDirtyAt } = require('../dirtyCycle');
 
 function tgApiCall(token, method) {
@@ -117,6 +118,7 @@ router.post('/login', validateTelegramInit, async (req, res) => {
       first_name:  freshUser.first_name,
       photo_url:   freshUser.photo_url,
       coins:       freshUser.coins,
+      supporter:   getSupporterSummary(freshUser),
     },
     peeper,
     ownedItems,

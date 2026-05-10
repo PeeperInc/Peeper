@@ -16,6 +16,33 @@ import * as api from '../api';
 
 const EMPTY_HOME_SCENE = { slots: {} };
 const UPDATES_CHANNEL_URL = 'https://t.me/peeperupdates';
+const SUPPORT_STAR_AMOUNTS = [50, 100, 250, 500];
+const TELEGRAM_STAR_FALLBACK = String.fromCodePoint(0x2B50);
+const TELEGRAM_STAR_SRC = '/sprites/stars.webp';
+
+function TelegramStarIcon({ size = 16, className = '', style = {} }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <span className={className} style={{ fontSize: size, lineHeight: 1, ...style }}>{TELEGRAM_STAR_FALLBACK}</span>;
+  }
+
+  return (
+    <img
+      src={TELEGRAM_STAR_SRC}
+      alt="Telegram Stars"
+      className={className}
+      onError={() => setFailed(true)}
+      style={{
+        width: size,
+        height: size,
+        objectFit: 'contain',
+        display: 'inline-block',
+        verticalAlign: '-0.18em',
+        ...style,
+      }}
+    />
+  );
+}
 
 const FOODS = [
   { type: 'apple', emoji: '🍎', name: 'Apple', cost: 1, restore: 30, color: '#e74c3c' },
@@ -350,7 +377,10 @@ function FoodMenu({ hunger, energy, coins, energyDrink, fridge, onSelect, onClos
   );
 }
 
-function HintSheet({ onClose }) {
+function HintSheet({ onClose, showToast, refreshGameState }) {
+  const [donationOpen, setDonationOpen] = useState(false);
+  const [donationLoading, setDonationLoading] = useState(null);
+
   const handleUpdatesPress = () => {
     try {
       if (window.Telegram?.WebApp?.openTelegramLink) {
@@ -365,6 +395,33 @@ function HintSheet({ onClose }) {
       window.open(UPDATES_CHANNEL_URL, '_blank', 'noopener,noreferrer');
     }
   };
+
+  const handleDonate = async (amount) => {
+    setDonationLoading(amount);
+    try {
+      const invoice = await api.createSupportStarsInvoice(amount);
+      const invoiceLink = invoice.invoiceLink;
+      const openInvoice = window.Telegram?.WebApp?.openInvoice;
+      if (!openInvoice || !invoiceLink) {
+        showToast?.('Open Peeper in Telegram to donate Stars.');
+        return;
+      }
+
+      openInvoice(invoiceLink, (status) => {
+        if (status === 'paid') {
+          showToast?.('Thank you for supporting Peeper!');
+          setTimeout(() => refreshGameState?.(), 1200);
+        } else if (status === 'failed') {
+          showToast?.('Donation failed. Please try again.');
+        }
+      });
+    } catch (error) {
+      showToast?.(error.message || 'Could not start Stars donation.');
+    } finally {
+      setDonationLoading(null);
+    }
+  };
+
   return (
     <BottomSheet
       onClose={onClose}
@@ -402,9 +459,48 @@ function HintSheet({ onClose }) {
       ))}
 
       <button
-        onClick={handleUpdatesPress}
+        onClick={() => setDonationOpen((value) => !value)}
         style={{
           marginTop: 18,
+          width: '100%',
+          padding: '13px 0',
+          background: 'linear-gradient(135deg, rgba(255,207,107,0.24), rgba(255,255,255,0.08))',
+          border: '1px solid rgba(255,207,107,0.45)',
+          borderRadius: 14,
+          fontSize: 15,
+          fontWeight: 800,
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+        }}
+      >
+        <TelegramStarIcon size={18} style={{ marginRight: 6 }} /> Donate to Peeper
+      </button>
+
+      {donationOpen && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+          {SUPPORT_STAR_AMOUNTS.map((amount) => (
+            <button
+              key={amount}
+              type="button"
+              className="btn btn-secondary"
+              disabled={donationLoading !== null}
+              onClick={() => handleDonate(amount)}
+              style={{ minHeight: 38, fontWeight: 850 }}
+            >
+              {donationLoading === amount ? '...' : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                  {amount} <TelegramStarIcon size={15} />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={handleUpdatesPress}
+        style={{
+          marginTop: 12,
           width: '100%',
           padding: '13px 0',
           background: 'var(--glass-surface-soft)',
@@ -1160,7 +1256,10 @@ export default function HomeScreen({
                 <button className="home-screen-profile-card" onClick={onProfileOpen}>
                   <UserAvatar telegramId={user?.telegram_id} name={user?.first_name} />
                   <div className="home-screen-profile-copy">
-                    <div className="home-screen-profile-name">{user?.first_name || 'Peeper Owner'}</div>
+                    <div className="home-screen-profile-name">
+                      {user?.first_name || 'Peeper Owner'}
+                      {user?.supporter?.donated && <TelegramStarIcon size={13} className="supporter-inline-star" />}
+                    </div>
                     <div className="home-screen-profile-subtitle">
                       {user?.username ? `@${user.username}` : 'Open profile'}
                     </div>
@@ -1361,7 +1460,13 @@ export default function HomeScreen({
             onClose={() => setShowGameMenu(false)}
           />
         )}
-      {showHint && <HintSheet onClose={() => setShowHint(false)} />}
+      {showHint && (
+        <HintSheet
+          onClose={() => setShowHint(false)}
+          showToast={showToast}
+          refreshGameState={refreshGameState}
+        />
+      )}
       {loadingGame && <GameLoadingOverlay gameId={loadingGame} />}
       {ActiveGameComponent && (
         <Suspense fallback={<GameLoadingOverlay gameId={activeGame} />}>

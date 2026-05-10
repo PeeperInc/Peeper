@@ -38,6 +38,10 @@ const {
   buildNotificationSettingsMarkup,
 } = require('../notificationSettings');
 const {
+  parseSupportPayload,
+  recordSupportDonation,
+} = require('../supportState');
+const {
   HOME_BUILTIN_FLOOR_PATH,
   HOME_BUILTIN_WALL_PATH,
   HOME_CANVAS_HEIGHT,
@@ -234,6 +238,24 @@ async function answerCallbackQuery(callbackQueryId, text, showAlert = false) {
     });
   } catch (e) {
     console.error('[webhook] answerCallbackQuery error:', e.message);
+  }
+}
+
+async function answerPreCheckoutQuery(preCheckoutQueryId, ok, errorMessage = '') {
+  const token = botToken();
+  if (!token || token === 'dev') return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/answerPreCheckoutQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pre_checkout_query_id: preCheckoutQueryId,
+        ok: Boolean(ok),
+        error_message: ok ? undefined : errorMessage,
+      }),
+    });
+  } catch (e) {
+    console.error('[webhook] answerPreCheckoutQuery error:', e.message);
   }
 }
 
@@ -522,6 +544,53 @@ async function handleNotificationSettingsCallback(callbackQuery) {
 
   await sendNotificationSettingsMenu(chatId, user, messageId);
   await answerCallbackQuery(callbackQuery.id, 'Saved');
+}
+
+async function handleSupportPreCheckout(preCheckoutQuery) {
+  const parsed = parseSupportPayload(preCheckoutQuery.invoice_payload);
+  if (!parsed || preCheckoutQuery.currency !== 'XTR' || Number(preCheckoutQuery.total_amount) !== parsed.stars) {
+    await answerPreCheckoutQuery(preCheckoutQuery.id, false, 'This donation invoice is no longer valid.');
+    return;
+  }
+
+  const user = db.prepare('SELECT id, telegram_id FROM users WHERE id = ?').get(parsed.userId);
+  if (!user || String(user.telegram_id) !== String(preCheckoutQuery.from?.id || '')) {
+    await answerPreCheckoutQuery(preCheckoutQuery.id, false, 'Open Peeper and try the donation again.');
+    return;
+  }
+
+  await answerPreCheckoutQuery(preCheckoutQuery.id, true);
+}
+
+async function handleSupportSuccessfulPayment(message) {
+  const payment = message?.successful_payment;
+  const parsed = parseSupportPayload(payment?.invoice_payload);
+  if (!parsed || payment?.currency !== 'XTR' || Number(payment?.total_amount) !== parsed.stars) {
+    console.warn('[support] ignored invalid successful payment payload');
+    return;
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(parsed.userId);
+  if (!user || String(user.telegram_id) !== String(message.from?.id || '')) {
+    console.warn('[support] ignored payment with mismatched user', parsed.userId);
+    return;
+  }
+
+  const result = recordSupportDonation(db, {
+    userId: user.id,
+    telegramPaymentChargeId: payment.telegram_payment_charge_id,
+    providerPaymentChargeId: payment.provider_payment_charge_id || '',
+    stars: parsed.stars,
+    payload: payment.invoice_payload,
+    createdAt: Math.floor(Date.now() / 1000),
+  });
+
+  if (result.recorded && message.chat?.id) {
+    await sendMessage(
+      message.chat.id,
+      `⭐ <b>Thank you for supporting Peeper!</b>\n\nYour supporter badge is now active.`,
+    );
+  }
 }
 
 // ── Peeper renderer ──────────────────────────────────────────────────────────
@@ -1397,6 +1466,27 @@ async function handleStart(chatId) {
   );
 }
 
+async function handlePaySupport(chatId) {
+  await sendMessage(
+    chatId,
+    [
+      '<b>Payment Support</b>',
+      '',
+      'If you have any issue with a Telegram Stars payment in Peeper, please contact us in the group:',
+      '<a href="https://t.me/peeperupdates">https://t.me/peeperupdates</a>',
+      '',
+      'Include:',
+      '• your Telegram ID',
+      '• payment time',
+      '• what happened',
+      '• screenshot of the receipt if possible',
+      '',
+      'We will review payment issues and refunds manually.',
+    ].join('\n'),
+    { inline_keyboard: [[{ text: 'Open Support Group', url: 'https://t.me/peeperupdates' }]] },
+  );
+}
+
 async function handleMyPeeper(chatId, fromUserId, firstName) {
   const user   = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(String(fromUserId));
   const peeper = user ? db.prepare('SELECT * FROM peepers WHERE user_id = ?').get(user.id) : null;
@@ -1554,6 +1644,11 @@ router.post('/', express.json(), async (req, res) => {
       return;
     }
 
+    if (update?.pre_checkout_query) {
+      await handleSupportPreCheckout(update.pre_checkout_query);
+      return;
+    }
+
     // Handle inline button callbacks (family invites)
     if (update?.callback_query) {
       const cb = update.callback_query;
@@ -1578,6 +1673,11 @@ router.post('/', express.json(), async (req, res) => {
 
     syncUserIdentityFromTelegram(message.from);
 
+    if (message.successful_payment) {
+      await handleSupportSuccessfulPayment(message);
+      return;
+    }
+
     // Strip bot mention: "/mypeeper@PeeperBot" → "/mypeeper"
     const text = rawText.replace(/@[A-Za-z0-9_]*[Bb]ot\b/, '').trim();
 
@@ -1585,6 +1685,8 @@ router.post('/', express.json(), async (req, res) => {
 
     if (text === '/start' || text.startsWith('/start ')) {
       await handleStart(chatId);
+    } else if (text === '/paysupport' || text.startsWith('/paysupport ')) {
+      await handlePaySupport(chatId);
     } else if (text === '/mypeeper') {
       await handleMyPeeper(chatId, fromId, firstName);
     } else if (text === '/myhome') {

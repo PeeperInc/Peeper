@@ -288,6 +288,7 @@ router.get('/me', validateTelegramInit, (req, res) => {
 
   const members = db.prepare(`
     SELECT u.id, u.telegram_id, u.first_name, u.username,
+           u.supporter_since, u.supporter_stars,
            fm.joined_at,
            p.alive, p.hp, p.hunger, p.last_fed, p.last_played,
            p.fridge_owned, p.fridge_food_until, p.fridge_purchased_at,
@@ -472,7 +473,8 @@ router.get('/messages', validateTelegramInit, (req, res) => {
 
   const messages = db.prepare(`
     SELECT fm.id, fm.message, fm.sent_at,
-           u.id as user_id, u.first_name, u.username, u.telegram_id
+           u.id as user_id, u.first_name, u.username, u.telegram_id,
+           u.supporter_since, u.supporter_stars
     FROM family_messages fm
     JOIN users u ON u.id = fm.user_id
     WHERE fm.family_id = ?
@@ -621,6 +623,7 @@ router.get('/:familyId/profile', validateTelegramInit, (req, res) => {
 
   const members = db.prepare(`
     SELECT u.id, u.telegram_id, u.first_name, u.username,
+           u.supporter_since, u.supporter_stars,
            fm.joined_at,
            p.alive, p.hp, p.last_fed, p.last_played, p.born_at,
            p.fridge_owned, p.fridge_food_until, p.fridge_purchased_at,

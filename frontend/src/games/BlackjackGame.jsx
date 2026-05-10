@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from '../components/BottomSheet';
+import SupporterStar from '../components/SupporterStar';
 import { useApp } from '../context/AppContext';
 import * as api from '../api';
 import { assetUrl } from '../utils/assetUrl';
@@ -693,7 +694,10 @@ function SeatMarker({ seat, isCurrentTurn, isWinner, flashOn = true, onClick }) 
           textAlign: 'center',
         }}
       >
-        {seat.displayName}
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 3, maxWidth: '100%' }}>
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seat.displayName}</span>
+          <SupporterStar user={seat} size={10} />
+        </span>
       </div>
     </button>
   );
@@ -917,7 +921,10 @@ function SeatInfoSheet({ seat, onClose, onViewProfile }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
         <SeatAvatar seat={seat} size={46} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 17, fontWeight: 900, color: 'var(--text-primary)' }}>{seat.displayName}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 17, fontWeight: 900, color: 'var(--text-primary)' }}>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seat.displayName}</span>
+            <SupporterStar user={seat} size={14} />
+          </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             {seat.username ? `@${seat.username}` : 'No public username'}
           </div>
@@ -1177,7 +1184,10 @@ function InvitePlayerSheet({ busy, onClose, onInvite }) {
             >
               <SearchAvatar telegramId={player.telegram_id} name={player.first_name} />
               <span style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ display: 'block', fontSize: 14, fontWeight: 800 }}>{player.first_name || 'Peeper'}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 14, fontWeight: 800 }}>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.first_name || 'Peeper'}</span>
+                  <SupporterStar user={player} size={12} />
+                </span>
                 {player.username && (
                   <span style={{ display: 'block', fontSize: 12, color: 'rgba(235,246,239,0.62)' }}>@{player.username}</span>
                 )}

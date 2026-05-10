@@ -2,9 +2,34 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import PeeperSprite from '../components/PeeperSprite';
 import GiftGallery from '../components/GiftGallery';
+import SupporterStar from '../components/SupporterStar';
 import VisitHomeScreen from './VisitHomeScreen';
 import * as api from '../api';
 import { avatarUrl } from '../utils/avatarUrl';
+
+const TELEGRAM_STAR_FALLBACK = String.fromCodePoint(0x2B50);
+const TELEGRAM_STAR_SRC = '/sprites/stars.webp';
+
+function TelegramStarIcon({ size = 16, style = {} }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <span style={{ fontSize: size, lineHeight: 1, ...style }}>{TELEGRAM_STAR_FALLBACK}</span>;
+  }
+  return (
+    <img
+      src={TELEGRAM_STAR_SRC}
+      alt="Telegram Stars"
+      onError={() => setFailed(true)}
+      style={{
+        width: size,
+        height: size,
+        objectFit: 'contain',
+        display: 'block',
+        ...style,
+      }}
+    />
+  );
+}
 
 function Avatar({ telegramId, name, size = 44, fontSize = 22 }) {
   const [imgError, setImgError] = useState(false);
@@ -17,6 +42,66 @@ function Avatar({ telegramId, name, size = 44, fontSize = 22 }) {
     );
   }
   return <div className="avatar-circle" style={{ width: size, height: size, fontSize, flexShrink: 0 }}>🐸</div>;
+}
+
+function SupporterBadge({ supporter }) {
+  const [visible, setVisible] = useState(false);
+  if (!supporter?.donated) return null;
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', marginLeft: 6, verticalAlign: 'middle' }}>
+      <button
+        type="button"
+        aria-label="Peeper supporter"
+        onClick={(event) => {
+          event.stopPropagation();
+          setVisible(true);
+          setTimeout(() => setVisible(false), 2200);
+        }}
+        style={{
+          width: 23,
+          height: 23,
+          borderRadius: '50%',
+          border: '1px solid rgba(255,191,47,0.55)',
+          background: 'linear-gradient(135deg, rgba(255,218,110,0.96), rgba(255,170,42,0.92))',
+          color: '#3d2500',
+          display: 'inline-grid',
+          placeItems: 'center',
+          padding: 0,
+          cursor: 'pointer',
+          boxShadow: '0 5px 14px rgba(190,118,0,0.28)',
+          fontSize: 13,
+          lineHeight: 1,
+        }}
+      >
+        <TelegramStarIcon size={15} />
+      </button>
+      {visible && (
+        <span
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: 'calc(100% + 7px)',
+            transform: 'translateX(-50%)',
+            zIndex: 30,
+            width: 190,
+            padding: '8px 10px',
+            borderRadius: 12,
+            background: 'rgba(28, 31, 24, 0.94)',
+            color: '#fff7d2',
+            fontSize: 11,
+            fontWeight: 750,
+            lineHeight: 1.35,
+            textAlign: 'center',
+            boxShadow: '0 12px 28px rgba(0,0,0,0.28)',
+            pointerEvents: 'none',
+          }}
+        >
+          This player donated to Peeper. Thank you for helping keep the game alive!
+        </span>
+      )}
+    </span>
+  );
 }
 
 const profileSmallTextStyle = {
@@ -132,7 +217,10 @@ function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewPro
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
             <Avatar telegramId={profile.user.telegram_id} name={profile.user.first_name} size={52} fontSize={28} />
             <div>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{profile.user.first_name}</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>
+                {profile.user.first_name}
+                <SupporterBadge supporter={profile.user.supporter} />
+              </div>
               {profile.user.username && (
                 <div style={{ ...profileSmallTextStyle, fontSize: 13 }}>@{profile.user.username}</div>
               )}
@@ -342,7 +430,10 @@ export default function ProfileScreen({ onClose, initialViewUserId = null, topGi
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px 12px' }}>
         <Avatar telegramId={user?.telegram_id} name={user?.first_name} size={52} fontSize={28} />
         <div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>{user?.first_name}</div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>
+            {user?.first_name}
+            <SupporterBadge supporter={user?.supporter || myProfile?.user?.supporter} />
+          </div>
           {user?.username && <div style={{ ...profileSmallTextStyle, fontSize: 13 }}>@{user.username}</div>}
         </div>
         <div className="coins-badge" style={{ marginLeft: 'auto' }}>✦ {user?.coins ?? 0}</div>
@@ -385,7 +476,10 @@ export default function ProfileScreen({ onClose, initialViewUserId = null, topGi
         <div key={u.id} className="lb-row" style={{ cursor: 'pointer' }} onClick={() => setViewingUserId(u.id)}>
           <Avatar telegramId={u.telegram_id} name={u.first_name} size={36} fontSize={18} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{u.first_name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 14 }}>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.first_name}</span>
+              <SupporterStar user={u} size={12} />
+            </div>
             {u.username && <div style={{ ...profileSmallTextStyle, fontSize: 12 }}>@{u.username}</div>}
           </div>
           <span style={{ color: 'var(--accent)', fontSize: 13 }}>View →</span>

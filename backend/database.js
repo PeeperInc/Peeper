@@ -114,6 +114,16 @@ db.exec(`
     PRIMARY KEY (user_id, day_key)
   );
 
+  CREATE TABLE IF NOT EXISTS support_donations (
+    id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id                    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    telegram_payment_charge_id TEXT NOT NULL UNIQUE,
+    provider_payment_charge_id TEXT DEFAULT '',
+    stars_amount               INTEGER NOT NULL,
+    payload                    TEXT DEFAULT '',
+    created_at                 INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
   CREATE TABLE IF NOT EXISTS personal_homes (
     user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     purchased_at        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
@@ -186,6 +196,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_gifts_recipient ON gifts_received(recipient_id);
   CREATE INDEX IF NOT EXISTS idx_gifts_sent_at   ON gifts_received(sent_at DESC);
   CREATE INDEX IF NOT EXISTS idx_owned_user      ON owned_items(user_id);
+  CREATE INDEX IF NOT EXISTS idx_support_donations_user ON support_donations(user_id);
   CREATE INDEX IF NOT EXISTS idx_owned_home_user ON owned_home_items(user_id);
   CREATE INDEX IF NOT EXISTS idx_home_back_decor_order ON home_back_decor_enabled(user_id, sort_order);
 `);
@@ -236,6 +247,8 @@ const migrateShopItemsSlotConstraintIfNeeded = () => {
 
 addColumnIfMissing('users',   'photo_url',       'TEXT DEFAULT NULL');
 addColumnIfMissing('users',   'photo_updated_at', 'INTEGER DEFAULT 0');
+addColumnIfMissing('users',   'supporter_since', 'INTEGER DEFAULT NULL');
+addColumnIfMissing('users',   'supporter_stars', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users',   'casino_free_spins', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('peepers', 'critical_start','INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'regen_start',   'INTEGER DEFAULT NULL');

@@ -416,6 +416,8 @@ function getArenaWinsRows() {
       u.username,
       u.first_name,
       u.photo_url,
+      u.supporter_since,
+      u.supporter_stars,
       COUNT(m.id) AS wins
     FROM users u
     JOIN arena_matches m ON m.winner_id = u.id
@@ -433,6 +435,8 @@ function serializeArenaLeaderboardRow(row, index) {
     firstName: row.first_name,
     username: row.username,
     photoUrl: row.photo_url,
+    supporter_since: row.supporter_since,
+    supporter_stars: row.supporter_stars,
     wins: Math.max(0, Number(row.wins) || 0),
   };
 }
@@ -449,6 +453,8 @@ function getArenaLeaderboard(userId, limit = 10) {
     firstName: user.first_name,
     username: user.username,
     photoUrl: user.photo_url,
+    supporter_since: user.supporter_since,
+    supporter_stars: user.supporter_stars,
     wins: selfWinRow ? Math.max(0, Number(selfWinRow.wins) || 0) : 0,
   } : null;
 
@@ -667,6 +673,7 @@ function joinMatchByInvite(userId, token, now = nowTs()) {
 function serializeUser(userId) {
   const row = db.prepare(`
     SELECT u.id, u.telegram_id, u.username, u.first_name, u.photo_url,
+           u.supporter_since, u.supporter_stars,
            p.slot_head, p.slot_body, p.slot_hands, p.slot_fren, p.slot_face
     FROM users u
     LEFT JOIN peepers p ON p.user_id = u.id
@@ -679,6 +686,8 @@ function serializeUser(userId) {
     firstName: row.first_name,
     username: row.username,
     photoUrl: row.photo_url,
+    supporter_since: row.supporter_since,
+    supporter_stars: row.supporter_stars,
     outfit: {
       slot_head: row.slot_head,
       slot_body: row.slot_body,

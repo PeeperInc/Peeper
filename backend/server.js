@@ -31,6 +31,7 @@ app.use('/api/home',    require('./routes/home'));
 app.use('/api/blackjack', require('./routes/blackjack'));
 app.use('/api/arena', require('./routes/arena'));
 app.use('/api/farm', require('./routes/farm'));
+app.use('/api/support', require('./routes/support'));
 
 // Items catalog (no auth needed for the list itself)
 const { CLOTHING_ITEMS, GIFT_ITEMS } = require('./items');
@@ -70,7 +71,7 @@ app.listen(PORT, () => {
       body:    JSON.stringify({
         url: webhookUrl,
         secret_token: webhookSecret,
-        allowed_updates: ['message', 'callback_query', 'inline_query'],
+        allowed_updates: ['message', 'callback_query', 'inline_query', 'pre_checkout_query'],
       }),
     })
       .then(r => r.json())

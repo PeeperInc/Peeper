@@ -51,7 +51,7 @@ router.get('/search', validateTelegramInit, (req, res) => {
   if (!query || query.length < 2) return res.status(400).json({ error: 'Query too short' });
 
   const results = db.prepare(`
-    SELECT id, username, first_name, photo_url FROM users
+    SELECT id, username, first_name, photo_url, supporter_since, supporter_stars FROM users
     WHERE (username LIKE ? OR first_name LIKE ?) AND id != ?
     LIMIT 10
   `).all(`%${query}%`, `%${query}%`, selfUser?.id ?? 0);
@@ -123,6 +123,8 @@ router.get('/received/:userId', validateTelegramInit, (req, res) => {
            u.username    AS sender_username,
            u.first_name  AS sender_name,
            u.photo_url   AS sender_photo,
+           u.supporter_since AS sender_supporter_since,
+           u.supporter_stars AS sender_supporter_stars,
            gc.file_path  AS gift_image_url,
            gc.name       AS gift_catalog_name
     FROM gifts_received gr
