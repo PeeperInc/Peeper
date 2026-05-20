@@ -95,6 +95,7 @@ export const feedFarmAnimal = (slotIndex, method = 'coins') => post(`/farm/slots
 export const collectFarmAnimal = (slotIndex) => post(`/farm/slots/${slotIndex}/collect-animal`, {});
 export const sellFarmInventory = (productId, quantity = 1) => post('/farm/inventory/sell', { productId, quantity });
 export const stockFarmFridge = (recipeType) => post('/farm/inventory/stock-fridge', { recipeType });
+export const triggerFarmFamilyBigFeast = () => post('/farm/inventory/family-big-feast', {});
 
 export const getSupportStarsOptions = () => get('/support/stars/options');
 export const createSupportStarsInvoice = (amount) => post('/support/stars/invoice', { amount });

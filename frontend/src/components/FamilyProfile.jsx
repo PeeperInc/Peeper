@@ -18,6 +18,21 @@ function Avatar({ telegramId, name, size = 42 }) {
   );
 }
 
+function LifeBar({ hp, alive }) {
+  const pct = Math.max(0, Math.min(100, hp || 0));
+  const color = !alive ? '#888' : pct > 50 ? '#ef4444' : pct > 20 ? '#f97316' : 'var(--danger)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+      <div style={{ flex: 1, height: 6, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 99 }} />
+      </div>
+      <span style={{ fontSize: 11, color: 'var(--text-hint)', width: 32, textAlign: 'right' }}>
+        {alive ? `${Math.round(pct)}%` : '0%'}
+      </span>
+    </div>
+  );
+}
+
 function HungerBar({ hunger, alive }) {
   const pct = Math.max(0, Math.min(100, hunger || 0));
   const color = !alive ? '#888' : pct > 50 ? 'var(--accent)' : pct > 20 ? '#ffd700' : 'var(--danger)';
@@ -124,7 +139,11 @@ export default function FamilyProfile({ familyId, onBack, onViewProfile }) {
               <div style={{ fontSize: 12, color: 'var(--text-hint)' }}>@{m.username}</div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-              <span style={{ fontSize: 11 }}>🍃</span>
+              <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--danger)', width: 24 }}>HP</span>
+              <LifeBar hp={m.liveHp} alive={m.liveAlive} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent)', width: 24 }}>Food</span>
               <HungerBar hunger={m.liveHunger} alive={m.liveAlive} />
             </div>
             {(m.coins_spent > 0 || m.gifts_sent > 0) && (

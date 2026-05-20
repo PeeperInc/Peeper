@@ -3,6 +3,11 @@ const db = require('../database');
 const { validateTelegramInit } = require('../auth');
 const { syncOwnedPeeper } = require('../peeperState');
 const { getFridgeState } = require('../fridgeState');
+const { isNotificationEnabled } = require('../notificationSettings');
+const {
+  getUserFamily,
+  serveFamilyBigFeast,
+} = require('../familyFeastState');
 const {
   FARM_PURCHASE_COST,
   FARM_SLOT_BUILD_COSTS,
@@ -18,12 +23,59 @@ const {
   ensureFarmSlots,
   getFarmState,
   getFridgeRecipe,
+  FAMILY_BIG_FEAST_RECIPE,
   addInventory,
+  resolveCropResult,
+  consumeInventoryValue,
   applyFarmFridgeStock,
 } = require('../farmState');
 
 const router = express.Router();
 const COIN_SYMBOL = '\u2726';
+const APP_URL = 'https://peeper.frenzyradio.online';
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function sendTelegramFamilyMessage(userId, telegramId, text) {
+  const token = process.env.BOT_TOKEN;
+  if (!token || token === 'dev' || !telegramId) return;
+  if (!isNotificationEnabled(userId, 'family_notifications')) return;
+
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: telegramId,
+        text,
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{
+            text: 'Open Peeper',
+            web_app: { url: APP_URL },
+            style: 'success',
+          }]],
+        },
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (err.error_code !== 403) {
+        console.warn('[farm] family feast notification failed:', err.description || resp.status);
+      }
+    }
+  } catch (error) {
+    console.warn('[farm] family feast notification error:', error.message);
+  }
+}
 
 function getUser(req) {
   const telegramId = String(req.telegramUser?.id || '');
@@ -60,9 +112,11 @@ function freshCoins(userId) {
 
 function farmResponse(userId, extra = {}) {
   const peeper = syncOwnedPeeper(userId);
+  const family = getUserFamily(userId);
   return {
     ...extra,
     coins: freshCoins(userId),
+    family: family ? { id: family.id, name: family.name } : null,
     farmState: getFarmState(userId),
     fridge: getFridgeState(peeper),
   };
@@ -135,6 +189,7 @@ router.post('/slots/:index/build', validateTelegramInit, (req, res) => {
         UPDATE farm_slots
         SET slot_type = ?,
             crop_type = NULL,
+            crop_result_product_id = NULL,
             planted_at = NULL,
             grow_seconds = NULL,
             water_available_at = NULL,
@@ -177,6 +232,7 @@ router.post('/slots/:index/plant', validateTelegramInit, (req, res) => {
       db.prepare(`
         UPDATE farm_slots
         SET crop_type = ?,
+            crop_result_product_id = NULL,
             planted_at = ?,
             grow_seconds = ?,
             water_available_at = ?,
@@ -242,11 +298,15 @@ router.post('/slots/:index/harvest', validateTelegramInit, (req, res) => {
     const readyAt = Number(slot.planted_at || 0) + Number(slot.grow_seconds || 0);
     if (readyAt > now) throw new Error('This crop is still growing.');
 
+    const resultProductId = resolveCropResult(slot, now) || crop.yieldProductId;
+    const harvestQuantity = resultProductId === crop.yieldProductId ? crop.yieldQuantity : 1;
+
     db.transaction(() => {
-      addInventory(user.id, crop.yieldProductId, crop.yieldQuantity, now);
+      addInventory(user.id, resultProductId, harvestQuantity, now);
       db.prepare(`
         UPDATE farm_slots
         SET crop_type = NULL,
+            crop_result_product_id = NULL,
             planted_at = NULL,
             grow_seconds = NULL,
             water_available_at = NULL,
@@ -255,9 +315,9 @@ router.post('/slots/:index/harvest', validateTelegramInit, (req, res) => {
       `).run(now, user.id, slotIndex);
     })();
 
-    const product = PRODUCTS[crop.yieldProductId];
+    const product = PRODUCTS[resultProductId];
     res.json(farmResponse(user.id, {
-      message: `Harvested ${crop.yieldQuantity} ${product?.name || crop.yieldProductId}.`,
+      message: `Harvested ${harvestQuantity} ${product?.name || resultProductId}.`,
     }));
   } catch (error) {
     sendActionError(res, user.id, error);
@@ -438,6 +498,58 @@ router.post('/inventory/stock-fridge', validateTelegramInit, (req, res) => {
   } catch (error) {
     sendActionError(res, user.id, error);
   }
+});
+
+router.post('/inventory/family-big-feast', validateTelegramInit, (req, res) => {
+  const user = getUserOr404(req, res);
+  if (!user || !requireFarm(user.id, res)) return;
+
+  const family = getUserFamily(user.id);
+  if (!family) {
+    return res.status(400).json({
+      error: 'Join or create a family first.',
+      ...farmResponse(user.id),
+    });
+  }
+
+  const now = ts();
+  let result = null;
+  try {
+    result = serveFamilyBigFeast({
+      family,
+      feasterUserId: user.id,
+      nowTs: now,
+      coinCost: 0,
+      recordCooldown: false,
+      beforeServe: () => {
+        consumeInventoryValue(user.id, 'vegetable', FAMILY_BIG_FEAST_RECIPE.vegetableValue, now);
+        consumeInventoryValue(user.id, 'animal', FAMILY_BIG_FEAST_RECIPE.animalValue, now);
+      },
+    });
+  } catch (error) {
+    return sendActionError(res, user.id, error);
+  }
+
+  const feastMessage = [
+    '<b>FAMILY BIG FEAST!</b>',
+    '',
+    `<b>${escapeHtml(user.first_name || 'A family member')}</b> just served a farm-grown feast for the whole <b>${escapeHtml(family.name)}</b> family.`,
+    '',
+    'Your Peeper is now fed to <b>100%</b> hunger.',
+  ].join('\n');
+  for (const member of result.memberRows) {
+    if (!result.fedMemberIds.includes(member.user_id) || member.user_id === user.id) continue;
+    void sendTelegramFamilyMessage(member.user_id, member.telegram_id, feastMessage);
+  }
+
+  return res.json(farmResponse(user.id, {
+    message: `Family Big Feast served! ${result.fedCount} family member${result.fedCount === 1 ? '' : 's'} fed to 100%.`,
+    familyFeast: {
+      consumedVegetableValue: FAMILY_BIG_FEAST_RECIPE.vegetableValue,
+      consumedAnimalValue: FAMILY_BIG_FEAST_RECIPE.animalValue,
+      fedCount: result.fedCount,
+    },
+  }));
 });
 
 module.exports = router;
