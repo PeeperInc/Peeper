@@ -190,6 +190,7 @@ db.exec(`
     family_notifications     INTEGER NOT NULL DEFAULT 1,
     gift_notifications       INTEGER NOT NULL DEFAULT 1,
     jackpot_notifications    INTEGER NOT NULL DEFAULT 1,
+    farm_notifications       INTEGER NOT NULL DEFAULT 1,
     updated_at               INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   );
 
@@ -250,6 +251,7 @@ addColumnIfMissing('users',   'photo_updated_at', 'INTEGER DEFAULT 0');
 addColumnIfMissing('users',   'supporter_since', 'INTEGER DEFAULT NULL');
 addColumnIfMissing('users',   'supporter_stars', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users',   'casino_free_spins', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('user_notification_settings', 'farm_notifications', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('peepers', 'critical_start','INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'regen_start',   'INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'hp_at_regen',   'REAL DEFAULT NULL');
@@ -514,6 +516,7 @@ db.exec(`
     slot_index         INTEGER NOT NULL,
     slot_type          TEXT DEFAULT NULL CHECK(slot_type IN ('plot', 'pen', NULL)),
     crop_type          TEXT DEFAULT NULL,
+    crop_result_product_id TEXT DEFAULT NULL,
     planted_at         INTEGER DEFAULT NULL,
     grow_seconds       INTEGER DEFAULT NULL,
     water_available_at INTEGER DEFAULT NULL,
@@ -536,6 +539,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_farm_slots_user ON farm_slots(user_id, slot_index);
   CREATE INDEX IF NOT EXISTS idx_farm_inventory_user ON farm_inventory(user_id, product_id);
 `);
+
+addColumnIfMissing('farm_slots', 'crop_result_product_id', 'TEXT DEFAULT NULL');
 
 db.prepare(`
   INSERT OR IGNORE INTO home_shop_items (item_id, name, slot, price, is_free, is_active)

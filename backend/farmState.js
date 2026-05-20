@@ -10,11 +10,14 @@ const FARM_SLOT_BUILD_COSTS = Object.freeze({
 const WATER_COOLDOWN_SECONDS = 6 * 3600;
 const WATER_REDUCTION_RATIO = 0.1;
 const ANIMAL_LIFETIME_SECONDS = 7 * 86400;
+const MAGIC_SQUASH_PRODUCT_ID = 'magic_squash';
+const MAGIC_SQUASH_CHANCE = 0.01;
 
 const PRODUCTS = Object.freeze({
   carrot: Object.freeze({ id: 'carrot', name: 'Carrot', icon: 'carrot', category: 'vegetable', value: 1, sellPrice: 1 }),
   tomato: Object.freeze({ id: 'tomato', name: 'Tomato', icon: 'tomato', category: 'vegetable', value: 2, sellPrice: 2 }),
   potato: Object.freeze({ id: 'potato', name: 'Potato', icon: 'potato', category: 'vegetable', value: 3, sellPrice: 3 }),
+  magic_squash: Object.freeze({ id: MAGIC_SQUASH_PRODUCT_ID, name: 'Magic Squash', icon: 'magic_squash', category: 'vegetable', value: 100, sellPrice: 100 }),
   egg: Object.freeze({ id: 'egg', name: 'Egg', icon: 'egg', category: 'animal', value: 2, sellPrice: 2 }),
   milk: Object.freeze({ id: 'milk', name: 'Milk', icon: 'milk', category: 'animal', value: 3, sellPrice: 8 }),
   truffle: Object.freeze({ id: 'truffle', name: 'Truffle', icon: 'truffle', category: 'animal', value: 5, sellPrice: 25 }),
@@ -35,6 +38,13 @@ const ANIMALS = Object.freeze({
 const FRIDGE_RECIPES = Object.freeze({
   farm_fridge_3d: Object.freeze({ type: 'farm_fridge_3d', label: '3 days', days: 3, vegetableValue: 400, animalValue: 120 }),
   farm_fridge_7d: Object.freeze({ type: 'farm_fridge_7d', label: '7 days', days: 7, vegetableValue: 900, animalValue: 350 }),
+});
+
+const FAMILY_BIG_FEAST_RECIPE = Object.freeze({
+  type: 'farm_family_big_feast',
+  label: 'Family Big Feast',
+  vegetableValue: 750,
+  animalValue: 250,
 });
 
 function ts() {
@@ -64,6 +74,7 @@ function cloneCatalog() {
     animals: Object.values(ANIMALS).map((animal) => ({ ...animal })),
     products: Object.values(PRODUCTS).map((product) => ({ ...product })),
     fridgeRecipes: Object.values(FRIDGE_RECIPES).map((recipe) => ({ ...recipe })),
+    familyBigFeastRecipe: { ...FAMILY_BIG_FEAST_RECIPE },
   };
 }
 
@@ -147,6 +158,48 @@ function syncExpiredAnimals(userId, now = ts()) {
   `).run(now, userId, now);
 }
 
+function rollCropResult(crop) {
+  return Math.random() < MAGIC_SQUASH_CHANCE ? MAGIC_SQUASH_PRODUCT_ID : crop.yieldProductId;
+}
+
+function resolveCropResult(row, now = ts()) {
+  if (!row || row.slot_type !== 'plot' || !row.crop_type) return null;
+  const crop = CROPS[row.crop_type];
+  if (!crop) return null;
+  const plantedAt = Math.floor(Number(row.planted_at) || 0);
+  const growSeconds = Math.max(0, Math.floor(Number(row.grow_seconds) || crop.growSeconds || 0));
+  const readyAt = plantedAt + growSeconds;
+  if (readyAt > now) return row.crop_result_product_id || null;
+
+  if (row.crop_result_product_id && PRODUCTS[row.crop_result_product_id]) {
+    return row.crop_result_product_id;
+  }
+
+  const resultProductId = rollCropResult(crop);
+  db.prepare(`
+    UPDATE farm_slots
+    SET crop_result_product_id = ?,
+        updated_at = ?
+    WHERE user_id = ? AND slot_index = ?
+  `).run(resultProductId, now, row.user_id, row.slot_index);
+  row.crop_result_product_id = resultProductId;
+  return resultProductId;
+}
+
+function syncReadyCropResults(userId, now = ts()) {
+  const rows = db.prepare(`
+    SELECT *
+    FROM farm_slots
+    WHERE user_id = ?
+      AND slot_type = 'plot'
+      AND crop_type IS NOT NULL
+      AND crop_result_product_id IS NULL
+  `).all(userId);
+  for (const row of rows) {
+    resolveCropResult(row, now);
+  }
+}
+
 function serializeInventoryRow(row) {
   const product = PRODUCTS[row.product_id];
   if (!product) return null;
@@ -197,10 +250,14 @@ function serializeSlot(row, now = ts()) {
     const growSeconds = Math.max(0, Math.floor(Number(row.grow_seconds) || crop?.growSeconds || 0));
     const readyAt = plantedAt + growSeconds;
     const remainingSeconds = Math.max(0, readyAt - now);
+    const cropResultProductId = remainingSeconds <= 0 ? resolveCropResult(row, now) : null;
+    const resultProduct = cropResultProductId ? PRODUCTS[cropResultProductId] : null;
     return {
       ...slot,
       state: remainingSeconds <= 0 ? 'crop_ready' : 'crop_growing',
       crop: crop ? { ...crop } : { id: row.crop_type, name: row.crop_type },
+      cropResultProductId,
+      cropResultProduct: resultProduct ? { ...resultProduct } : null,
       plantedAt,
       readyAt,
       remainingSeconds,
@@ -252,6 +309,7 @@ function getFarmState(userId, now = ts()) {
 
   ensureFarmSlots(userId);
   syncExpiredAnimals(userId, now);
+  syncReadyCropResults(userId, now);
   const slots = db.prepare(`
     SELECT *
     FROM farm_slots
@@ -279,6 +337,31 @@ function addInventory(userId, productId, quantity, now = ts()) {
       quantity = quantity + excluded.quantity,
       updated_at = excluded.updated_at
   `).run(userId, productId, qty, now);
+}
+
+function getFarmCropReadiness(userId, now = ts()) {
+  if (!hasFarm(userId)) return { plantedCount: 0, readyCount: 0, allPlantedReady: false };
+  ensureFarmSlots(userId);
+  syncReadyCropResults(userId, now);
+  const rows = db.prepare(`
+    SELECT crop_type, planted_at, grow_seconds
+    FROM farm_slots
+    WHERE user_id = ?
+      AND slot_type = 'plot'
+      AND crop_type IS NOT NULL
+  `).all(userId);
+  const plantedCount = rows.length;
+  const readyCount = rows.filter((row) => {
+    const crop = CROPS[row.crop_type];
+    const plantedAt = Math.floor(Number(row.planted_at) || 0);
+    const growSeconds = Math.max(0, Math.floor(Number(row.grow_seconds) || crop?.growSeconds || 0));
+    return plantedAt + growSeconds <= now;
+  }).length;
+  return {
+    plantedCount,
+    readyCount,
+    allPlantedReady: plantedCount > 0 && readyCount === plantedCount,
+  };
 }
 
 function getConsumableProducts(category) {
@@ -356,10 +439,13 @@ module.exports = {
   WATER_COOLDOWN_SECONDS,
   WATER_REDUCTION_RATIO,
   ANIMAL_LIFETIME_SECONDS,
+  MAGIC_SQUASH_PRODUCT_ID,
+  MAGIC_SQUASH_CHANCE,
   PRODUCTS,
   CROPS,
   ANIMALS,
   FRIDGE_RECIPES,
+  FAMILY_BIG_FEAST_RECIPE,
   ts,
   clampSlotIndex,
   hasFarm,
@@ -367,6 +453,8 @@ module.exports = {
   getFarmSummary,
   getFarmState,
   addInventory,
+  getFarmCropReadiness,
+  resolveCropResult,
   consumeInventoryValue,
   getInventoryValues,
   getFridgeRecipe,

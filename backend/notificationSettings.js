@@ -5,6 +5,7 @@ const NOTIFICATION_SETTING_KEYS = [
   'family_notifications',
   'gift_notifications',
   'jackpot_notifications',
+  'farm_notifications',
 ];
 
 const NOTIFICATION_SETTING_META = {
@@ -23,6 +24,10 @@ const NOTIFICATION_SETTING_META = {
   jackpot_notifications: {
     label: 'Jackpot alerts',
     description: 'Broadcasts when someone hits the caSino jackpot',
+  },
+  farm_notifications: {
+    label: 'Farm alerts',
+    description: 'Telegram messages when all planted crops are ready',
   },
 };
 
@@ -54,6 +59,7 @@ function getNotificationSettings(userId) {
     family_notifications: Number(row?.family_notifications ?? 1),
     gift_notifications: Number(row?.gift_notifications ?? 1),
     jackpot_notifications: Number(row?.jackpot_notifications ?? 1),
+    farm_notifications: Number(row?.farm_notifications ?? 1),
   };
 }
 

@@ -14,6 +14,7 @@
 const db      = require('./database');
 const { liveStats } = require('./gameLogic');
 const { isNotificationEnabled } = require('./notificationSettings');
+const { getFarmCropReadiness } = require('./farmState');
 
 const INTERVAL_MS = 60 * 1000;
 const APP_URL     = 'https://peeper.frenzyradio.online';
@@ -25,6 +26,7 @@ const COOLDOWNS = {
   hp50:        6 * 3600,   // resend every 6h while HP ≤ 50
   hp10:        1 * 3600,   // resend every 1h while critical
   died:        0,           // once per death
+  farm_crops_ready: 0,      // once until crops are harvested/replanted
 };
 
 let botToken = null;
@@ -65,6 +67,11 @@ async function sendMessage(telegramId, text) {
 
 async function sendCareNotification(userId, telegramId, text) {
   if (!isNotificationEnabled(userId, 'care_notifications')) return;
+  await sendMessage(telegramId, text);
+}
+
+async function sendFarmNotification(userId, telegramId, text) {
+  if (!isNotificationEnabled(userId, 'farm_notifications')) return;
   await sendMessage(telegramId, text);
 }
 
@@ -156,6 +163,18 @@ async function checkAll() {
 
     // Alive — clear died flag so next death fires again
     clearFlag(userId, 'died');
+
+    const farmCrops = getFarmCropReadiness(userId);
+    if (farmCrops.allPlantedReady) {
+      if (shouldSend(userId, 'farm_crops_ready')) {
+        await sendFarmNotification(userId, telegramId,
+          `🌾 <b>Your Farm harvest is ready!</b>\n\nAll planted crops are ready to collect. Open Peeper and check the Farm.`
+        );
+        markSent(userId, 'farm_crops_ready');
+      }
+    } else {
+      clearFlag(userId, 'farm_crops_ready');
+    }
 
     // ── FUN = 0 → max energy ──────────────────────────────────────────
     if (live.fun <= 0) {
