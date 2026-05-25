@@ -201,9 +201,9 @@ export default function BubbleGame({ onComplete, onClose }) {
             ✦ {coinsFound}
           </div>
         </div>
-        <div style={{ height: 5, background: 'rgba(255,255,255,0.15)', borderRadius: 99 }}>
+        <div style={{ height: 5, background: 'rgba(255,255,255,0.15)', borderRadius: 3 }}>
           <div style={{
-            height: '100%', borderRadius: 99,
+            height: '100%', borderRadius: 3,
             background: timeLeft <= 3 ? '#ff6b6b' : '#4fc3f7',
             width: `${timerPct}%`, transition: 'width 1s linear',
           }} />
@@ -284,7 +284,7 @@ export default function BubbleGame({ onComplete, onClose }) {
             {coinsFound > 0 ? `Found ${coinsFound} coins!` : 'No coins found!'}
           </div>
           {coinsFound > 0 && (
-            <div style={{ background: 'rgba(255,215,0,0.15)', border: '2px solid #ffd700', borderRadius: 99, padding: '8px 24px', color: '#ffd700', fontSize: 20, fontWeight: 800 }}>
+            <div style={{ background: 'rgba(255,215,0,0.15)', border: '2px solid #ffd700', borderRadius: 6, padding: '8px 24px', color: '#ffd700', fontSize: 20, fontWeight: 800 }}>
               +{earnedCoins} ✦ earned!
             </div>
           )}
@@ -298,7 +298,7 @@ export default function BubbleGame({ onComplete, onClose }) {
         <button onClick={onClose} style={{
           position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
           background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-          color: 'rgba(255,255,255,0.5)', padding: '7px 24px', borderRadius: 99,
+          color: 'rgba(255,255,255,0.5)', padding: '7px 24px', borderRadius: 6,
           fontSize: 12, cursor: 'pointer', zIndex: 10,
         }}>Quit</button>
       )}

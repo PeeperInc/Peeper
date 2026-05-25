@@ -95,14 +95,15 @@ export default function WardrobeScreen() {
     sortMode,
   ), [activeSlot, allItems, ownedItems, sortMode]);
 
-  function selectItem(itemId) {
-    setSlots((prev) => ({ ...prev, [currentSlotKey]: itemId || null }));
-  }
-
-  async function handleSave() {
+  async function applyOutfitChange(itemId) {
+    const previousSlots = slots;
+    const nextSlots = { ...slots, [currentSlotKey]: itemId || null };
+    setSlots(nextSlots);
     setSaving(true);
     try {
-      await updateOutfit(slots);
+      await updateOutfit(nextSlots);
+    } catch {
+      setSlots(previousSlots);
     } finally {
       setSaving(false);
     }
@@ -136,8 +137,8 @@ export default function WardrobeScreen() {
 
       {selected && (
         <div style={{ padding: '0 16px 8px' }}>
-          <button className="btn btn-secondary btn-full" onClick={() => selectItem(null)}>
-            Remove from slot
+          <button className="btn btn-secondary btn-full" onClick={() => applyOutfitChange(null)} disabled={saving}>
+            {saving ? 'Saving...' : 'Remove from slot'}
           </button>
         </div>
       )}
@@ -158,21 +159,17 @@ export default function WardrobeScreen() {
             <div
               key={item.item_id}
               className={`item-card${isSelected ? ' selected' : ''}`}
-              onClick={() => selectItem(isSelected ? null : item.item_id)}
-              style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
+              onClick={() => {
+                if (!saving) applyOutfitChange(isSelected ? null : item.item_id);
+              }}
+              style={{ cursor: saving ? 'wait' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, opacity: saving && !isSelected ? 0.82 : 1 }}
             >
               <ItemSprite itemId={item.item_id} name={item.name} size={56} />
               <div className="item-name" style={{ textAlign: 'center' }}>{item.name}</div>
-              {isSelected && <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>Equipped</div>}
+              {isSelected && <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>{saving ? 'Saving...' : 'Equipped'}</div>}
             </div>
           );
         })}
-      </div>
-
-      <div style={{ padding: '0 16px' }}>
-        <button className="btn btn-primary btn-full btn-lg" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Outfit'}
-        </button>
       </div>
     </div>
   );

@@ -410,6 +410,7 @@ export default function FlappyFrog({ onComplete, onClose }) {
   // ── Flap on canvas tap ──────────────────────────────────────────────
   function handleTap(e) {
     e.preventDefault();
+    e.stopPropagation?.();
     if (phase === 'start') {
       stateRef.current = 'playing';
       setPhase('playing');
@@ -433,14 +434,13 @@ export default function FlappyFrog({ onComplete, onClose }) {
       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
 
       <canvas ref={canvasRef} width={cW} height={cH}
-        style={{ display:'block', borderRadius:12, touchAction:'none' }}
-        onMouseDown={handleTap}
-        onTouchStart={handleTap}
+        style={{ display:'block', borderRadius:8, touchAction:'none' }}
+        onPointerDown={handleTap}
       />
 
       {/* Start overlay */}
       {phase === 'start' && (
-        <div onClick={handleTap} style={OVERLAY}>
+        <div onPointerDown={handleTap} style={OVERLAY}>
           <div style={{ fontSize:52, marginBottom:4 }}>{FROG_SYMBOL}</div>
           <div style={{ fontSize:36, fontWeight:900, color:'#6DBF6A',
             textShadow:'3px 3px 0 #000', letterSpacing:2, marginBottom:8 }}>
@@ -504,13 +504,13 @@ export default function FlappyFrog({ onComplete, onClose }) {
 const OVERLAY = {
   position:'absolute', inset:0, display:'flex', flexDirection:'column',
   alignItems:'center', justifyContent:'center', background:'rgba(5,10,30,0.84)',
-  borderRadius:12, cursor:'pointer',
+  borderRadius:6, cursor:'pointer',
 };
 const BTN_PRIMARY = {
-  background:'var(--accent,#6DBF6A)', color:'#fff', border:'none', borderRadius:12,
+  background:'var(--accent,#6DBF6A)', color:'#06100b', border:'none', borderRadius:6,
   padding:'14px 36px', fontSize:17, fontWeight:700, cursor:'pointer', marginBottom:10,
 };
 const BTN_SEC = {
   background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.2)',
-  borderRadius:12, padding:'12px 30px', fontSize:15, cursor:'pointer',
+  borderRadius:6, padding:'12px 30px', fontSize:15, cursor:'pointer',
 };

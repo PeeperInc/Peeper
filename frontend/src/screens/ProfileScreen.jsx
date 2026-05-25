@@ -199,8 +199,8 @@ function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewPro
   return (
     <div style={{ minHeight: '100%', paddingBottom: 24 }}>
       <div style={{ padding: '12px 16px 0' }}>
-        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '6px 0', fontSize: 15 }}>
-          ← Back
+        <button className="btn btn-ghost app-back-button" onClick={onBack}>
+          Back
         </button>
       </div>
 
@@ -208,7 +208,7 @@ function UserProfile({ userId, onBack, isSelf, selfUserId, onSendGift, onViewPro
       {error   && (
         <div style={{ textAlign: 'center', padding: 40 }}>
           <p style={{ color: 'var(--danger)' }}>{error}</p>
-          <button className="btn btn-secondary" onClick={onBack}>Go back</button>
+          <button className="btn btn-secondary app-back-button" onClick={onBack}>Back</button>
         </div>
       )}
 

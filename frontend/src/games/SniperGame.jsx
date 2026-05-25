@@ -3140,11 +3140,11 @@ const FULLSCREEN = {
 };
 const RESULT_CARD = {
   position:'relative', zIndex:10, background:'rgba(10,14,30,0.97)',
-  border:'1px solid rgba(255,255,255,0.1)', borderRadius:20,
+  border:'1px solid rgba(255,255,255,0.1)', borderRadius:8,
   padding:'28px 24px', textAlign:'center', width:300,
 };
 const BTN = {
-  background:'var(--accent,#6DBF6A)', color:'#fff', border:'none',
-  borderRadius:12, padding:'14px 36px', fontSize:17, fontWeight:700,
+  background:'var(--accent,#6DBF6A)', color:'#06100b', border:'none',
+  borderRadius:6, padding:'14px 36px', fontSize:17, fontWeight:700,
   cursor:'pointer', width:'100%',
 };

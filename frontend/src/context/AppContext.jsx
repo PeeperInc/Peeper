@@ -409,7 +409,7 @@ export function AppProvider({ children }) {
     try {
       const result = await api.updateOutfit(slots);
       dispatch({ type: 'UPDATE_GAME', payload: { peeper: result.peeper } });
-      showToast('Outfit updated! ✨');
+      showToast('Outfit saved!');
       return result;
     } catch (err) {
       showToast(err.message || 'Failed to update outfit');

@@ -52,8 +52,8 @@ export default function VisitHomeScreen({ userId, onBack }) {
   return (
     <div className="personal-home-shell personal-home-shell-immersive visit-home-shell">
       <div className="personal-home-topbar visit-home-topbar">
-        <button className="btn btn-ghost personal-home-back" onClick={onBack}>
-          ← Back
+        <button className="btn btn-ghost personal-home-back app-back-button" onClick={onBack}>
+          Back
         </button>
       </div>
 
