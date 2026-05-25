@@ -398,25 +398,22 @@ function usePageVisibility() {
 
 // ── Theme handler ────────────────────────────────────────────────────────────
 function ThemeWrapper({ children }) {
-  const [theme, setTheme] = useState('light');
+  const [theme, setTheme] = useState('dark');
   usePageVisibility();
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
 
-    function applyTheme(scheme) {
-      setTheme(scheme === 'dark' ? 'dark' : 'light');
-      document.documentElement.setAttribute('data-theme', scheme === 'dark' ? 'dark' : 'light');
+    function applyTheme() {
+      setTheme('dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
     }
 
     if (tg) {
-      applyTheme(tg.colorScheme || 'light');
-      tg.onEvent?.('themeChanged', () => applyTheme(tg.colorScheme));
+      applyTheme();
+      tg.onEvent?.('themeChanged', applyTheme);
     } else {
-      // Fallback: match system
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      applyTheme(mq.matches ? 'dark' : 'light');
-      mq.addEventListener('change', e => applyTheme(e.matches ? 'dark' : 'light'));
+      applyTheme();
     }
   }, []);
 

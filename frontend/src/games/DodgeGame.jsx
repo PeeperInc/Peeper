@@ -220,7 +220,7 @@ export default function DodgeGame({ onComplete, onClose }) {
       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
 
       <canvas ref={canvasRef} width={cW} height={cH}
-        style={{ display:'block', borderRadius:12, touchAction:'none', cursor:'none' }} />
+        style={{ display:'block', borderRadius:8, touchAction:'none', cursor:'none' }} />
 
       {phase === 'start' && (
         <div style={OVL}
@@ -265,9 +265,9 @@ export default function DodgeGame({ onComplete, onClose }) {
 }
 
 const OVL  = { position:'absolute', inset:0, display:'flex', flexDirection:'column',
-  alignItems:'center', justifyContent:'center', background:'rgba(5,10,25,0.88)', borderRadius:12 };
-const BTN_P = { background:'var(--accent,#6DBF6A)', color:'#fff', border:'none',
-  borderRadius:12, padding:'13px 32px', fontSize:16, fontWeight:700, cursor:'pointer', marginBottom:10, width:200 };
+  alignItems:'center', justifyContent:'center', background:'rgba(5,10,25,0.88)', borderRadius:8 };
+const BTN_P = { background:'var(--accent,#6DBF6A)', color:'#06100b', border:'none',
+  borderRadius:6, padding:'13px 32px', fontSize:16, fontWeight:700, cursor:'pointer', marginBottom:10, width:200 };
 const BTN_S = { background:'rgba(255,255,255,0.1)', color:'#fff',
-  border:'1px solid rgba(255,255,255,0.2)', borderRadius:12, padding:'11px 32px',
+  border:'1px solid rgba(255,255,255,0.2)', borderRadius:6, padding:'11px 32px',
   fontSize:15, cursor:'pointer', width:200 };

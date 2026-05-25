@@ -63,14 +63,14 @@ export default function FamilyProfile({ familyId, onBack, onViewProfile }) {
 
   if (loading) return (
     <div style={{ padding: 16 }}>
-      <button className="btn btn-ghost" style={{ padding: '6px 0', fontSize: 15 }} onClick={onBack}>← Back</button>
+      <button className="btn btn-ghost app-back-button" onClick={onBack}>Back</button>
       <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-hint)' }}>Loading…</div>
     </div>
   );
 
   if (error || !data) return (
     <div style={{ padding: 16 }}>
-      <button className="btn btn-ghost" style={{ padding: '6px 0', fontSize: 15 }} onClick={onBack}>← Back</button>
+      <button className="btn btn-ghost app-back-button" onClick={onBack}>Back</button>
       <div style={{ textAlign: 'center', padding: 40, color: 'var(--danger)' }}>{error || 'Not found'}</div>
     </div>
   );
@@ -81,7 +81,7 @@ export default function FamilyProfile({ familyId, onBack, onViewProfile }) {
     <div style={{ paddingBottom: 24 }}>
       {/* Back */}
       <div style={{ padding: '12px 16px 0' }}>
-        <button className="btn btn-ghost" style={{ padding: '6px 0', fontSize: 15 }} onClick={onBack}>← Back</button>
+        <button className="btn btn-ghost app-back-button" onClick={onBack}>Back</button>
       </div>
 
       {/* Header */}

@@ -3,7 +3,7 @@ import BottomSheet from '../components/BottomSheet';
 import CatalogSortToggle from '../components/CatalogSortToggle';
 import { CATALOG_SORT_MODES, sortCatalogItems } from '../utils/catalogSort.mjs';
 
-const BACK_LABEL = '← Back';
+const BACK_LABEL = 'Back';
 const COIN_SYMBOL = '✦';
 const CHECK_LABEL = '✓';
 const MIDDOT = '·';
@@ -209,7 +209,7 @@ export default function HomeShopScreen({
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '16px 16px 8px' }}>
-        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px', flexShrink: 0 }}>
+        <button className="btn btn-ghost app-back-button" onClick={onBack} style={{ flexShrink: 0 }}>
           {BACK_LABEL}
         </button>
         <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>

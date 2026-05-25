@@ -136,11 +136,11 @@ function useFarmFit(signature) {
   return { viewportRef, layoutRef, ...fit };
 }
 
-function FarmButton({ children, variant = 'secondary', disabled = false, onClick, style }) {
+function FarmButton({ children, variant = 'secondary', disabled = false, onClick, style, className = '' }) {
   return (
     <button
       type="button"
-      className={`btn btn-${variant}`}
+      className={`btn btn-${variant}${className ? ` ${className}` : ''}`}
       disabled={disabled}
       onClick={onClick}
       style={{
@@ -1094,7 +1094,7 @@ export default function FarmScreen({ onClose, onStateChange, showToast }) {
             }}
           >
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: microFarm ? 7 : 12 }}>
-          <FarmButton onClick={onClose}>Back</FarmButton>
+          <FarmButton onClick={onClose} className="app-back-button">Back</FarmButton>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: microFarm ? 20 : 24, fontWeight: 1000, letterSpacing: '-0.04em' }}>Farm</div>
             <div style={{ fontSize: microFarm ? 10 : 11, color: 'var(--farm-header-subtitle)', fontWeight: 800 }}>

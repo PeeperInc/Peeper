@@ -398,7 +398,7 @@ function MiniInfoTile({
       onClick={action || undefined}
       style={{
         minHeight: 52,
-        borderRadius: 16,
+        borderRadius: 6,
         padding: '9px 10px',
         background: accentBackground,
         border: `1px solid ${borderColor}`,
@@ -409,7 +409,7 @@ function MiniInfoTile({
         gap: 4,
         textAlign: 'center',
         cursor: action ? 'pointer' : 'default',
-        boxShadow: action ? '0 12px 24px rgba(0,0,0,0.14)' : 'none',
+        boxShadow: 'none',
         overflow: 'hidden',
         ...tileStyle,
       }}
@@ -499,16 +499,16 @@ function ActionButton({ onClick, children, disabled = false, accent = '#77f0a5',
       style={{
         flex: 1,
         minHeight: 52,
-        borderRadius: 18,
-        border: '1px solid rgba(255,255,255,0.14)',
+        borderRadius: 6,
+        border: '1px solid rgba(218,255,170,0.18)',
         background: disabled
-          ? 'rgba(255,255,255,0.08)'
-          : `linear-gradient(180deg, ${accent}22 0%, ${accent}16 100%)`,
+          ? 'rgba(20,33,28,0.72)'
+          : `linear-gradient(180deg, ${accent}28 0%, rgba(8,30,22,0.88) 100%)`,
         color: disabled ? 'rgba(227,238,231,0.5)' : '#f3fff7',
         fontSize: 17,
         fontWeight: 800,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        boxShadow: disabled ? 'none' : '0 14px 28px rgba(0,0,0,0.16)',
+        boxShadow: 'none',
         ...style,
       }}
     >
@@ -573,7 +573,7 @@ function TurnTimerBar({ remainingMs, displaySeconds, progress }) {
       <div
         style={{
           height: 8,
-          borderRadius: 999,
+          borderRadius: 3,
           background: 'rgba(255,255,255,0.08)',
           overflow: 'hidden',
           border: '1px solid rgba(255,255,255,0.08)',
@@ -583,7 +583,7 @@ function TurnTimerBar({ remainingMs, displaySeconds, progress }) {
           style={{
             width: `${safeProgress}%`,
             height: '100%',
-            borderRadius: 999,
+            borderRadius: 3,
             background: safeProgress > 40
               ? 'linear-gradient(90deg, #6af0a6 0%, #93f8c2 100%)'
               : safeProgress > 15
@@ -605,7 +605,7 @@ function RulesSheet({ onClose }) {
         width: 'min(calc(100% - 18px), 388px)',
         alignSelf: 'center',
         margin: '0 auto 12px',
-        borderRadius: 28,
+        borderRadius: 8,
         padding: '20px 18px 24px',
         background: 'linear-gradient(180deg, rgba(11,35,20,0.98) 0%, rgba(7,21,13,0.99) 100%)',
         color: '#eff9f1',
@@ -664,7 +664,7 @@ function SeatMarker({ seat, isCurrentTurn, isWinner, flashOn = true, onClick }) 
               left: '50%',
               transform: `translateX(-50%) scale(${flashOn ? 1.04 : 0.98})`,
               padding: '2px 7px',
-              borderRadius: 999,
+              borderRadius: 4,
               background: flashOn
                 ? 'linear-gradient(180deg, rgba(255,224,125,0.98) 0%, rgba(255,195,95,0.98) 100%)'
                 : 'linear-gradient(180deg, rgba(139,240,178,0.98) 0%, rgba(94,210,140,0.98) 100%)',
@@ -754,7 +754,7 @@ function SeatHandStrip({
         <div
           style={{
             padding: '2px 7px',
-            borderRadius: 999,
+            borderRadius: 4,
             background: isWinner ? 'rgba(132,240,168,0.14)' : 'rgba(0,0,0,0.24)',
             border: `1px solid ${isWinner ? 'rgba(132,240,168,0.34)' : 'rgba(255,255,255,0.1)'}`,
             color: totalColor,
@@ -817,7 +817,7 @@ function TableHandZone({
           <span
             style={{
               padding: '2px 7px',
-              borderRadius: 999,
+              borderRadius: 4,
               background: highlight ? 'rgba(132,240,168,0.14)' : 'rgba(0,0,0,0.24)',
               border: `1px solid ${highlight ? 'rgba(132,240,168,0.34)' : 'rgba(255,255,255,0.1)'}`,
               color: highlight ? '#96f2bd' : '#f5fff7',
@@ -846,7 +846,7 @@ function LobbyRow({ lobby, onPress }) {
       style={{
         width: '100%',
         minHeight: 62,
-        borderRadius: 18,
+        borderRadius: 7,
         border: '1px solid rgba(255,255,255,0.12)',
         background: 'linear-gradient(180deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.06) 100%)',
         padding: '10px 12px',
@@ -862,7 +862,7 @@ function LobbyRow({ lobby, onPress }) {
           <span
             style={{
               padding: '3px 8px',
-              borderRadius: 999,
+              borderRadius: 4,
               fontSize: 10,
               fontWeight: 800,
               color: isClosed ? '#ffd98b' : '#8af0b1',
@@ -889,8 +889,8 @@ function LobbyRow({ lobby, onPress }) {
         style={{
           flexShrink: 0,
           padding: '8px 10px',
-          borderRadius: 14,
-          background: 'rgba(255,255,255,0.08)',
+          borderRadius: 5,
+          background: 'rgba(8,30,22,0.82)',
           color: '#f4fff7',
           fontSize: 12,
           fontWeight: 800,
@@ -912,7 +912,7 @@ function SeatInfoSheet({ seat, onClose, onViewProfile }) {
         width: 'min(calc(100% - 22px), 360px)',
         alignSelf: 'center',
         margin: '0 auto 12px',
-        borderRadius: 24,
+        borderRadius: 8,
         padding: '18px 18px 24px',
         background: 'var(--bg-primary)',
         color: 'var(--text-primary)',
@@ -956,7 +956,7 @@ function CreateTableSheet({ busy, onClose, onCreate }) {
         width: 'min(calc(100% - 22px), 360px)',
         alignSelf: 'center',
         margin: '0 auto 12px',
-        borderRadius: 24,
+        borderRadius: 8,
         padding: '18px 18px 22px',
         background: 'linear-gradient(180deg, rgba(11,35,20,0.98) 0%, rgba(7,21,13,0.99) 100%)',
         color: '#eef9f2',
@@ -994,7 +994,7 @@ function JoinCodeSheet({ busy, presetLobbyId, onClose, onSubmit }) {
         width: 'min(calc(100% - 22px), 360px)',
         alignSelf: 'center',
         margin: '0 auto 12px',
-        borderRadius: 24,
+        borderRadius: 8,
         padding: '18px 18px 22px',
         background: 'linear-gradient(180deg, rgba(11,35,20,0.98) 0%, rgba(7,21,13,0.99) 100%)',
         color: '#eef9f2',
@@ -1015,7 +1015,7 @@ function JoinCodeSheet({ busy, presetLobbyId, onClose, onSubmit }) {
         style={{
           width: '100%',
           minHeight: 50,
-          borderRadius: 16,
+          borderRadius: 6,
           border: '1px solid rgba(255,255,255,0.14)',
           background: 'rgba(255,255,255,0.08)',
           padding: '0 14px',
@@ -1116,7 +1116,7 @@ function InvitePlayerSheet({ busy, onClose, onInvite }) {
         width: 'min(calc(100% - 22px), 380px)',
         alignSelf: 'center',
         margin: '0 auto 12px',
-        borderRadius: 24,
+        borderRadius: 8,
         padding: '18px 18px 24px',
         background: 'linear-gradient(180deg, #173923 0%, #0d2517 100%)',
         color: '#f3fff6',
@@ -1173,7 +1173,7 @@ function InvitePlayerSheet({ busy, onClose, onInvite }) {
                 alignItems: 'center',
                 gap: 10,
                 width: '100%',
-                borderRadius: 16,
+                borderRadius: 6,
                 padding: '10px 12px',
                 border: active ? '1px solid rgba(255,216,139,0.6)' : '1px solid rgba(255,255,255,0.1)',
                 background: active ? 'rgba(255,216,139,0.16)' : 'rgba(255,255,255,0.06)',
@@ -1314,7 +1314,7 @@ function LobbyBrowserView({
     <div
       style={{
         height: '100%',
-        background: 'radial-gradient(circle at top, #1b4f2e 0%, #0b2213 58%, #08140d 100%)',
+        background: 'radial-gradient(circle at 50% 0%, rgba(183,255,79,0.18), transparent 34%), linear-gradient(180deg, #061f19 0%, #05130f 62%, #030807 100%)',
         color: '#eefaf1',
         overflow: 'hidden',
       }}
@@ -1339,23 +1339,16 @@ function LobbyBrowserView({
               gap: 12,
             }}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr 56px', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr 72px', alignItems: 'center' }}>
               <button
                 type="button"
+                className="app-back-button"
                 onClick={onBack}
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: '50%',
-                  border: '1px solid rgba(255,255,255,0.14)',
-                  background: 'rgba(255,255,255,0.08)',
-                  color: '#f3fff7',
-                  fontSize: 20,
-                  fontWeight: 900,
-                  cursor: 'pointer',
+                  justifySelf: 'start',
                 }}
               >
-                {'<'}
+                Back
               </button>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>Blackjack</div>
@@ -1391,7 +1384,7 @@ function LobbyBrowserView({
             {loading ? (
               <div
                 style={{
-                  borderRadius: 20,
+                  borderRadius: 8,
                   padding: '18px 16px',
                   background: 'rgba(255,255,255,0.07)',
                   border: '1px solid rgba(255,255,255,0.1)',
@@ -1409,9 +1402,9 @@ function LobbyBrowserView({
                     flexDirection: 'column',
                     gap: 8,
                     padding: '12px',
-                    borderRadius: 22,
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8,
+                    background: 'var(--terrarium-panel)',
+                    border: '1px solid rgba(183,255,79,0.16)',
                   }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.7, color: '#86f0b1', textTransform: 'uppercase' }}>
@@ -1434,9 +1427,9 @@ function LobbyBrowserView({
                     flexDirection: 'column',
                     gap: 8,
                     padding: '12px',
-                    borderRadius: 22,
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8,
+                    background: 'var(--terrarium-panel)',
+                    border: '1px solid rgba(183,255,79,0.16)',
                   }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.7, color: '#ffd98c', textTransform: 'uppercase' }}>
@@ -1592,7 +1585,7 @@ function TableView({
     <div
       style={{
         height: '100%',
-        background: 'radial-gradient(circle at top, #1d5332 0%, #0b2314 58%, #08140d 100%)',
+        background: 'radial-gradient(circle at 50% 0%, rgba(183,255,79,0.18), transparent 34%), linear-gradient(180deg, #061f19 0%, #05130f 62%, #030807 100%)',
         color: '#eefaf1',
         overflow: 'hidden',
       }}
@@ -1632,7 +1625,7 @@ function TableView({
                 disabled={!state.self.canLeave || busy}
                 style={{
                   minHeight: 40,
-                  borderRadius: 16,
+                  borderRadius: 6,
                   border: '1px solid rgba(255,255,255,0.12)',
                   background: !state.self.canLeave || busy ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)',
                   color: !state.self.canLeave || busy ? 'rgba(244,255,247,0.44)' : '#f4fff7',
@@ -1739,7 +1732,7 @@ function TableView({
               {showBettingTimer ? (
                 <div
                   style={{
-                    borderRadius: 999,
+                    borderRadius: 5,
                     padding: isCompactPhone ? '5px 11px' : '7px 14px',
                     fontSize: isCompactPhone ? 11 : 13,
                     fontWeight: 900,
@@ -1755,7 +1748,7 @@ function TableView({
               ) : showSettlementTimer ? (
                 <div
                   style={{
-                    borderRadius: 999,
+                    borderRadius: 5,
                     padding: isCompactPhone ? '5px 11px' : '7px 14px',
                     fontSize: isCompactPhone ? 11 : 13,
                     fontWeight: 900,
@@ -1772,7 +1765,7 @@ function TableView({
                 <div style={{ opacity: 0, pointerEvents: 'none' }}>
                   <div
                     style={{
-                      borderRadius: 999,
+                      borderRadius: 5,
                       padding: isCompactPhone ? '5px 11px' : '7px 14px',
                       fontSize: isCompactPhone ? 11 : 13,
                       fontWeight: 900,
@@ -1788,10 +1781,10 @@ function TableView({
               style={{
                 position: 'relative',
                 height: tableHeight,
-                borderRadius: 34,
+                borderRadius: 12,
                 background: 'radial-gradient(circle at 50% 38%, rgba(47,123,70,0.96) 0%, rgba(22,72,39,0.98) 54%, rgba(12,30,18,0.99) 100%)',
-                border: '1px solid rgba(255,255,255,0.12)',
-                boxShadow: '0 26px 44px rgba(0,0,0,0.22), inset 0 2px 0 rgba(255,255,255,0.08)',
+                border: '1px solid rgba(218,255,170,0.18)',
+                boxShadow: 'none',
                 overflow: 'hidden',
               }}
             >
@@ -1881,10 +1874,10 @@ function TableView({
 
             <div
               style={{
-                borderRadius: 26,
+                borderRadius: 8,
                 padding: isCompactPhone ? '8px 9px 10px' : '12px 13px 14px',
-                background: 'linear-gradient(180deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.05) 100%)',
-                border: '1px solid rgba(255,255,255,0.12)',
+                background: 'var(--terrarium-panel)',
+                border: '1px solid rgba(218,255,170,0.18)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: isCompactPhone ? 6 : 8,
@@ -1904,7 +1897,7 @@ function TableView({
                   <div
                     style={{
                       minHeight: isCompactPhone ? 42 : 48,
-                      borderRadius: 18,
+                      borderRadius: 6,
                       display: 'grid',
                       placeItems: 'center',
                       background: 'rgba(255,255,255,0.08)',
@@ -1953,7 +1946,7 @@ function TableView({
                 <div
                   style={{
                     minHeight: isCompactPhone ? 40 : 46,
-                    borderRadius: 16,
+                    borderRadius: 6,
                     display: 'grid',
                     placeItems: 'center',
                     padding: '0 12px',

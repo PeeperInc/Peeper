@@ -694,9 +694,10 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
                 )}
                 <div style={{
                   background: isMe ? 'var(--accent)' : 'var(--bg-secondary)',
-                  color: isMe ? '#fff' : 'var(--text-primary)',
+                  color: isMe ? '#142214' : 'var(--text-primary)',
                   padding: '8px 12px', borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                   fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word',
+                  fontWeight: isMe ? 850 : 700,
                 }}>
                   {m.message}
                 </div>

@@ -269,7 +269,7 @@ export default function ReactionGame({ onComplete, onClose }) {
             {totalHits > 0 ? `${totalHits}/${TOTAL_COINS} caught!` : 'No hits!'}
           </div>
           {totalHits > 0 && (
-            <div style={{ background: 'rgba(255,215,0,0.15)', border: '2px solid #ffd700', borderRadius: 99, padding: '8px 24px', color: '#ffd700', fontSize: 20, fontWeight: 800 }}>
+            <div style={{ background: 'rgba(255,215,0,0.15)', border: '2px solid #ffd700', borderRadius: 6, padding: '8px 24px', color: '#ffd700', fontSize: 20, fontWeight: 800 }}>
               +{finalCoins} ✦ coins!
             </div>
           )}
@@ -283,7 +283,7 @@ export default function ReactionGame({ onComplete, onClose }) {
         <button onClick={onClose} style={{
           position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
           background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-          color: 'rgba(255,255,255,0.5)', padding: '8px 28px', borderRadius: 99,
+          color: 'rgba(255,255,255,0.5)', padding: '8px 28px', borderRadius: 6,
           fontSize: 13, cursor: 'pointer', zIndex: 10,
         }}>Quit</button>
       )}

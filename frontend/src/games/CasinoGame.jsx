@@ -225,7 +225,7 @@ function Reel({ column, plan, animate }) {
         width: 'var(--casino-reel-size)',
         height: 'calc(var(--casino-reel-size) * 3)',
         minWidth: 0,
-        borderRadius: 24,
+        borderRadius: 7,
         overflow: 'hidden',
         position: 'relative',
         background: 'linear-gradient(180deg, rgba(255,248,214,0.98) 0%, rgba(231,246,217,0.98) 52%, rgba(214,236,201,0.98) 100%)',
@@ -234,7 +234,9 @@ function Reel({ column, plan, animate }) {
       }}
     >
       <div
+        className="casino-reel-strip"
         style={{
+          '--casino-reel-duration': plan ? `${plan.durationMs}ms` : '0ms',
           display: 'flex',
           flexDirection: 'column',
           transform: `translate3d(0, ${translate}, 0)`,
@@ -284,7 +286,7 @@ function CombosSheet({ onClose }) {
         maxHeight: 'min(68dvh, 500px)',
         alignSelf: 'center',
         margin: '0 auto 10px',
-        borderRadius: 28,
+        borderRadius: 9,
         background: 'var(--bg-primary)',
         color: 'var(--text-primary)',
         display: 'flex',
@@ -320,7 +322,7 @@ function CombosSheet({ onClose }) {
               flexShrink: 0,
               width: 32,
               height: 32,
-              borderRadius: 999,
+              borderRadius: 5,
               border: '1px solid var(--border)',
               background: 'var(--bg-secondary)',
               color: 'var(--text-secondary)',
@@ -350,7 +352,7 @@ function CombosSheet({ onClose }) {
               <div
                 key={combo.id}
                 style={{
-                  borderRadius: 18,
+                  borderRadius: 7,
                   padding: '11px 12px',
                   background: combo.jackpot
                     ? 'linear-gradient(180deg, rgba(255,223,130,0.18) 0%, rgba(255,223,130,0.08) 100%)'
@@ -367,7 +369,7 @@ function CombosSheet({ onClose }) {
                       gap: 4,
                       minWidth: 0,
                       padding: '6px 8px',
-                      borderRadius: 14,
+                      borderRadius: 5,
                       background: 'rgba(255,255,255,0.08)',
                       border: '1px solid rgba(255,255,255,0.08)',
                     }}
@@ -380,7 +382,7 @@ function CombosSheet({ onClose }) {
                   <div
                     style={{
                       flexShrink: 0,
-                      borderRadius: 999,
+                      borderRadius: 5,
                       padding: '6px 10px',
                       background: combo.jackpot ? 'rgba(240,184,76,0.16)' : 'var(--bg-secondary)',
                       color: combo.jackpot ? '#d79a22' : 'var(--text-primary)',
@@ -648,7 +650,7 @@ export default function CasinoGame({ onClose }) {
         zIndex: 200,
         display: 'flex',
         flexDirection: 'column',
-        background: 'radial-gradient(circle at 18% 0%, rgba(255,213,104,0.22) 0%, rgba(255,213,104,0.08) 18%, transparent 40%), radial-gradient(circle at 84% 10%, rgba(255,255,255,0.09) 0%, transparent 16%), linear-gradient(180deg, #21411d 0%, #122719 35%, #09130f 100%)',
+        background: 'radial-gradient(circle at 18% 0%, rgba(183,255,79,0.18) 0%, rgba(183,255,79,0.06) 22%, transparent 42%), radial-gradient(circle at 84% 10%, rgba(255,209,94,0.12) 0%, transparent 18%), linear-gradient(180deg, #061f19 0%, #05130f 62%, #030807 100%)',
         color: '#fff',
         overflow: 'hidden',
       }}
@@ -705,20 +707,13 @@ export default function CasinoGame({ onClose }) {
             >
               <button
                 type="button"
+                className="app-back-button"
                 onClick={onClose}
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 999,
-                  border: '1px solid rgba(255,255,255,0.14)',
-                  background: 'rgba(255,255,255,0.08)',
-                  color: '#fff',
-                  fontSize: 18,
-                  cursor: 'pointer',
                   justifySelf: 'start',
                 }}
               >
-                &larr;
+                Back
               </button>
 
               <div style={{ textAlign: 'center' }}>
@@ -738,7 +733,7 @@ export default function CasinoGame({ onClose }) {
                 onClick={() => setShowCombos(true)}
                 style={{
                   minHeight: 36,
-                  borderRadius: 999,
+                  borderRadius: 6,
                   border: '1px solid rgba(255,255,255,0.14)',
                   background: 'rgba(255,255,255,0.08)',
                   color: '#fff',
@@ -756,10 +751,10 @@ export default function CasinoGame({ onClose }) {
             <div style={{ padding: '0 10px' }}>
               <div
                 style={{
-                  borderRadius: 22,
+                  borderRadius: 8,
                   padding: '10px 12px',
-                  background: 'linear-gradient(180deg, rgba(255,231,163,0.18) 0%, rgba(255,231,163,0.08) 100%)',
-                  border: '1px solid rgba(255,231,163,0.24)',
+                  background: 'var(--terrarium-panel)',
+                  border: '1px solid rgba(255,209,94,0.28)',
                   textAlign: 'center',
                   animation: jackpotPulse ? 'casino-jackpot-pulse 1s ease' : 'none',
                 }}
@@ -798,9 +793,9 @@ export default function CasinoGame({ onClose }) {
                   style={{
                     minHeight: 44,
                     width: 282,
-                    borderRadius: 999,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'rgba(255,255,255,0.06)',
+                    borderRadius: 7,
+                    border: '1px solid rgba(183,255,79,0.16)',
+                    background: 'rgba(6, 21, 16, 0.82)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -823,11 +818,11 @@ export default function CasinoGame({ onClose }) {
               <div
                 style={{
                   position: 'relative',
-                  borderRadius: 28,
+                  borderRadius: 10,
                   padding: '12px 10px 12px',
-                  background: 'linear-gradient(180deg, rgba(83,121,57,0.92) 0%, rgba(39,69,36,0.96) 100%)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  boxShadow: '0 22px 52px rgba(0,0,0,0.26)',
+                  background: 'linear-gradient(180deg, rgba(13, 42, 29, 0.96) 0%, rgba(5, 17, 14, 0.98) 100%)',
+                  border: '1px solid rgba(183,255,79,0.18)',
+                  boxShadow: 'none',
                   overflow: 'hidden',
                 }}
               >
@@ -835,7 +830,7 @@ export default function CasinoGame({ onClose }) {
                   style={{
                     position: 'absolute',
                     inset: -8,
-                    borderRadius: 32,
+                    borderRadius: 12,
                     background: 'radial-gradient(circle at 50% 18%, rgba(255,214,102,0.22) 0%, rgba(255,214,102,0.1) 22%, rgba(255,214,102,0) 58%)',
                     opacity: 0,
                     transform: 'scale(0.985)',
@@ -867,7 +862,7 @@ export default function CasinoGame({ onClose }) {
                   <div
                     style={{
                       position: 'relative',
-                      borderRadius: 22,
+                      borderRadius: 8,
                       padding: '9px 7px',
                       background: 'linear-gradient(180deg, rgba(255,241,209,0.08) 0%, rgba(255,241,209,0.02) 100%)',
                       border: '1px solid rgba(255,255,255,0.08)',
@@ -902,7 +897,7 @@ export default function CasinoGame({ onClose }) {
                           left: '50%',
                           transform: 'translateX(-50%)',
                           padding: '2px 8px',
-                          borderRadius: 999,
+                          borderRadius: 5,
                           background: 'linear-gradient(180deg, rgba(255,224,125,0.98) 0%, rgba(255,195,95,0.98) 100%)',
                           color: '#173423',
                           fontSize: 9,
@@ -1032,7 +1027,7 @@ export default function CasinoGame({ onClose }) {
               <div
                 style={{
                   minHeight: 62,
-                  borderRadius: 20,
+                  borderRadius: 8,
                   padding: '10px 12px',
                   background: result?.jackpotWon
                     ? 'linear-gradient(180deg, rgba(255,215,96,0.2) 0%, rgba(255,215,96,0.08) 100%)'

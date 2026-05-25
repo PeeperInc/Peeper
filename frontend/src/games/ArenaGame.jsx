@@ -17,16 +17,16 @@ const ARENA_QUEUE_SECONDS = 60;
 const ATTACK_REVEAL_MS = 2000;
 
 const arenaPanelStyle = {
-  background: 'linear-gradient(145deg, rgba(42,24,31,0.92), rgba(18,21,28,0.9))',
-  color: '#fff6e6',
-  border: '1px solid rgba(255,205,117,0.2)',
+  background: 'var(--terrarium-panel)',
+  color: '#f2ffe8',
+  border: '1px solid rgba(183,255,79,0.18)',
   borderRadius: 8,
-  boxShadow: '0 10px 28px rgba(0,0,0,0.26)',
+  boxShadow: 'none',
 };
 
 const arenaSubPanelStyle = {
-  background: 'rgba(255,255,255,0.07)',
-  border: '1px solid rgba(255,255,255,0.12)',
+  background: 'rgba(8, 30, 22, 0.82)',
+  border: '1px solid rgba(218, 255, 170, 0.14)',
   borderRadius: 6,
 };
 
@@ -316,7 +316,7 @@ function HpBar({ player, align = 'left' }) {
         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player?.firstName || 'Waiting...'}</span>
         <SupporterStar user={player} size={11} />
       </div>
-      <div style={{ marginTop: 4, height: 10, borderRadius: 99, background: 'rgba(0,0,0,0.58)', border: '1px solid rgba(0,0,0,0.9)', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.55)' }}>
+      <div style={{ marginTop: 4, height: 10, borderRadius: 3, background: 'rgba(0,0,0,0.58)', border: '1px solid rgba(0,0,0,0.9)', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.55)' }}>
         <div
           style={{
             height: '100%',
@@ -349,7 +349,7 @@ const ArenaStage = React.memo(function ArenaStage({ state, isRevealing = false, 
       style={{
         position: 'relative',
         height: 'clamp(288px, 42dvh, 320px)',
-        borderRadius: 28,
+        borderRadius: 10,
         overflow: 'hidden',
         border: '1.5px solid rgba(255,255,255,0.22)',
         background: 'linear-gradient(180deg, #1b2544 0%, #2e375d 48%, #563331 49%, #2a1f27 100%)',
@@ -515,7 +515,7 @@ const ArenaStage = React.memo(function ArenaStage({ state, isRevealing = false, 
             transform: 'translateX(-50%)',
             zIndex: 7,
             padding: '7px 12px',
-            borderRadius: 999,
+            borderRadius: 4,
             background: 'rgba(0,0,0,0.34)',
             color: 'white',
             fontSize: 12,
@@ -1196,7 +1196,7 @@ export default function ArenaGame({ onClose, inviteToken = null, onInviteTokenCo
         position: 'fixed',
         inset: 0,
         zIndex: 180,
-        background: 'radial-gradient(circle at 50% 0%, rgba(138,55,45,0.42), transparent 34%), linear-gradient(180deg, #1a1219, #090b10 72%)',
+        background: 'radial-gradient(circle at 50% 0%, rgba(183,255,79,0.18), transparent 34%), radial-gradient(circle at 12% 42%, rgba(255,209,94,0.08), transparent 28%), linear-gradient(180deg, #061f19 0%, #05130f 62%, #030807 100%)',
         padding: 'calc(var(--tg-total-top) + 10px) 14px calc(var(--tg-safe-bottom) + 14px)',
         color: 'white',
         overflowY: 'auto',
@@ -1211,7 +1211,7 @@ export default function ArenaGame({ onClose, inviteToken = null, onInviteTokenCo
       <div style={{ maxWidth: 620, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {isLobby ? (
           <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr 88px', alignItems: 'center', gap: 8 }}>
-            <button className="btn btn-secondary" onClick={onClose} style={{ borderRadius: 4 }}>
+            <button className="app-back-button" onClick={onClose}>
               Back
             </button>
             <div style={{ textAlign: 'center', fontSize: 24, fontWeight: 1000, textShadow: OUTLINE_SHADOW }}>Arena</div>

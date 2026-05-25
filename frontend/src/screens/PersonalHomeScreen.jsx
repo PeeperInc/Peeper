@@ -4,7 +4,7 @@ import HomeScene from '../components/HomeScene';
 import HomeShopScreen from './HomeShopScreen';
 import HomeDecorScreen from './HomeDecorScreen';
 
-const BACK_LABEL = '\u2190 Back';
+const BACK_LABEL = 'Back';
 const COIN_SYMBOL = '\u2726';
 
 export default function PersonalHomeScreen({ onClose }) {
@@ -130,7 +130,7 @@ export default function PersonalHomeScreen({ onClose }) {
   return (
     <div className="personal-home-shell personal-home-shell-immersive">
       <div className="personal-home-topbar">
-        <button className="btn btn-ghost personal-home-back" onClick={onClose}>
+        <button className="btn btn-ghost personal-home-back app-back-button" onClick={onClose}>
           {BACK_LABEL}
         </button>
 

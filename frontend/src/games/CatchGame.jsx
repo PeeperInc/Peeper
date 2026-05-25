@@ -245,8 +245,8 @@ export default function CatchGame({ onComplete, onClose }) {
       </div>
 
       {/* Progress bar */}
-      <div style={{ position: 'absolute', top: 60, left: 20, right: 20, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 99, zIndex: 10 }}>
-        <div style={{ height: '100%', borderRadius: 99, background: '#ffd700', width: `${(caughtN / TOTAL_TOYS) * 100}%`, transition: 'width 0.2s' }} />
+      <div style={{ position: 'absolute', top: 60, left: 20, right: 20, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 3, zIndex: 10 }}>
+        <div style={{ height: '100%', borderRadius: 3, background: '#ffd700', width: `${(caughtN / TOTAL_TOYS) * 100}%`, transition: 'width 0.2s' }} />
       </div>
 
       {/* Items — each mounted once, never remounts */}
@@ -275,7 +275,7 @@ export default function CatchGame({ onComplete, onClose }) {
             {phase === 'won' ? 'You Won!' : 'Game Over!'}
           </div>
           {phase === 'won' && (
-            <div style={{ background: 'rgba(255,215,0,0.2)', border: '2px solid #ffd700', borderRadius: 99, padding: '8px 24px', color: '#ffd700', fontSize: 20, fontWeight: 800 }}>
+            <div style={{ background: 'rgba(255,215,0,0.2)', border: '2px solid #ffd700', borderRadius: 6, padding: '8px 24px', color: '#ffd700', fontSize: 20, fontWeight: 800 }}>
               +{winCoins} ✦ coins!
             </div>
           )}
@@ -289,7 +289,7 @@ export default function CatchGame({ onComplete, onClose }) {
         <button onClick={onClose} style={{
           position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
           background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
-          color: 'rgba(255,255,255,0.6)', padding: '8px 28px', borderRadius: 99,
+          color: 'rgba(255,255,255,0.6)', padding: '8px 28px', borderRadius: 6,
           fontSize: 13, cursor: 'pointer', zIndex: 10,
         }}>Quit</button>
       )}
