@@ -670,7 +670,6 @@ router.get('/leaderboard', validateTelegramInit, (req, res) => {
     SELECT
       f.id,
       f.name,
-      f.invite_code,
       COUNT(DISTINCT fm.user_id) AS member_count,
       COALESCE(SUM(gift_stats.gift_count), 0) AS total_gifts_sent,
       COALESCE(SUM(gift_stats.coins_spent), 0) AS total_coins_spent
