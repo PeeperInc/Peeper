@@ -277,6 +277,10 @@ function getPopoverPlacement(index) {
   return { left: '50%', top: `${Math.min(75, placement.top + 21)}%`, transform: 'translate(-50%, 0)' };
 }
 
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function IsoFarmTile({ slot, index, rebuildMode, selected, onSelect }) {
   const markerType = getIsoMarkerType(slot);
   const isRebuildTarget = rebuildMode && Boolean(slot?.type);
@@ -291,6 +295,7 @@ function IsoFarmTile({ slot, index, rebuildMode, selected, onSelect }) {
         top: `${placement.top}%`,
         zIndex: placement.zIndex,
       }}
+      data-farm-slot-index={index}
       onClick={() => onSelect(slot)}
       aria-label={`Farm slot ${index + 1}`}
     >
@@ -306,13 +311,78 @@ function IsoFarmTile({ slot, index, rebuildMode, selected, onSelect }) {
   );
 }
 
-function FarmTilePopover({ slot, index, catalog, coins, nowSeconds, busyKey, onAction, onClose }) {
+function FarmTilePopover({ slot, index, catalog, coins, nowSeconds, busyKey, boardRef, onAction, onClose }) {
+  const popoverRef = useRef(null);
+  const [safePlacement, setSafePlacement] = useState(null);
+
+  useLayoutEffect(() => {
+    const updatePlacement = () => {
+      const board = boardRef?.current;
+      const popover = popoverRef.current;
+      const tile = board?.querySelector(`[data-farm-slot-index="${index}"]`);
+      if (!board || !popover || !tile) return;
+
+      const boardRect = board.getBoundingClientRect();
+      const tileRect = tile.getBoundingClientRect();
+      const popoverRect = popover.getBoundingClientRect();
+      const gap = 10;
+      const edge = 10;
+      const tilePlacement = getVerticalIsoPlacement(index);
+
+      let left;
+      if (tilePlacement.side === 'right') {
+        left = tileRect.left - boardRect.left - popoverRect.width - gap;
+      } else if (tilePlacement.side === 'left') {
+        left = tileRect.right - boardRect.left + gap;
+      } else {
+        left = tileRect.left - boardRect.left + (tileRect.width - popoverRect.width) / 2;
+      }
+
+      let top = tileRect.top - boardRect.top + tileRect.height * 0.18;
+      if (tilePlacement.row >= 4) {
+        top = tileRect.top - boardRect.top - popoverRect.height * 0.35;
+      }
+
+      const minLeft = Math.max(edge, -boardRect.left + edge);
+      const maxLeft = Math.min(
+        boardRect.width - popoverRect.width - edge,
+        window.innerWidth - boardRect.left - popoverRect.width - edge,
+      );
+      const minTop = Math.max(edge, -boardRect.top + edge);
+      const maxTop = Math.min(
+        boardRect.height - popoverRect.height - edge,
+        window.innerHeight - boardRect.top - popoverRect.height - edge,
+      );
+
+      setSafePlacement({
+        left: clamp(left, minLeft, Math.max(minLeft, maxLeft)),
+        top: clamp(top, minTop, Math.max(minTop, maxTop)),
+      });
+    };
+
+    updatePlacement();
+    const frameId = window.requestAnimationFrame(updatePlacement);
+    const timeoutId = window.setTimeout(updatePlacement, 80);
+    window.addEventListener('resize', updatePlacement);
+    window.addEventListener('orientationchange', updatePlacement);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('resize', updatePlacement);
+      window.removeEventListener('orientationchange', updatePlacement);
+    };
+  }, [boardRef, index, slot?.state, slot?.readyAt, slot?.lifeRemainingSeconds]);
+
   if (!slot) return null;
   return (
     <div
+      ref={popoverRef}
       className="farm-tile-popover"
+      onClick={(event) => event.stopPropagation()}
       style={{
-        ...getPopoverPlacement(index),
+        ...(safePlacement
+          ? { left: safePlacement.left, top: safePlacement.top, transform: 'none' }
+          : { ...getPopoverPlacement(index), visibility: 'hidden' }),
         zIndex: 80 + getVerticalIsoPlacement(index).row,
       }}
     >
@@ -341,6 +411,7 @@ function IsoFarmBoard({
   onSelectSlot,
   onClosePopover,
 }) {
+  const boardRef = useRef(null);
   const selectedIndex = selectedSlot?.index ?? null;
   const selectedFreshSlot = selectedSlot
     ? slots.find((slot) => slot.index === selectedSlot.index) || selectedSlot
@@ -351,7 +422,7 @@ function IsoFarmBoard({
 
   return (
     <div className="farm-iso-board-wrap">
-      <div className="farm-iso-board">
+      <div className="farm-iso-board" ref={boardRef}>
         {selectedFreshSlot && !rebuildMode && (
           <button
             type="button"
@@ -379,6 +450,7 @@ function IsoFarmBoard({
             coins={coins}
             nowSeconds={nowSeconds}
             busyKey={busyKey}
+            boardRef={boardRef}
             onAction={onAction}
             onClose={onClosePopover}
           />
@@ -401,6 +473,7 @@ function FarmSlotSheet({ slot, catalog, coins, nowSeconds, busyKey, onAction }) 
   const waterRemaining = remainingFrom(slot?.waterAvailableAt, nowSeconds);
   const produceRemaining = remainingFrom(slot?.readyAt, nowSeconds);
   const lifeRemaining = remainingFrom(slot?.expiresAt, nowSeconds);
+  const retiresAfterCollection = lifeRemaining <= 0 && (slot?.state === 'animal_ready' || slot?.state === 'animal_producing');
   const titleStyle = { fontSize: 17, fontWeight: 1000, color: 'var(--text-primary)', letterSpacing: '-0.03em', paddingRight: 24 };
   const textStyle = { fontSize: 11, lineHeight: 1.35, color: 'var(--farm-muted-text)', fontWeight: 760 };
   const sprite = getIsoSlotSprite(slot);
@@ -524,7 +597,7 @@ function FarmSlotSheet({ slot, catalog, coins, nowSeconds, busyKey, onAction }) 
           : slot.state === 'animal_producing'
             ? `Ready in ${formatTime(produceRemaining)}.`
             : 'Hungry. Feed to start production.'}
-        <br />Retires in {formatTime(lifeRemaining)}.
+        <br />{retiresAfterCollection ? 'Retires after collection.' : `Retires in ${formatTime(lifeRemaining)}.`}
       </Header>
       {slot.state === 'animal_ready' ? (
         <FarmButton

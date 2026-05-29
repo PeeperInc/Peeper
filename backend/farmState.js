@@ -155,7 +155,21 @@ function syncExpiredAnimals(userId, now = ts()) {
       AND animal_type IS NOT NULL
       AND animal_expires_at IS NOT NULL
       AND animal_expires_at <= ?
+      AND animal_ready_at IS NULL
   `).run(now, userId, now);
+}
+
+function shouldRetireAnimalOnSync(row, now = ts()) {
+  return Boolean(
+    row?.animal_type
+    && row.animal_expires_at
+    && row.animal_expires_at <= now
+    && !row.animal_ready_at
+  );
+}
+
+function shouldRetireAnimalAfterCollect(row, now = ts()) {
+  return Boolean(row?.animal_expires_at && row.animal_expires_at <= now);
 }
 
 function rollCropResult(crop) {
@@ -454,6 +468,8 @@ module.exports = {
   getFarmState,
   addInventory,
   getFarmCropReadiness,
+  shouldRetireAnimalOnSync,
+  shouldRetireAnimalAfterCollect,
   resolveCropResult,
   consumeInventoryValue,
   getInventoryValues,
