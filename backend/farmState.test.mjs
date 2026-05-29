@@ -65,3 +65,41 @@ test('farm animals separate fridge value from coin profit roles', () => {
   assert.equal(farm.PRODUCTS.truffle.sellPrice, 25);
   assert.equal(farm.PRODUCTS.truffle.sellPrice / farm.PRODUCTS.truffle.value > farm.PRODUCTS.egg.sellPrice / farm.PRODUCTS.egg.value, true);
 });
+
+test('expired hungry animals retire, but fed animals keep their final product cycle', () => {
+  const now = 1_000;
+
+  assert.equal(farm.shouldRetireAnimalOnSync({
+    animal_type: 'pig',
+    animal_expires_at: now - 1,
+    animal_ready_at: null,
+  }, now), true);
+
+  assert.equal(farm.shouldRetireAnimalOnSync({
+    animal_type: 'pig',
+    animal_expires_at: now - 1,
+    animal_ready_at: now + 100,
+  }, now), false);
+
+  assert.equal(farm.shouldRetireAnimalOnSync({
+    animal_type: 'pig',
+    animal_expires_at: now - 1,
+    animal_ready_at: now - 10,
+  }, now), false);
+});
+
+test('expired animals retire only after their ready product is collected', () => {
+  const now = 1_000;
+
+  assert.equal(farm.shouldRetireAnimalAfterCollect({
+    animal_type: 'cow',
+    animal_expires_at: now - 1,
+    animal_ready_at: now - 100,
+  }, now), true);
+
+  assert.equal(farm.shouldRetireAnimalAfterCollect({
+    animal_type: 'cow',
+    animal_expires_at: now + 1,
+    animal_ready_at: now - 100,
+  }, now), false);
+});

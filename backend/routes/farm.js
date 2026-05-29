@@ -26,6 +26,7 @@ const {
   FAMILY_BIG_FEAST_RECIPE,
   addInventory,
   resolveCropResult,
+  shouldRetireAnimalAfterCollect,
   consumeInventoryValue,
   applyFarmFridgeStock,
 } = require('../farmState');
@@ -415,12 +416,24 @@ router.post('/slots/:index/collect-animal', validateTelegramInit, (req, res) => 
 
     db.transaction(() => {
       addInventory(user.id, animal.productId, animal.yieldQuantity, now);
-      db.prepare(`
-        UPDATE farm_slots
-        SET animal_ready_at = NULL,
-            updated_at = ?
-        WHERE user_id = ? AND slot_index = ?
-      `).run(now, user.id, slotIndex);
+      if (shouldRetireAnimalAfterCollect(slot, now)) {
+        db.prepare(`
+          UPDATE farm_slots
+          SET animal_type = NULL,
+              animal_bought_at = NULL,
+              animal_ready_at = NULL,
+              animal_expires_at = NULL,
+              updated_at = ?
+          WHERE user_id = ? AND slot_index = ?
+        `).run(now, user.id, slotIndex);
+      } else {
+        db.prepare(`
+          UPDATE farm_slots
+          SET animal_ready_at = NULL,
+              updated_at = ?
+          WHERE user_id = ? AND slot_index = ?
+        `).run(now, user.id, slotIndex);
+      }
     })();
 
     const product = PRODUCTS[animal.productId];
