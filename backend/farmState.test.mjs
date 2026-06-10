@@ -51,6 +51,16 @@ test('farm summary reports no pending actions before farm purchase', () => {
   assert.equal(summary.actionCount, 0);
 });
 
+test('farm animal readiness reports no pending alert before farm purchase', () => {
+  const readiness = farm.getFarmAnimalReadiness(-999_999);
+
+  assert.deepEqual(readiness, {
+    producingCount: 0,
+    readyCount: 0,
+    allFedAnimalsReady: false,
+  });
+});
+
 test('farm animals separate fridge value from coin profit roles', () => {
   assert.equal(farm.ANIMALS.chicken.productId, 'egg');
   assert.equal(farm.ANIMALS.cow.productId, 'milk');

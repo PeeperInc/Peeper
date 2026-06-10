@@ -94,7 +94,7 @@ function FamilyLeaderboard({ limit = 10, onSelect }) {
             {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {f.name}
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-hint)', marginTop: 2 }}>
@@ -667,7 +667,10 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
 
   function formatTime(ts) {
     const d = new Date(ts * 1000);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${day}.${month} ${time}`;
   }
 
   return (

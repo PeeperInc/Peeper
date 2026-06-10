@@ -3298,6 +3298,10 @@ button.app-back-button,
   box-shadow: none !important;
 }
 
+.lb-row {
+  color: #f2ffe8 !important;
+}
+
 .home-screen-cleanup-dock {
   background: transparent !important;
   border: 0 !important;

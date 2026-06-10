@@ -6,6 +6,7 @@ const NOTIFICATION_SETTING_KEYS = [
   'gift_notifications',
   'jackpot_notifications',
   'farm_notifications',
+  'farm_animal_notifications',
 ];
 
 const NOTIFICATION_SETTING_META = {
@@ -28,6 +29,11 @@ const NOTIFICATION_SETTING_META = {
   farm_notifications: {
     label: 'Farm alerts',
     description: 'Telegram messages when all planted crops are ready',
+  },
+  farm_animal_notifications: {
+    label: 'Animal farm alerts',
+    description: 'Telegram messages when fed animals have products ready',
+    defaultEnabled: 0,
   },
 };
 
@@ -60,18 +66,20 @@ function getNotificationSettings(userId) {
     gift_notifications: Number(row?.gift_notifications ?? 1),
     jackpot_notifications: Number(row?.jackpot_notifications ?? 1),
     farm_notifications: Number(row?.farm_notifications ?? 1),
+    farm_animal_notifications: Number(row?.farm_animal_notifications ?? 0),
   };
 }
 
 function isNotificationEnabled(userId, key) {
   const normalizedKey = normalizeSettingKey(key);
   if (!normalizedKey || !userId) return true;
+  const defaultEnabled = NOTIFICATION_SETTING_META[normalizedKey]?.defaultEnabled ?? 1;
   const row = db.prepare(`
     SELECT ${normalizedKey} AS enabled
     FROM user_notification_settings
     WHERE user_id = ?
   `).get(userId);
-  return Number(row?.enabled ?? 1) === 1;
+  return Number(row?.enabled ?? defaultEnabled) === 1;
 }
 
 function toggleNotificationSetting(userId, key) {
@@ -102,7 +110,7 @@ function buildNotificationSettingsText(firstName, settings) {
 
   for (const key of NOTIFICATION_SETTING_KEYS) {
     const meta = NOTIFICATION_SETTING_META[key];
-    const enabled = Number(settings[key] ?? 1) === 1;
+    const enabled = Number(settings[key] ?? (meta.defaultEnabled ?? 1)) === 1;
     lines.push(`${enabled ? '🟢' : '⚫'} <b>${meta.label}</b>`);
     lines.push(`${meta.description}`);
     lines.push('');
@@ -116,7 +124,7 @@ function buildNotificationSettingsMarkup(settings) {
   return {
     inline_keyboard: NOTIFICATION_SETTING_KEYS.map((key) => {
       const meta = NOTIFICATION_SETTING_META[key];
-      const enabled = Number(settings[key] ?? 1) === 1;
+      const enabled = Number(settings[key] ?? (meta.defaultEnabled ?? 1)) === 1;
       return [{
         text: `${enabled ? '✅' : '☑️'} ${meta.label}`,
         callback_data: `notif_toggle:${key}`,
