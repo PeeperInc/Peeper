@@ -65,7 +65,7 @@ function FamilyLeaderboardTab({ onViewProfile, onSelectFamily }) {
             {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#' + (i+1)}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden',
+            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', overflow: 'hidden',
               textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-hint)', marginTop: 2 }}>
               {f.member_count} member{f.member_count !== 1 ? 's' : ''}

@@ -14,7 +14,7 @@
 const db      = require('./database');
 const { liveStats } = require('./gameLogic');
 const { isNotificationEnabled } = require('./notificationSettings');
-const { getFarmCropReadiness } = require('./farmState');
+const { getFarmCropReadiness, getFarmAnimalReadiness } = require('./farmState');
 
 const INTERVAL_MS = 60 * 1000;
 const APP_URL     = 'https://peeper.frenzyradio.online';
@@ -27,6 +27,7 @@ const COOLDOWNS = {
   hp10:        1 * 3600,   // resend every 1h while critical
   died:        0,           // once per death
   farm_crops_ready: 0,      // once until crops are harvested/replanted
+  farm_animals_ready: 0,    // once until animal products are collected/new feed starts
 };
 
 let botToken = null;
@@ -72,6 +73,11 @@ async function sendCareNotification(userId, telegramId, text) {
 
 async function sendFarmNotification(userId, telegramId, text) {
   if (!isNotificationEnabled(userId, 'farm_notifications')) return;
+  await sendMessage(telegramId, text);
+}
+
+async function sendFarmAnimalNotification(userId, telegramId, text) {
+  if (!isNotificationEnabled(userId, 'farm_animal_notifications')) return;
   await sendMessage(telegramId, text);
 }
 
@@ -174,6 +180,18 @@ async function checkAll() {
       }
     } else {
       clearFlag(userId, 'farm_crops_ready');
+    }
+
+    const farmAnimals = getFarmAnimalReadiness(userId);
+    if (farmAnimals.allFedAnimalsReady) {
+      if (shouldSend(userId, 'farm_animals_ready')) {
+        await sendFarmAnimalNotification(userId, telegramId,
+          `${String.fromCodePoint(0x1F43E)} <b>Your Farm animals are ready!</b>\n\nAll fed animals have products to collect. Open Peeper and check the Farm.`
+        );
+        markSent(userId, 'farm_animals_ready');
+      }
+    } else {
+      clearFlag(userId, 'farm_animals_ready');
     }
 
     // ── FUN = 0 → max energy ──────────────────────────────────────────

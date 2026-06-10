@@ -191,6 +191,7 @@ db.exec(`
     gift_notifications       INTEGER NOT NULL DEFAULT 1,
     jackpot_notifications    INTEGER NOT NULL DEFAULT 1,
     farm_notifications       INTEGER NOT NULL DEFAULT 1,
+    farm_animal_notifications INTEGER NOT NULL DEFAULT 0,
     updated_at               INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   );
 
@@ -206,7 +207,13 @@ db.exec(`
 const addColumnIfMissing = (table, column, definition) => {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
   if (!cols.includes(column)) {
-    db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+    try {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+    } catch (error) {
+      if (!String(error?.message || '').toLowerCase().includes('duplicate column name')) {
+        throw error;
+      }
+    }
   }
 };
 
@@ -252,6 +259,7 @@ addColumnIfMissing('users',   'supporter_since', 'INTEGER DEFAULT NULL');
 addColumnIfMissing('users',   'supporter_stars', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users',   'casino_free_spins', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('user_notification_settings', 'farm_notifications', 'INTEGER NOT NULL DEFAULT 1');
+addColumnIfMissing('user_notification_settings', 'farm_animal_notifications', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('peepers', 'critical_start','INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'regen_start',   'INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'hp_at_regen',   'REAL DEFAULT NULL');

@@ -537,13 +537,14 @@ function FarmSlotSheet({ slot, catalog, coins, nowSeconds, busyKey, onAction }) 
 
   if (slot.state === 'crop_growing' || slot.state === 'crop_ready') {
     const ready = cropRemaining <= 0;
+    const showWaterAction = !ready && waterRemaining <= cropRemaining;
     return (
       <div style={{ display: 'grid', gap: 9 }}>
         <Header title={ready && cropResultProduct ? cropResultProduct.name : (crop.name || 'Crop')}>
           {ready
             ? `${cropResultProduct?.name || 'Crop'} is ready to harvest.`
             : `Grows in ${formatTime(cropRemaining)}.`}
-          {!ready && <><br />Watering cuts remaining grow time by 10%.</>}
+          {showWaterAction && <><br />Watering cuts remaining grow time by 10%.</>}
         </Header>
         {ready ? (
           <FarmButton
@@ -554,7 +555,7 @@ function FarmSlotSheet({ slot, catalog, coins, nowSeconds, busyKey, onAction }) 
           >
             Harvest
           </FarmButton>
-        ) : (
+        ) : showWaterAction ? (
           <FarmButton
             variant={waterRemaining <= 0 ? 'primary' : 'secondary'}
             disabled={busy || waterRemaining > 0}
@@ -563,7 +564,7 @@ function FarmSlotSheet({ slot, catalog, coins, nowSeconds, busyKey, onAction }) 
           >
             {waterRemaining > 0 ? `Water in ${formatTime(waterRemaining)}` : 'Water · -10% time'}
           </FarmButton>
-        )}
+        ) : null}
       </div>
     );
   }

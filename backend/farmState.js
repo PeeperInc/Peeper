@@ -378,6 +378,27 @@ function getFarmCropReadiness(userId, now = ts()) {
   };
 }
 
+function getFarmAnimalReadiness(userId, now = ts()) {
+  if (!hasFarm(userId)) return { producingCount: 0, readyCount: 0, allFedAnimalsReady: false };
+  ensureFarmSlots(userId);
+  syncExpiredAnimals(userId, now);
+  const rows = db.prepare(`
+    SELECT animal_ready_at
+    FROM farm_slots
+    WHERE user_id = ?
+      AND slot_type = 'pen'
+      AND animal_type IS NOT NULL
+      AND animal_ready_at IS NOT NULL
+  `).all(userId);
+  const producingCount = rows.length;
+  const readyCount = rows.filter((row) => Math.floor(Number(row.animal_ready_at) || 0) <= now).length;
+  return {
+    producingCount,
+    readyCount,
+    allFedAnimalsReady: producingCount > 0 && readyCount === producingCount,
+  };
+}
+
 function getConsumableProducts(category) {
   return Object.values(PRODUCTS)
     .filter((product) => product.category === category)
@@ -468,6 +489,7 @@ module.exports = {
   getFarmState,
   addInventory,
   getFarmCropReadiness,
+  getFarmAnimalReadiness,
   shouldRetireAnimalOnSync,
   shouldRetireAnimalAfterCollect,
   resolveCropResult,
