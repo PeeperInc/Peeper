@@ -98,6 +98,14 @@ The run ends when time expires or when an emergency threshold is reached. A part
 - Hints describe the correction rather than explaining equations: increase thrust, reduce thrust, raise the nose, lower the nose, stabilize, or celebrate.
 - Dialogue is original game text inspired by Rocky's speaking style, not copied passages from the book.
 
+## Mobile Flight Director
+
+- Rocky sits in the upper-left playfield directly below the compact HUD so his guidance never competes with the thumb control.
+- The joystick is centered along the bottom safe area and no longer contains the moving target marker, because the player's thumb obscures that location.
+- A lightweight lime flight-director reticle is rendered around the Hail Mary itself. Its horizontal position, vertical position, and tilt represent the required angle and thrust.
+- The player moves the ship into the reticle rather than reading a separate instrument. The reticle brightens when the ship is correctly aligned.
+- The ship visibly responds to both control axes: angle changes lateral position and tilt, while thrust changes vertical position.
+
 ## Validation
 
 - Test the optimized planet and ship on low-end Android hardware inside Telegram WebView.

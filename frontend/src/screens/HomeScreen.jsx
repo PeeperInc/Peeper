@@ -66,6 +66,7 @@ function formatFridgeRemaining(seconds = 0) {
 }
 
 const GAMES = [
+  { id: 'adrian', emoji: '🧬', name: 'Adrian Fishing', desc: 'Hold the Hail Mary steady!', reward: 'Up to 10 ✦', color: '#b8ef3f', energy: 1 },
   { id: 'casino', emoji: '🎰', name: 'caSino', desc: 'Every spin wins 8–15 ✦.', reward: '8–15 ✦', color: '#f1b74d', energy: 1 },
   { id: 'arena', emoji: '⚔️', name: 'Arena', desc: 'PvP elemental battles · 25 ✦ stake.', reward: 'Win 50 ✦', color: '#e05555', energy: 0 },
   { id: 'blackjack', emoji: '🃏', name: 'Blackjack', desc: 'Online tables · 10 ✦ stake.', reward: 'Table Pot', color: '#5fcf97', energy: 0 },
@@ -78,6 +79,7 @@ const GAMES = [
 ];
 
 const GAME_LOADERS = {
+  adrian: () => import('../games/AdrianFishingGame'),
   catch: () => import('../games/CatchGame'),
   reaction: () => import('../games/ReactionGame'),
   bubble: () => import('../games/BubbleGame'),
@@ -90,6 +92,7 @@ const GAME_LOADERS = {
 };
 
 const GAME_COMPONENTS = {
+  adrian: lazy(GAME_LOADERS.adrian),
   catch: lazy(GAME_LOADERS.catch),
   reaction: lazy(GAME_LOADERS.reaction),
   bubble: lazy(GAME_LOADERS.bubble),
