@@ -42,6 +42,7 @@ const { isNotificationEnabled } = require('../notificationSettings');
 const APP_URL = 'https://peeper.frenzyradio.online';
 function getUser(req)      { return db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(String(req.telegramUser.id)); }
 const GAME_REWARD_LIMITS = {
+  adrian: 10,
   catch: 10,
   reaction: 10,
   bubble: 10,
