@@ -17,6 +17,7 @@ import farmIsoSlotEmpty from '../assets/farm-iso/farm_iso_slot_empty.png';
 import farmIsoSquash from '../assets/farm-iso/farm_iso_squash.png';
 import farmIsoTomatoGrowing from '../assets/farm-iso/farm_iso_tomato_growing.png';
 import farmIsoTomatoReady from '../assets/farm-iso/farm_iso_tomato_ready.png';
+import { FARM_RETIREMENT_LOCK_MS, getFarmSlotPostAction } from '../utils/farmSlotInteraction.mjs';
 
 const COIN_SYMBOL = '\u2726';
 const FARM_ICON = String.fromCodePoint(0x1F33E);
@@ -281,22 +282,27 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function IsoFarmTile({ slot, index, rebuildMode, selected, onSelect }) {
+function IsoFarmTile({ slot, index, rebuildMode, selected, retirement, onSelect }) {
   const markerType = getIsoMarkerType(slot);
   const isRebuildTarget = rebuildMode && Boolean(slot?.type);
+  const isRetiring = Boolean(retirement);
   const placement = getVerticalIsoPlacement(index);
 
   return (
     <button
       type="button"
-      className={`farm-iso-tile ${selected ? 'farm-iso-tile-selected' : ''} ${isRebuildTarget ? 'farm-iso-tile-rebuild' : ''}`}
+      className={`farm-iso-tile ${selected ? 'farm-iso-tile-selected' : ''} ${isRebuildTarget ? 'farm-iso-tile-rebuild' : ''} ${isRetiring ? 'farm-iso-tile-retiring' : ''}`}
       style={{
         left: `${placement.left}%`,
         top: `${placement.top}%`,
         zIndex: placement.zIndex,
+        '--farm-retirement-duration': `${FARM_RETIREMENT_LOCK_MS}ms`,
       }}
       data-farm-slot-index={index}
-      onClick={() => onSelect(slot)}
+      disabled={isRetiring}
+      onClick={() => {
+        if (!isRetiring) onSelect(slot);
+      }}
       aria-label={`Farm slot ${index + 1}`}
     >
       <img
@@ -305,7 +311,16 @@ function IsoFarmTile({ slot, index, rebuildMode, selected, onSelect }) {
         draggable="false"
         className="farm-iso-tile-img"
       />
-      <FloatingActionMarker type={isRebuildTarget ? null : markerType} />
+      {isRetiring && (
+        <img
+          src={getIsoSlotSprite(retirement.previousSlot)}
+          alt=""
+          draggable="false"
+          className="farm-iso-retiring-animal"
+        />
+      )}
+      <FloatingActionMarker type={isRebuildTarget || isRetiring ? null : markerType} />
+      {isRetiring && <span className="farm-iso-retirement-glow" aria-hidden="true" />}
       {isRebuildTarget && <div className="farm-iso-rebuild-tag">Rebuild</div>}
     </button>
   );
@@ -410,6 +425,7 @@ function IsoFarmBoard({
   onAction,
   onSelectSlot,
   onClosePopover,
+  retiringSlots,
 }) {
   const boardRef = useRef(null);
   const selectedIndex = selectedSlot?.index ?? null;
@@ -439,6 +455,7 @@ function IsoFarmBoard({
             index={index}
             rebuildMode={rebuildMode}
             selected={!rebuildMode && selectedIndex === slot.index}
+            retirement={retiringSlots?.[slot.index]}
             onSelect={onSelectSlot}
           />
         ))}
@@ -1017,7 +1034,9 @@ export default function FarmScreen({ onClose, onStateChange, showToast }) {
   const [rebuildMode, setRebuildMode] = useState(false);
   const [rebuildSlot, setRebuildSlot] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [retiringSlots, setRetiringSlots] = useState({});
   const [nowMs, setNowMs] = useState(Date.now());
+  const retirementTimersRef = useRef(new Map());
 
   const nowSeconds = Math.floor(nowMs / 1000);
   const coins = state?.coins ?? 0;
@@ -1048,6 +1067,11 @@ export default function FarmScreen({ onClose, onStateChange, showToast }) {
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => () => {
+    for (const timer of retirementTimersRef.current.values()) window.clearTimeout(timer);
+    retirementTimersRef.current.clear();
+  }, []);
+
   const handleAction = useCallback(async (action, key = 'farm') => {
     if (busyKey) return;
     setBusyKey(key);
@@ -1066,6 +1090,42 @@ export default function FarmScreen({ onClose, onStateChange, showToast }) {
       setBusyKey(null);
     }
   }, [busyKey, onStateChange, showToast]);
+
+  const beginRetirementTransition = useCallback((previousSlot) => {
+    const slotIndex = previousSlot.index;
+    const existingTimer = retirementTimersRef.current.get(slotIndex);
+    if (existingTimer) window.clearTimeout(existingTimer);
+
+    setRetiringSlots((current) => ({
+      ...current,
+      [slotIndex]: { previousSlot },
+    }));
+
+    const timer = window.setTimeout(() => {
+      retirementTimersRef.current.delete(slotIndex);
+      setRetiringSlots((current) => {
+        const next = { ...current };
+        delete next[slotIndex];
+        return next;
+      });
+    }, FARM_RETIREMENT_LOCK_MS);
+    retirementTimersRef.current.set(slotIndex, timer);
+  }, []);
+
+  const handleSlotAction = useCallback(async (action, key = 'farm') => {
+    const previousSlot = selectedSlot;
+    const result = await handleAction(action, key);
+    if (!result || !previousSlot) return result;
+
+    const updatedSlot = result.farmState?.slots?.find((slot) => slot.index === previousSlot.index);
+    const postAction = getFarmSlotPostAction(previousSlot, updatedSlot);
+    if (postAction.retirementTransition) beginRetirementTransition(previousSlot);
+    if (!postAction.keepOpen) {
+      setSelectedSlot(null);
+      setActiveSheet(null);
+    }
+    return result;
+  }, [beginRetirementTransition, handleAction, selectedSlot]);
 
   const handleRebuildConfirm = useCallback((type) => {
     if (!rebuildSlot) return;
@@ -1251,8 +1311,9 @@ export default function FarmScreen({ onClose, onStateChange, showToast }) {
               coins={coins}
               nowSeconds={nowSeconds}
               busyKey={busyKey}
-              onAction={handleAction}
+              onAction={handleSlotAction}
               onSelectSlot={handleSelectSlot}
+              retiringSlots={retiringSlots}
               onClosePopover={() => {
                 setSelectedSlot(null);
                 setActiveSheet(null);

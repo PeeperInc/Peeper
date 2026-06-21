@@ -1159,6 +1159,51 @@ img { animation-play-state: var(--animation-play-state, running); }
   filter: drop-shadow(0 0 8px rgba(255, 146, 75, 0.82)) saturate(1.08);
 }
 
+.farm-iso-tile-retiring,
+.farm-iso-tile-retiring:disabled {
+  opacity: 1;
+  cursor: default;
+  pointer-events: none;
+}
+
+.farm-iso-retiring-animal {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 154%;
+  height: 154%;
+  object-fit: contain;
+  transform: translate(-17.5%, -18%);
+  pointer-events: none;
+  animation: farm-animal-retire 0.72s ease-in forwards;
+}
+
+.farm-iso-retirement-glow {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 51%;
+  width: 72%;
+  aspect-ratio: 1;
+  border: 3px solid rgba(218, 255, 121, 0.78);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.55);
+  pointer-events: none;
+  animation: farm-pen-unlock var(--farm-retirement-duration, 1500ms) ease-out forwards;
+}
+
+@keyframes farm-animal-retire {
+  0% { opacity: 1; transform: translate(-17.5%, -18%) scale(1); filter: saturate(1); }
+  65% { opacity: 0.5; transform: translate(-17.5%, -25%) scale(0.92); filter: saturate(0.6); }
+  100% { opacity: 0; transform: translate(-17.5%, -34%) scale(0.82); filter: saturate(0.25); }
+}
+
+@keyframes farm-pen-unlock {
+  0%, 48% { opacity: 0; transform: translate(-50%, -50%) scale(0.55); }
+  70% { opacity: 0.95; transform: translate(-50%, -50%) scale(1.05); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.25); }
+}
+
 .farm-iso-marker {
   position: absolute;
   left: 50%;
