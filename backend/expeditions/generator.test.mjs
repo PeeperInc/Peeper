@@ -5,6 +5,7 @@ import test from 'node:test';
 const require = createRequire(import.meta.url);
 const {
   generateExpeditionMap,
+  enforceStatCoverage,
   isBossReachable,
   validateExpeditionMap,
 } = require('./generator.js');
@@ -32,7 +33,8 @@ test('generator satisfies structural constraints across 500 seeds', () => {
     const optionalRooms = map.rooms.filter(room => room.optional);
     const treasureRooms = map.rooms.filter(room => room.type === 'treasure');
     const roomKeys = new Set(map.rooms.map(room => room.key));
-    const actionStats = new Set(map.rooms.flatMap(room => room.actions.map(action => action.stat)));
+    const proceduralRooms = map.rooms.filter(room => room.type !== 'camp' && room.type !== 'boss');
+    const actionStats = new Set(proceduralRooms.flatMap(room => room.actions.map(action => action.stat)));
 
     assert.equal(requiredRooms.length >= 8 && requiredRooms.length <= 12, true, map.seed);
     assert.equal(optionalRooms.length >= 3 && optionalRooms.length <= 5, true, map.seed);
@@ -50,6 +52,22 @@ test('generator satisfies structural constraints across 500 seeds', () => {
       assert.equal(from.depth < to.depth, true, `${map.seed}: cycle/back edge`);
     }
   }
+});
+
+test('stat coverage enforcement uses authored procedural room templates', () => {
+  const underCoveredTemplate = ROOM_TEMPLATES.shrine[1];
+  const rooms = Array.from({ length: 8 }, (_, index) => ({
+    ...structuredClone(underCoveredTemplate),
+    key: `shrine_${index + 1}`,
+    depth: index + 1,
+    required: true,
+  }));
+  const coveredRooms = enforceStatCoverage(() => 0, rooms);
+  const stats = new Set(coveredRooms.flatMap(room => room.actions.map(action => action.stat)));
+  const authoredIds = new Set(Object.values(ROOM_TEMPLATES).flat().map(template => template.id));
+
+  assert.deepEqual([...stats].sort(), [...STATS].sort());
+  assert.ok(coveredRooms.every(room => authoredIds.has(room.id)));
 });
 
 test('different seeds produce meaningful map content variety', () => {
@@ -110,4 +128,105 @@ test('validation reports backward edges and an unreachable boss', () => {
   assert.equal(isBossReachable(invalidMap), false);
   assert.ok(validateExpeditionMap(invalidMap).some(error => error.includes('forward')));
   assert.ok(validateExpeditionMap(invalidMap).some(error => error.includes('reachable')));
+});
+
+test('validation requires exactly one camp and one boss', () => {
+  const map = generateExpeditionMap('room-cardinality');
+  const cases = [
+    [{ ...map, rooms: map.rooms.filter(room => room.type !== 'camp') }, 'exactly one camp'],
+    [{ ...map, rooms: map.rooms.filter(room => room.type !== 'boss') }, 'exactly one boss'],
+    [{ ...map, rooms: [...map.rooms, { ...map.rooms[0], key: 'duplicate_camp' }] }, 'exactly one camp'],
+    [{ ...map, rooms: [...map.rooms, { ...map.rooms.at(-1), key: 'duplicate_boss' }] }, 'exactly one boss'],
+  ];
+
+  for (const [invalidMap, expectedError] of cases) {
+    const errors = validateExpeditionMap(invalidMap);
+    assert.ok(errors.some(error => error.includes(expectedError)));
+  }
+});
+
+test('validation rejects orphan required and optional rooms', () => {
+  const map = generateExpeditionMap('orphan-rooms');
+  const required = map.rooms.find(room => room.required && !['camp', 'boss'].includes(room.type));
+  const optional = map.rooms.find(room => room.optional);
+  const orphanRequired = {
+    ...map,
+    edges: map.edges.filter(edge => edge.to !== required.key),
+  };
+  const orphanOptional = {
+    ...map,
+    edges: map.edges.filter(edge => edge.to !== optional.key),
+  };
+
+  assert.ok(validateExpeditionMap(orphanRequired).some(error => error.includes('reachable from camp')));
+  assert.ok(validateExpeditionMap(orphanOptional).some(error => error.includes('reachable from camp')));
+});
+
+test('validation requires every required room to have a forward path to boss', () => {
+  const map = generateExpeditionMap('required-boss-path');
+  const requiredRooms = map.rooms.filter(
+    room => room.required && !['camp', 'boss'].includes(room.type),
+  );
+  const isolatedRequired = requiredRooms.at(-1);
+  const invalidMap = {
+    ...map,
+    edges: map.edges.filter(edge => edge.from !== isolatedRequired.key),
+  };
+
+  assert.ok(validateExpeditionMap(invalidMap).some(error => error.includes('forward path to boss')));
+});
+
+test('validation is total over malformed map, room, action, and edge shapes', () => {
+  const map = generateExpeditionMap('malformed-shapes');
+  const malformedMaps = [
+    null,
+    {},
+    { rooms: null, edges: [] },
+    { rooms: [], edges: null },
+    { ...map, rooms: [...map.rooms, null] },
+    { ...map, rooms: map.rooms.map((room, index) => index === 1 ? { ...room, key: null } : room) },
+    { ...map, rooms: map.rooms.map((room, index) => index === 1 ? { ...room, depth: 'one' } : room) },
+    { ...map, rooms: map.rooms.map((room, index) => index === 1 ? { ...room, type: null } : room) },
+    {
+      ...map,
+      rooms: map.rooms.map((room, index) => {
+        if (index !== 1) return room;
+        const { actions, ...roomWithoutActions } = room;
+        return roomWithoutActions;
+      }),
+    },
+    { ...map, rooms: map.rooms.map((room, index) => index === 1 ? { ...room, actions: null } : room) },
+    { ...map, rooms: map.rooms.map((room, index) => index === 1 ? { ...room, actions: 'invalid' } : room) },
+    { ...map, rooms: map.rooms.map((room, index) => index === 1 ? { ...room, actions: [null] } : room) },
+    { ...map, edges: [...map.edges, null] },
+    { ...map, edges: [...map.edges, {}] },
+    { ...map, edges: 'not-an-array' },
+  ];
+
+  for (const invalidMap of malformedMaps) {
+    assert.doesNotThrow(() => validateExpeditionMap(invalidMap));
+    assert.ok(validateExpeditionMap(invalidMap).length > 0);
+  }
+});
+
+test('validation rejects lossy and non-JSON data types', () => {
+  const lossyValues = [
+    new Map([['key', 'value']]),
+    new Set(['value']),
+    new Date('2026-06-22T00:00:00.000Z'),
+    () => 'value',
+    undefined,
+    Infinity,
+    Number.NaN,
+    -0,
+    Symbol('value'),
+    1n,
+    new Array(1),
+  ];
+
+  for (const value of lossyValues) {
+    const invalidMap = { ...generateExpeditionMap('lossy-json'), lossy: value };
+    const errors = validateExpeditionMap(invalidMap);
+    assert.ok(errors.some(error => error.includes('lossless JSON')));
+  }
 });
