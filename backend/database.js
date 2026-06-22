@@ -6,7 +6,7 @@ const {
 } = require('./homeConstants');
 const DEFAULT_ASSET_VERSION = '20260330-1';
 
-const db = new Database(path.join(__dirname, 'peeper.db'));
+const db = new Database(process.env.PEEPER_DB_PATH || path.join(__dirname, 'peeper.db'));
 
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL');
@@ -460,11 +460,10 @@ db.exec(`
     ON family_expedition_rooms(expedition_id, state);
   CREATE INDEX IF NOT EXISTS idx_family_expedition_actions_chronology
     ON family_expedition_actions(expedition_id, created_at);
-  CREATE INDEX IF NOT EXISTS idx_expedition_artifacts_user
-    ON expedition_artifact_inventory(user_id, artifact_id);
   CREATE INDEX IF NOT EXISTS idx_family_expedition_history_family
     ON family_expedition_history(family_id, finished_at DESC);
 `);
+db.exec('DROP INDEX IF EXISTS idx_expedition_artifacts_user');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS blackjack_lobbies (

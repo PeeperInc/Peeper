@@ -1,9 +1,21 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+const tempDirectory = mkdtempSync(path.join(tmpdir(), 'peeper-notification-settings-'));
+process.env.PEEPER_DB_PATH = path.join(tempDirectory, 'peeper.test.db');
 const notifications = require('./notificationSettings.js');
+const db = require('./database.js');
+delete process.env.PEEPER_DB_PATH;
+
+after(() => {
+  db.close();
+  rmSync(tempDirectory, { recursive: true, force: true });
+});
 
 test('farm animal notifications default to off while crop farm alerts stay on', () => {
   const missingUserId = -991_771;
