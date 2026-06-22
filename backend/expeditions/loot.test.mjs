@@ -124,12 +124,31 @@ test('charged and consumable duplicates stack with catalog semantics', () => {
   assert.equal(cursed.addedQuantity, 1);
 });
 
-test('database grant accepts a caller transaction and does not import the real database', () => {
+test('artifact grant rejects absent and nontransactional write callers', () => {
+  const { grantArtifact } = loadLoot();
+  const db = inventoryDb();
+  assert.throws(() => grantArtifact(), /active caller transaction/);
+  assert.throws(
+    () => grantArtifact({ userId: 7, artifactId: 'rusty_lockpick' }),
+    /active caller transaction/,
+  );
+  assert.throws(
+    () => grantArtifact({ transaction: db, userId: 7, artifactId: 'rusty_lockpick' }),
+    /active caller transaction/,
+  );
+  assert.throws(
+    () => grantArtifact({ db, userId: 7, artifactId: 'rusty_lockpick' }),
+    /active caller transaction/,
+  );
+  db.close();
+});
+
+test('database grant accepts only an active caller transaction', () => {
   const { grantArtifact } = loadLoot();
   const db = inventoryDb();
   const grantInTransaction = db.transaction(() => {
-    grantArtifact({ db, userId: 7, artifactId: 'rusty_lockpick', now: 100 });
-    grantArtifact({ db, userId: 7, artifactId: 'rusty_lockpick', now: 200 });
+    grantArtifact({ transaction: db, userId: 7, artifactId: 'rusty_lockpick', now: 100 });
+    grantArtifact({ transaction: db, userId: 7, artifactId: 'rusty_lockpick', now: 200 });
   });
   grantInTransaction();
 
@@ -146,7 +165,7 @@ test('grant rolls back with the caller transaction', () => {
   const { grantArtifact } = loadLoot();
   const db = inventoryDb();
   const transaction = db.transaction(() => {
-    grantArtifact({ db, userId: 8, artifactId: 'chalk_rune', now: 100 });
+    grantArtifact({ transaction: db, userId: 8, artifactId: 'chalk_rune', now: 100 });
     throw new Error('rollback');
   });
   assert.throws(transaction, /rollback/);

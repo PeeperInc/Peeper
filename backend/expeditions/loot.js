@@ -108,16 +108,18 @@ function readInventory(db, userId) {
   `).all(userId);
 }
 
-function grantArtifact({ db, userId, artifactId, rng = () => 0, now = Math.floor(Date.now() / 1000) }) {
-  const database = db || require('../database');
+function grantArtifact({ transaction, userId, artifactId, rng = () => 0, now = Math.floor(Date.now() / 1000) } = {}) {
+  if (!transaction || typeof transaction.prepare !== 'function' || transaction.inTransaction !== true) {
+    throw new TypeError('grantArtifact requires an active caller transaction');
+  }
   const grant = resolveArtifactGrant({
     artifactId,
-    inventory: readInventory(database, userId),
+    inventory: readInventory(transaction, userId),
     rng,
   });
   if (grant.kind === 'coins') return grant;
 
-  database.prepare(`
+  transaction.prepare(`
     INSERT INTO expedition_artifact_inventory (
       user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
     ) VALUES (?, ?, ?, ?, ?, ?)

@@ -11,14 +11,20 @@ const CORE_HOOKS = Object.freeze([
   'room_reveal',
 ]);
 
-const ARTIFACT_HOOKS = Object.freeze([
-  ...CORE_HOOKS,
-  'before_assist',
-  'after_assist',
-  'before_debuff',
-  'before_complication',
-  'failed_attempt',
-]);
+const ARTIFACT_HOOKS = CORE_HOOKS;
+
+const PHASE_BY_CATALOG_TRIGGER = Object.freeze({
+  before_roll: 'before_roll',
+  after_roll: 'after_roll',
+  before_progress: 'before_progress',
+  after_progress: 'after_progress',
+  before_loot: 'before_loot',
+  room_reveal: 'room_reveal',
+  before_assist: 'before_progress',
+  after_assist: 'after_progress',
+  before_debuff: 'before_progress',
+  before_complication: 'before_progress',
+});
 
 function clone(value) {
   if (value === undefined) return undefined;
@@ -185,10 +191,6 @@ const EFFECT_HANDLERS = Object.freeze({
     state.coinMultiplier *= config.multiplier;
     return true;
   },
-  recover_ap(state, config) {
-    state.apRecovered += config.amount;
-    return true;
-  },
   clear_debuff(state) {
     if (!state.debuff) return false;
     state.debuff = null;
@@ -262,7 +264,6 @@ function createEffectState(context) {
     coins: context.coins || 0,
     coinMultiplier: context.coinMultiplier || 1,
     artifactRolls: context.artifactRolls || 0,
-    apRecovered: context.apRecovered || 0,
     assist: context.assist || 0,
     helpers: context.helpers || 0,
     support: context.support || 0,
@@ -292,18 +293,20 @@ function slotCanTrigger(slot, behavior) {
 }
 
 function consumeSlot(slot, behavior) {
-  if (!behavior.consumeOnTrigger) return;
+  if (!behavior.consumeOnTrigger) return false;
   if (behavior.type === 'charged') {
     slot.charges = Math.max(0, (slot.charges ?? behavior.initialCharges ?? 0) - 1);
     slot.exhausted = slot.charges === 0;
   } else if (behavior.type === 'consumable') {
     slot.quantity = Math.max(0, (slot.quantity ?? 1) - 1);
-    slot.exhausted = slot.quantity === 0;
+    return slot.quantity === 0;
   }
+  return false;
 }
 
 function finalizeState(state) {
   delete state.rng;
+  delete state.apRecovered;
   return state;
 }
 
@@ -314,17 +317,15 @@ function applyArtifactEffects(context) {
   const state = createEffectState(context);
   if (context.artifactsDisabled) return finalizeState(state);
 
-  for (const slot of state.loadout) {
+  for (let slotIndex = 0; slotIndex < state.loadout.length; slotIndex += 1) {
+    const slot = state.loadout[slotIndex];
+    if (!slot) continue;
     const artifact = ARTIFACTS[slot.artifactId];
     if (!artifact) continue;
-    const drawback = artifact.effect.config?.drawback;
-    if (drawback?.trigger === state.phase) {
-      if (drawback.type === 'reset_streak') state.successStreak = 0;
-      state.triggered.push(artifact.id);
-      recordTrigger(state, artifact.id);
-      continue;
-    }
-    if (artifact.effect.trigger !== state.phase) continue;
+    if (PHASE_BY_CATALOG_TRIGGER[artifact.effect.trigger] !== state.phase) continue;
+    if (artifact.effect.type === 'recover_ap') continue;
+    if (artifact.effect.type === 'assist_bonus' && state.actionType !== 'assist') continue;
+    if (artifact.effect.type === 'grant_personal_roll_buff' && state.actionType !== 'assist') continue;
     if (!slotCanTrigger(slot, artifact.behavior)) continue;
     const { config = {} } = artifact.effect;
     if (!matchesContext(state, config)) continue;
@@ -334,7 +335,7 @@ function applyArtifactEffects(context) {
 
     state.triggered.push(artifact.id);
     recordTrigger(state, artifact.id, config.limit);
-    consumeSlot(slot, artifact.behavior);
+    if (consumeSlot(slot, artifact.behavior)) state.loadout[slotIndex] = null;
   }
 
   return finalizeState(state);
@@ -345,5 +346,4 @@ module.exports = {
   CORE_HOOKS,
   EFFECT_HANDLERS,
   applyArtifactEffects,
-  createEffectState,
 };
