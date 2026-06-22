@@ -70,6 +70,13 @@ function indexes(db, table) {
   return db.prepare(`PRAGMA index_list(${table})`).all();
 }
 
+function indexedColumns(db, indexName) {
+  const escapedName = indexName.replaceAll("'", "''");
+  return db.prepare(`PRAGMA index_xinfo('${escapedName}')`).all()
+    .filter(({ key }) => key === 1)
+    .map(({ name, desc }) => ({ name, desc }));
+}
+
 function normalizedForeignKeys(db, table) {
   return foreignKeys(db, table)
     .map(({ from, table: referencedTable, on_delete }) => ({
@@ -86,6 +93,7 @@ function normalizedIndexes(db, table) {
       name: name.startsWith('sqlite_autoindex_') ? 'auto' : name,
       origin,
       unique,
+      columns: indexedColumns(db, name),
     }))
     .sort((left, right) => `${left.origin}:${left.name}`.localeCompare(`${right.origin}:${right.name}`));
 }
@@ -173,7 +181,15 @@ test('existing redundant artifact ownership index is removed', () => {
     db = initializeDatabaseAt(databasePath);
     assert.deepEqual(
       normalizedIndexes(db, 'expedition_artifact_inventory'),
-      [{ name: 'auto', origin: 'pk', unique: 1 }],
+      [{
+        name: 'auto',
+        origin: 'pk',
+        unique: 1,
+        columns: [
+          { name: 'user_id', desc: 0 },
+          { name: 'artifact_id', desc: 0 },
+        ],
+      }],
     );
   } finally {
     db?.close();
@@ -184,36 +200,102 @@ test('existing redundant artifact ownership index is removed', () => {
 
 test('expedition schema exposes required columns, foreign keys, and indexes', () => {
   withTempDatabase((db) => {
+    const column = (name, type, notnull, dflt_value = null, pk = 0) => ({
+      name,
+      type,
+      notnull,
+      dflt_value,
+      pk,
+    });
     const expectedColumns = {
       family_expeditions: [
-        'id', 'family_id', 'theme_id', 'seed', 'status', 'map_json', 'shared_buffs_json',
-        'started_by', 'started_at', 'boss_defeated_at', 'finished_at',
+        column('id', 'INTEGER', 0, null, 1),
+        column('family_id', 'INTEGER', 1),
+        column('theme_id', 'TEXT', 1),
+        column('seed', 'TEXT', 1),
+        column('status', 'TEXT', 1),
+        column('map_json', 'TEXT', 1),
+        column('shared_buffs_json', 'TEXT', 1, "'{}'"),
+        column('started_by', 'INTEGER', 1),
+        column('started_at', 'INTEGER', 1),
+        column('boss_defeated_at', 'INTEGER', 0),
+        column('finished_at', 'INTEGER', 0),
       ],
       family_expedition_rooms: [
-        'id', 'expedition_id', 'room_key', 'room_type', 'state', 'progress',
-        'progress_target', 'support', 'payload_json', 'unlocked_at', 'cleared_at',
+        column('id', 'INTEGER', 0, null, 1),
+        column('expedition_id', 'INTEGER', 1),
+        column('room_key', 'TEXT', 1),
+        column('room_type', 'TEXT', 1),
+        column('state', 'TEXT', 1),
+        column('progress', 'INTEGER', 1, '0'),
+        column('progress_target', 'INTEGER', 1),
+        column('support', 'INTEGER', 1, '0'),
+        column('payload_json', 'TEXT', 1, "'{}'"),
+        column('unlocked_at', 'INTEGER', 0),
+        column('cleared_at', 'INTEGER', 0),
       ],
       family_expedition_members: [
-        'expedition_id', 'user_id', 'role', 'ap', 'ap_regen_day', 'role_ability_day',
-        'role_ability_used', 'provision_id', 'provision_state_json', 'loadout_json',
-        'debuff_json', 'contribution_ap', 'contribution_progress', 'prepared_at',
-        'boss_reward_claimed_at',
+        column('expedition_id', 'INTEGER', 1, null, 1),
+        column('user_id', 'INTEGER', 1, null, 2),
+        column('role', 'TEXT', 1),
+        column('ap', 'INTEGER', 1, '3'),
+        column('ap_regen_day', 'INTEGER', 1),
+        column('role_ability_day', 'INTEGER', 1),
+        column('role_ability_used', 'INTEGER', 1, '0'),
+        column('provision_id', 'TEXT', 0),
+        column('provision_state_json', 'TEXT', 1, "'{}'"),
+        column('loadout_json', 'TEXT', 1, "'[]'"),
+        column('debuff_json', 'TEXT', 1, "'{}'"),
+        column('contribution_ap', 'INTEGER', 1, '0'),
+        column('contribution_progress', 'INTEGER', 1, '0'),
+        column('prepared_at', 'INTEGER', 1),
+        column('boss_reward_claimed_at', 'INTEGER', 0),
       ],
       expedition_artifact_inventory: [
-        'user_id', 'artifact_id', 'quantity', 'charges', 'first_acquired_at', 'last_acquired_at',
+        column('user_id', 'INTEGER', 1, null, 1),
+        column('artifact_id', 'TEXT', 1, null, 2),
+        column('quantity', 'INTEGER', 1, '0'),
+        column('charges', 'INTEGER', 1, '0'),
+        column('first_acquired_at', 'INTEGER', 1),
+        column('last_acquired_at', 'INTEGER', 1),
       ],
       family_expedition_actions: [
-        'id', 'idempotency_key', 'expedition_id', 'room_id', 'user_id', 'action_type',
-        'stat', 'raw_roll', 'modifier_json', 'modified_roll', 'progress_awarded', 'loot_json',
-        'narration_key', 'created_at',
+        column('id', 'INTEGER', 0, null, 1),
+        column('idempotency_key', 'TEXT', 1),
+        column('expedition_id', 'INTEGER', 1),
+        column('room_id', 'INTEGER', 1),
+        column('user_id', 'INTEGER', 1),
+        column('action_type', 'TEXT', 1),
+        column('stat', 'TEXT', 0),
+        column('raw_roll', 'INTEGER', 0),
+        column('modifier_json', 'TEXT', 1, "'{}'"),
+        column('modified_roll', 'INTEGER', 0),
+        column('progress_awarded', 'INTEGER', 1, '0'),
+        column('loot_json', 'TEXT', 1, "'{}'"),
+        column('narration_key', 'TEXT', 0),
+        column('created_at', 'INTEGER', 1),
       ],
       family_expedition_history: [
-        'id', 'expedition_id', 'family_id', 'summary_json', 'finished_at',
+        column('id', 'INTEGER', 0, null, 1),
+        column('expedition_id', 'INTEGER', 1),
+        column('family_id', 'INTEGER', 1),
+        column('summary_json', 'TEXT', 1),
+        column('finished_at', 'INTEGER', 1),
       ],
     };
 
     for (const [table, expected] of Object.entries(expectedColumns)) {
-      assert.deepEqual(columns(db, table).map((column) => column.name), expected, table);
+      assert.deepEqual(
+        columns(db, table).map(({ name, type, notnull, dflt_value, pk }) => ({
+          name,
+          type,
+          notnull,
+          dflt_value,
+          pk,
+        })),
+        expected,
+        `${table} columns`,
+      );
       assert.ok(Array.isArray(foreignKeys(db, table)), `${table} foreign keys are inspectable`);
       assert.ok(Array.isArray(indexes(db, table)), `${table} indexes are inspectable`);
     }
@@ -249,40 +331,69 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
 
     const expectedIndexes = {
       family_expeditions: [
-        { name: 'idx_family_expeditions_family_status', origin: 'c', unique: 0 },
+        {
+          name: 'idx_family_expeditions_family_status',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'family_id', desc: 0 }, { name: 'status', desc: 0 }],
+        },
       ],
       family_expedition_rooms: [
-        { name: 'idx_family_expedition_rooms_expedition', origin: 'c', unique: 0 },
-        { name: 'auto', origin: 'u', unique: 1 },
+        {
+          name: 'idx_family_expedition_rooms_expedition',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'expedition_id', desc: 0 }, { name: 'state', desc: 0 }],
+        },
+        {
+          name: 'auto',
+          origin: 'u',
+          unique: 1,
+          columns: [{ name: 'expedition_id', desc: 0 }, { name: 'room_key', desc: 0 }],
+        },
       ],
       family_expedition_members: [
-        { name: 'auto', origin: 'pk', unique: 1 },
+        {
+          name: 'auto',
+          origin: 'pk',
+          unique: 1,
+          columns: [{ name: 'expedition_id', desc: 0 }, { name: 'user_id', desc: 0 }],
+        },
       ],
       expedition_artifact_inventory: [
-        { name: 'auto', origin: 'pk', unique: 1 },
+        {
+          name: 'auto',
+          origin: 'pk',
+          unique: 1,
+          columns: [{ name: 'user_id', desc: 0 }, { name: 'artifact_id', desc: 0 }],
+        },
       ],
       family_expedition_actions: [
-        { name: 'idx_family_expedition_actions_chronology', origin: 'c', unique: 0 },
-        { name: 'auto', origin: 'u', unique: 1 },
+        {
+          name: 'idx_family_expedition_actions_chronology',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'expedition_id', desc: 0 }, { name: 'created_at', desc: 0 }],
+        },
+        {
+          name: 'auto',
+          origin: 'u',
+          unique: 1,
+          columns: [{ name: 'user_id', desc: 0 }, { name: 'idempotency_key', desc: 0 }],
+        },
       ],
       family_expedition_history: [
-        { name: 'idx_family_expedition_history_family', origin: 'c', unique: 0 },
+        {
+          name: 'idx_family_expedition_history_family',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'family_id', desc: 0 }, { name: 'finished_at', desc: 1 }],
+        },
       ],
     };
     for (const [table, expected] of Object.entries(expectedIndexes)) {
       assert.deepEqual(normalizedIndexes(db, table), expected, `${table} indexes`);
     }
-
-    const defaults = Object.fromEntries(
-      columns(db, 'family_expedition_members').map(({ name, dflt_value }) => [name, dflt_value]),
-    );
-    assert.equal(defaults.ap, '3');
-    assert.equal(defaults.role_ability_used, '0');
-    assert.equal(defaults.provision_state_json, "'{}'");
-    assert.equal(defaults.loadout_json, "'[]'");
-    assert.equal(defaults.debuff_json, "'{}'");
-    assert.equal(defaults.contribution_ap, '0');
-    assert.equal(defaults.contribution_progress, '0');
   });
 });
 
