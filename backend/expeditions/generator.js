@@ -114,28 +114,28 @@ function hasAllActionStats(rooms) {
 }
 
 function enforceStatCoverage(rng, rooms) {
-  if (hasAllActionStats(rooms)) return rooms;
+  const proceduralRooms = rooms.filter(room => !['camp', 'boss'].includes(room.type));
+  if (hasAllActionStats(proceduralRooms)) return rooms;
 
-  const existingStats = actionStatsFor(rooms);
-  const missingStats = ACTION_STATS.filter(stat => !existingStats.has(stat));
-  const candidates = REQUIRED_ROOM_TYPES
-    .flatMap(type => ROOM_TEMPLATES[type])
-    .filter(template => {
-      const templateStats = actionStatsFor([template]);
-      return missingStats.every(stat => templateStats.has(stat));
-    });
+  const authoredCandidates = REQUIRED_ROOM_TYPES.flatMap(type => ROOM_TEMPLATES[type]);
   const replacementIndexes = rooms
     .map((room, index) => ({ room, index }))
     .filter(({ room }) => room.required && !['camp', 'boss'].includes(room.type));
+  const validReplacements = replacementIndexes.flatMap(({ room, index }) => {
+    const remainingRooms = proceduralRooms.filter(candidate => candidate !== room);
+    return authoredCandidates
+      .filter(template => hasAllActionStats([...remainingRooms, template]))
+      .map(template => ({ room, index, template }));
+  });
 
-  if (candidates.length === 0 || replacementIndexes.length === 0) {
+  if (validReplacements.length === 0) {
     throw new Error('Authored room templates cannot cover all action stats');
   }
 
-  const { room, index } = choose(rng, replacementIndexes);
+  const { room, index, template } = choose(rng, validReplacements);
   const placement = { key: room.key, depth: room.depth, required: true };
   const coveredRooms = [...rooms];
-  coveredRooms[index] = cloneTemplate(choose(rng, candidates), placement);
+  coveredRooms[index] = cloneTemplate(template, placement);
   return coveredRooms;
 }
 

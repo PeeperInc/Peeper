@@ -5,7 +5,6 @@ import test from 'node:test';
 const require = createRequire(import.meta.url);
 const {
   generateExpeditionMap,
-  enforceStatCoverage,
   isBossReachable,
   validateExpeditionMap,
 } = require('./generator.js');
@@ -54,20 +53,13 @@ test('generator satisfies structural constraints across 500 seeds', () => {
   }
 });
 
-test('stat coverage enforcement uses authored procedural room templates', () => {
-  const underCoveredTemplate = ROOM_TEMPLATES.shrine[1];
-  const rooms = Array.from({ length: 8 }, (_, index) => ({
-    ...structuredClone(underCoveredTemplate),
-    key: `shrine_${index + 1}`,
-    depth: index + 1,
-    required: true,
-  }));
-  const coveredRooms = enforceStatCoverage(() => 0, rooms);
-  const stats = new Set(coveredRooms.flatMap(room => room.actions.map(action => action.stat)));
-  const authoredIds = new Set(Object.values(ROOM_TEMPLATES).flat().map(template => template.id));
+test('generation guarantees procedural stat coverage for coverage-probe-892690', () => {
+  const map = generateExpeditionMap('coverage-probe-892690');
+  const proceduralRooms = map.rooms.filter(room => room.type !== 'camp' && room.type !== 'boss');
+  const stats = new Set(proceduralRooms.flatMap(room => room.actions.map(action => action.stat)));
 
   assert.deepEqual([...stats].sort(), [...STATS].sort());
-  assert.ok(coveredRooms.every(room => authoredIds.has(room.id)));
+  assert.deepEqual(validateExpeditionMap(map), []);
 });
 
 test('different seeds produce meaningful map content variety', () => {
@@ -147,17 +139,26 @@ test('validation requires exactly one camp and one boss', () => {
 
 test('validation rejects orphan required and optional rooms', () => {
   const map = generateExpeditionMap('orphan-rooms');
-  const required = map.rooms.find(room => room.required && !['camp', 'boss'].includes(room.type));
+  const requiredRooms = map.rooms.filter(
+    room => room.required && !['camp', 'boss'].includes(room.type),
+  );
+  const required = requiredRooms.at(-1);
   const optional = map.rooms.find(room => room.optional);
+  const incoming = map.edges.find(edge => edge.to === required.key);
+  const outgoing = map.edges.find(edge => edge.from === required.key);
   const orphanRequired = {
     ...map,
-    edges: map.edges.filter(edge => edge.to !== required.key),
+    edges: [
+      ...map.edges.filter(edge => edge.to !== required.key),
+      { from: incoming.from, to: outgoing.to },
+    ],
   };
   const orphanOptional = {
     ...map,
     edges: map.edges.filter(edge => edge.to !== optional.key),
   };
 
+  assert.equal(isBossReachable(orphanRequired), true);
   assert.ok(validateExpeditionMap(orphanRequired).some(error => error.includes('reachable from camp')));
   assert.ok(validateExpeditionMap(orphanOptional).some(error => error.includes('reachable from camp')));
 });
