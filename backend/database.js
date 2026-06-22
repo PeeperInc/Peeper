@@ -192,6 +192,7 @@ db.exec(`
     jackpot_notifications    INTEGER NOT NULL DEFAULT 1,
     farm_notifications       INTEGER NOT NULL DEFAULT 1,
     farm_animal_notifications INTEGER NOT NULL DEFAULT 0,
+    expedition_notifications INTEGER NOT NULL DEFAULT 1,
     updated_at               INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   );
 
@@ -260,6 +261,7 @@ addColumnIfMissing('users',   'supporter_stars', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users',   'casino_free_spins', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('user_notification_settings', 'farm_notifications', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('user_notification_settings', 'farm_animal_notifications', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('user_notification_settings', 'expedition_notifications', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('peepers', 'critical_start','INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'regen_start',   'INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'hp_at_regen',   'REAL DEFAULT NULL');
@@ -365,6 +367,103 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_family_big_feasts_feaster ON family_big_feasts(feaster_id, used_at DESC);
   CREATE INDEX IF NOT EXISTS idx_family_messages     ON family_messages(family_id, sent_at);
   CREATE INDEX IF NOT EXISTS idx_family_chat_reads_family_user ON family_chat_reads(family_id, user_id);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS family_expeditions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    theme_id TEXT NOT NULL,
+    seed TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('active','boss_defeated','finished')),
+    map_json TEXT NOT NULL,
+    shared_buffs_json TEXT NOT NULL DEFAULT '{}',
+    started_by INTEGER NOT NULL REFERENCES users(id),
+    started_at INTEGER NOT NULL,
+    boss_defeated_at INTEGER,
+    finished_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_rooms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    room_key TEXT NOT NULL,
+    room_type TEXT NOT NULL,
+    state TEXT NOT NULL,
+    progress INTEGER NOT NULL DEFAULT 0,
+    progress_target INTEGER NOT NULL,
+    support INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    unlocked_at INTEGER,
+    cleared_at INTEGER,
+    UNIQUE(expedition_id, room_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_members (
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    ap INTEGER NOT NULL DEFAULT 3,
+    ap_regen_day INTEGER NOT NULL,
+    role_ability_day INTEGER NOT NULL,
+    role_ability_used INTEGER NOT NULL DEFAULT 0,
+    provision_id TEXT,
+    provision_state_json TEXT NOT NULL DEFAULT '{}',
+    loadout_json TEXT NOT NULL DEFAULT '[]',
+    debuff_json TEXT NOT NULL DEFAULT '{}',
+    contribution_ap INTEGER NOT NULL DEFAULT 0,
+    contribution_progress INTEGER NOT NULL DEFAULT 0,
+    prepared_at INTEGER NOT NULL,
+    boss_reward_claimed_at INTEGER,
+    PRIMARY KEY(expedition_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS expedition_artifact_inventory (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    artifact_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    charges INTEGER NOT NULL DEFAULT 0,
+    first_acquired_at INTEGER NOT NULL,
+    last_acquired_at INTEGER NOT NULL,
+    PRIMARY KEY(user_id, artifact_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idempotency_key TEXT NOT NULL,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    room_id INTEGER NOT NULL REFERENCES family_expedition_rooms(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action_type TEXT NOT NULL,
+    stat TEXT,
+    raw_roll INTEGER,
+    modifier_json TEXT NOT NULL DEFAULT '{}',
+    modified_roll INTEGER,
+    progress_awarded INTEGER NOT NULL DEFAULT 0,
+    loot_json TEXT NOT NULL DEFAULT '{}',
+    narration_key TEXT,
+    created_at INTEGER NOT NULL,
+    UNIQUE(user_id, idempotency_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    summary_json TEXT NOT NULL,
+    finished_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_family_expeditions_family_status
+    ON family_expeditions(family_id, status);
+  CREATE INDEX IF NOT EXISTS idx_family_expedition_rooms_expedition
+    ON family_expedition_rooms(expedition_id, state);
+  CREATE INDEX IF NOT EXISTS idx_family_expedition_actions_chronology
+    ON family_expedition_actions(expedition_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_expedition_artifacts_user
+    ON expedition_artifact_inventory(user_id, artifact_id);
+  CREATE INDEX IF NOT EXISTS idx_family_expedition_history_family
+    ON family_expedition_history(family_id, finished_at DESC);
 `);
 
 db.exec(`
