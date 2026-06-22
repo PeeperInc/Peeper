@@ -1,0 +1,218 @@
+const { ROOM_TEMPLATES, THEME_ID } = require('./catalog');
+
+const ACTION_STATS = ['might', 'agility', 'arcana', 'spirit'];
+const REQUIRED_ROOM_TYPES = ['combat', 'trap', 'arcane', 'exploration', 'shrine', 'mystery'];
+const OPTIONAL_ROOM_TYPES = ['combat', 'trap', 'arcane', 'exploration', 'shrine', 'mystery'];
+
+function createSeededRandom(seed) {
+  let hash = 2166136261;
+  const value = String(seed);
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return function random() {
+    hash += 0x6d2b79f5;
+    let result = hash;
+    result = Math.imul(result ^ (result >>> 15), result | 1);
+    result ^= result + Math.imul(result ^ (result >>> 7), result | 61);
+    return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randomInt(rng, min, max) {
+  return min + Math.floor(rng() * (max - min + 1));
+}
+
+function choose(rng, values) {
+  return values[randomInt(rng, 0, values.length - 1)];
+}
+
+function cloneTemplate(template, placement) {
+  return {
+    ...JSON.parse(JSON.stringify(template)),
+    ...placement,
+  };
+}
+
+function chooseTemplate(rng, types) {
+  const type = choose(rng, types);
+  return choose(rng, ROOM_TEMPLATES[type]);
+}
+
+function createRoom(template, sequence, depth, placement) {
+  return cloneTemplate(template, {
+    key: `${template.type}_${sequence}`,
+    depth,
+    ...placement,
+  });
+}
+
+function buildRequiredSpine(rng, encounterCount) {
+  const camp = createRoom(ROOM_TEMPLATES.camp[0], 0, 0, { required: true });
+  const rooms = [camp];
+
+  for (let index = 0; index < encounterCount; index += 1) {
+    const template = chooseTemplate(rng, REQUIRED_ROOM_TYPES);
+    rooms.push(createRoom(template, index + 1, index + 1, { required: true }));
+  }
+
+  return rooms;
+}
+
+function attachOptionalBranches(rng, rooms, optionalCount, treasureCount) {
+  const requiredRooms = [...rooms];
+  const optionalTemplates = [];
+
+  for (let index = 0; index < treasureCount; index += 1) {
+    optionalTemplates.push(choose(rng, ROOM_TEMPLATES.treasure));
+  }
+  for (let index = treasureCount; index < optionalCount; index += 1) {
+    optionalTemplates.push(chooseTemplate(rng, OPTIONAL_ROOM_TYPES));
+  }
+
+  for (let index = optionalTemplates.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(rng, 0, index);
+    [optionalTemplates[index], optionalTemplates[swapIndex]] =
+      [optionalTemplates[swapIndex], optionalTemplates[index]];
+  }
+
+  const optionalRooms = optionalTemplates.map((template, index) => {
+    const source = choose(rng, requiredRooms.slice(0, -1));
+    const room = createRoom(template, rooms.length + index, source.depth + 1, { optional: true });
+    return { room, sourceKey: source.key };
+  });
+
+  return optionalRooms;
+}
+
+function appendBoss(rooms) {
+  const template = ROOM_TEMPLATES.boss[0];
+  const depth = Math.max(...rooms.map(room => room.depth)) + 1;
+  return createRoom(template, rooms.length, depth, { required: true });
+}
+
+function actionStatsFor(rooms) {
+  return new Set(rooms.flatMap(room => room.actions.map(action => action.stat)));
+}
+
+function hasAllActionStats(rooms) {
+  const stats = actionStatsFor(rooms);
+  return ACTION_STATS.every(stat => stats.has(stat));
+}
+
+function generateExpeditionMap(seed) {
+  const normalizedSeed = String(seed);
+  const rng = createSeededRandom(normalizedSeed);
+  const requiredCount = randomInt(rng, 8, 12);
+  const optionalCount = randomInt(rng, 3, 5);
+  const treasureCount = randomInt(rng, 1, 2);
+  const requiredRooms = buildRequiredSpine(rng, requiredCount);
+  const optionalBranches = attachOptionalBranches(rng, requiredRooms, optionalCount, treasureCount);
+  const boss = appendBoss(requiredRooms);
+  const rooms = [...requiredRooms, ...optionalBranches.map(branch => branch.room), boss];
+  const edges = [];
+
+  for (let index = 1; index < requiredRooms.length; index += 1) {
+    edges.push({ from: requiredRooms[index - 1].key, to: requiredRooms[index].key });
+  }
+  edges.push({ from: requiredRooms.at(-1).key, to: boss.key });
+  for (const branch of optionalBranches) {
+    edges.push({ from: branch.sourceKey, to: branch.room.key });
+  }
+
+  if (!hasAllActionStats(rooms)) {
+    throw new Error('Authored room templates do not cover all action stats');
+  }
+
+  return { version: 1, seed: normalizedSeed, themeId: THEME_ID, rooms, edges };
+}
+
+function isBossReachable(map) {
+  if (!map || !Array.isArray(map.rooms) || !Array.isArray(map.edges)) return false;
+  const camp = map.rooms.find(room => room.type === 'camp');
+  const boss = map.rooms.find(room => room.type === 'boss');
+  if (!camp || !boss) return false;
+
+  const outgoing = new Map();
+  for (const edge of map.edges) {
+    const destinations = outgoing.get(edge.from) || [];
+    destinations.push(edge.to);
+    outgoing.set(edge.from, destinations);
+  }
+
+  const pending = [camp.key];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const key = pending.pop();
+    if (key === boss.key) return true;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    pending.push(...(outgoing.get(key) || []));
+  }
+  return false;
+}
+
+function isJsonSafe(value, seen = new Set()) {
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (value === null || typeof value !== 'object') {
+    return !['undefined', 'function', 'symbol', 'bigint'].includes(typeof value);
+  }
+  if (seen.has(value)) return false;
+  seen.add(value);
+  const safe = Object.values(value).every(item => isJsonSafe(item, seen));
+  seen.delete(value);
+  return safe;
+}
+
+function validateExpeditionMap(map) {
+  const errors = [];
+  if (!map || !Array.isArray(map.rooms) || !Array.isArray(map.edges)) {
+    return ['Map must contain rooms and edges arrays'];
+  }
+
+  const keys = new Set(map.rooms.map(room => room.key));
+  if (keys.size !== map.rooms.length) errors.push('Room keys must be unique');
+  if (map.rooms[0]?.type !== 'camp') errors.push('Camp must be the first room');
+  if (map.rooms.at(-1)?.type !== 'boss') errors.push('Boss must be the last room');
+
+  const requiredCount = map.rooms.filter(
+    room => room.required && room.type !== 'camp' && room.type !== 'boss',
+  ).length;
+  const optionalCount = map.rooms.filter(room => room.optional).length;
+  const treasureCount = map.rooms.filter(room => room.type === 'treasure').length;
+  if (requiredCount < 8 || requiredCount > 12) errors.push('Map must have 8-12 required rooms');
+  if (optionalCount < 3 || optionalCount > 5) errors.push('Map must have 3-5 optional rooms');
+  if (treasureCount < 1 || treasureCount > 2) errors.push('Map must have 1-2 treasure rooms');
+  if (!hasAllActionStats(map.rooms)) errors.push('Map must cover all four action stats');
+
+  const roomsByKey = new Map(map.rooms.map(room => [room.key, room]));
+  for (const edge of map.edges) {
+    const from = roomsByKey.get(edge.from);
+    const to = roomsByKey.get(edge.to);
+    if (!from || !to) {
+      errors.push('Every edge must reference existing rooms');
+    } else if (from.depth >= to.depth) {
+      errors.push('Every edge must point forward');
+    }
+  }
+  if (!isBossReachable(map)) errors.push('Boss must be reachable from camp');
+  if (!isJsonSafe(map)) errors.push('Map must contain only JSON-safe finite values');
+
+  return [...new Set(errors)];
+}
+
+module.exports = {
+  ACTION_STATS,
+  createSeededRandom,
+  randomInt,
+  buildRequiredSpine,
+  attachOptionalBranches,
+  appendBoss,
+  hasAllActionStats,
+  generateExpeditionMap,
+  isBossReachable,
+  validateExpeditionMap,
+};
