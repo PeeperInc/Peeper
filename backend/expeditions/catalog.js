@@ -211,7 +211,15 @@ function action(id, label, stat, difficulty, modifier, tags, options = {}) {
 }
 
 function room(id, type, name, progressTarget, tags, actions, extra = {}) {
-  return { id, type, name, progressTarget, tags, actions, ...extra };
+  return {
+    id,
+    type,
+    name,
+    progressTarget,
+    tags,
+    actions: actions.map(authoredAction => ({ ...authoredAction, progressTarget })),
+    ...extra,
+  };
 }
 
 const ROOM_TEMPLATES = deepFreeze({
@@ -283,7 +291,7 @@ const ROOM_TEMPLATES = deepFreeze({
     ], { reward: { type: 'shared_roll_bonus', stat: 'agility', amount: 2, uses: 1 } }),
   ],
   camp: [
-    room('entrance_camp', 'camp', 'Expedition Camp', 0, ['camp'], [
+    room('entrance_camp', 'camp', 'Expedition Camp', 1, ['camp'], [
       action('fortify_camp', 'Fortify the camp', 'might', 'easy', 0, ['camp']),
       action('survey_camp_routes', 'Survey the routes ahead', 'agility', 'easy', 0, ['camp', 'hidden_path']),
       action('study_camp_log', 'Study the expedition log', 'arcana', 'easy', 0, ['camp']),

@@ -127,18 +127,24 @@ test('room templates author every room type and all four action stats', () => {
   const templates = Object.values(ROOM_TEMPLATES).flat();
   assert.equal(new Set(templates.map(template => template.id)).size, templates.length);
   assert.ok(templates.every(template => REQUIRED_ROOM_TYPES.includes(template.type)));
-  assert.ok(templates.every(template => Number.isInteger(template.progressTarget) && template.progressTarget >= 0));
   assert.ok(templates.every(template => Array.isArray(template.actions) && template.actions.length > 0));
 
   const stats = new Set(templates.flatMap(template => template.actions.map(action => action.stat)));
   assert.deepEqual(stats, VALID_STATS);
-  for (const action of templates.flatMap(template => template.actions)) {
-    assert.ok(VALID_STATS.has(action.stat));
-    assert.equal(typeof action.id, 'string');
-    assert.equal(typeof action.label, 'string');
-    assert.ok(['easy', 'risky', 'hard'].includes(action.difficulty));
-    assert.ok(Number.isInteger(action.modifier));
-    assert.ok(Array.isArray(action.tags));
+  for (const template of templates) {
+    for (const action of template.actions) {
+      assert.ok(VALID_STATS.has(action.stat));
+      assert.equal(typeof action.id, 'string');
+      assert.equal(typeof action.label, 'string');
+      assert.ok(['easy', 'risky', 'hard'].includes(action.difficulty));
+      assert.ok(Number.isInteger(action.modifier));
+      assert.ok(Array.isArray(action.tags));
+      assert.ok(Number.isInteger(action.progressTarget));
+      assert.ok(action.progressTarget > 0);
+      assert.equal(action.progressTarget, template.progressTarget);
+    }
+    assert.ok(Number.isInteger(template.progressTarget));
+    assert.ok(template.progressTarget > 0);
   }
 });
 
