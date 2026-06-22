@@ -52,11 +52,26 @@ test('generator satisfies structural constraints across 500 seeds', () => {
   }
 });
 
-test('different seeds produce different maps', () => {
+test('different seeds produce meaningful map content variety', () => {
+  const contentSignature = map => JSON.stringify({
+    themeId: map.themeId,
+    rooms: map.rooms,
+    edges: map.edges,
+  });
+  const firstMap = generateExpeditionMap('variety-0');
+  const seedOnlyVariants = [
+    firstMap,
+    { ...firstMap, seed: 'different-seed-with-identical-content' },
+  ];
   const maps = new Set(
-    Array.from({ length: 20 }, (_, index) => JSON.stringify(generateExpeditionMap(`variety-${index}`))),
+    Array.from(
+      { length: 20 },
+      (_, index) => contentSignature(generateExpeditionMap(`variety-${index}`)),
+    ),
   );
-  assert.equal(maps.size, 20);
+
+  assert.equal(new Set(seedOnlyVariants.map(contentSignature)).size, 1);
+  assert.ok(maps.size >= 10, `expected at least 10 distinct maps, received ${maps.size}`);
 });
 
 test('generated maps serialize without losing Infinity-free payload data', () => {
