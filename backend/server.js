@@ -32,6 +32,7 @@ app.use('/api/blackjack', require('./routes/blackjack'));
 app.use('/api/arena', require('./routes/arena'));
 app.use('/api/farm', require('./routes/farm'));
 app.use('/api/support', require('./routes/support'));
+app.use('/api/expeditions', require('./routes/expeditions'));
 
 // Items catalog (no auth needed for the list itself)
 const { CLOTHING_ITEMS, GIFT_ITEMS } = require('./items');
