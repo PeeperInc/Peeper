@@ -1078,3 +1078,60 @@ test('idempotency replay rejects same key for different intent', () => {
   })), /idempotency conflict/);
   db.close();
 });
+
+test('idempotency replay rejects same action type with different room or action intent', () => {
+  const db = expeditionDb();
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-same-type-idem',
+    familyId: 83,
+    userId: 16,
+    seed: 'same-type-idem-seed',
+    map,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-same-type-idem',
+    expeditionId,
+    userId: 16,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+
+  const first = inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'same-attempt-key',
+    expeditionId,
+    userId: 16,
+    roomKey: 'hall_1',
+    actionId: 'thread_gap',
+    roll: 7,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  const exactReplay = inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'same-attempt-key',
+    expeditionId,
+    userId: 16,
+    roomKey: 'hall_1',
+    actionId: 'thread_gap',
+    roll: 7,
+    now: Date.UTC(2026, 5, 23),
+  }));
+
+  assert.equal(first.actions.filter(action => action.idempotencyKey === 'same-attempt-key').length, 1);
+  assert.equal(exactReplay.actions.filter(action => action.idempotencyKey === 'same-attempt-key').length, 1);
+  assert.throws(() => inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'same-attempt-key',
+    expeditionId,
+    userId: 16,
+    roomKey: 'camp_0',
+    actionId: 'tend_campfire',
+    roll: 7,
+    now: Date.UTC(2026, 5, 23),
+  })), /idempotency conflict/);
+  db.close();
+});

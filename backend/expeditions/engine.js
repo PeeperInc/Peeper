@@ -627,6 +627,21 @@ function stringifyJson(value) {
   return JSON.stringify(value ?? {});
 }
 
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (!value || typeof value !== 'object') return value ?? null;
+  return Object.keys(value)
+    .sort()
+    .reduce((result, key) => {
+      result[key] = stableValue(value[key]);
+      return result;
+    }, {});
+}
+
+function stableStringify(value) {
+  return JSON.stringify(stableValue(value));
+}
+
 function decodeDebuff(text) {
   const value = parseJson(text, null);
   if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) return null;
@@ -642,9 +657,10 @@ function findIdempotentAction(transaction, {
   idempotencyKey,
   expectedActionType,
   expectedExpeditionId = null,
+  expectedIntent = null,
 }) {
   const action = transaction.prepare(`
-    SELECT expedition_id AS expeditionId, action_type AS actionType
+    SELECT expedition_id AS expeditionId, action_type AS actionType, modifier_json AS modifierJson
     FROM family_expedition_actions
     WHERE user_id = ? AND idempotency_key = ?
   `).get(userId, idempotencyKey);
@@ -654,6 +670,12 @@ function findIdempotentAction(transaction, {
     || (expectedExpeditionId !== null && action.expeditionId !== expectedExpeditionId)
   ) {
     throw new Error('idempotency conflict: key was already used for another mutation');
+  }
+  if (expectedIntent !== null) {
+    const storedIntent = parseJson(action.modifierJson, {}).intent;
+    if (stableStringify(storedIntent) !== stableStringify(expectedIntent)) {
+      throw new Error('idempotency conflict: key was already used with different intent');
+    }
   }
   return action;
 }
@@ -798,6 +820,7 @@ function insertAction(transaction, {
   stat = null,
   rawRoll = null,
   modifiers = {},
+  intent = null,
   modifiedRoll = null,
   progressAwarded = 0,
   loot = {},
@@ -817,7 +840,7 @@ function insertAction(transaction, {
     actionType,
     stat,
     rawRoll,
-    stringifyJson(modifiers),
+    stringifyJson(intent === null ? modifiers : { ...modifiers, intent: stableValue(intent) }),
     modifiedRoll,
     progressAwarded,
     stringifyJson(loot),
@@ -956,10 +979,12 @@ function createExpedition(options) {
     map,
     now = Math.floor(Date.now() / 1000),
   } = options;
+  const intent = { familyId, startedBy, themeId, seed: seed || null, map };
   const replay = findIdempotentAction(transaction, {
     userId: startedBy,
     idempotencyKey,
     expectedActionType: 'create_expedition',
+    expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   if (!familyId || !startedBy || !map) throw new TypeError('familyId, userId, and map are required');
@@ -998,6 +1023,7 @@ function createExpedition(options) {
     roomId: room.id,
     userId: startedBy,
     actionType: 'create_expedition',
+    intent,
     now,
   });
   return readSnapshot(transaction, expeditionId);
@@ -1017,11 +1043,13 @@ function prepareMember(options) {
   } = options;
   const snapshot = readSnapshot(transaction, expeditionId);
   assertExpeditionNotFinished(snapshot);
+  const intent = { expeditionId, userId, role, provisionId, artifactIds };
   const replay = findIdempotentAction(transaction, {
     userId,
     idempotencyKey,
     expectedActionType: 'prepare_member',
     expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   if (!ROLES[role]) throw new RangeError(`Unknown role: ${role}`);
@@ -1077,6 +1105,7 @@ function prepareMember(options) {
     roomId: campRoom(transaction, expeditionId).id,
     userId,
     actionType: 'prepare_member',
+    intent,
     now,
   });
   return readSnapshot(transaction, expeditionId);
@@ -1101,11 +1130,23 @@ function attemptRoom(options) {
   } = options;
   let snapshot = readSnapshot(transaction, expeditionId);
   assertExpeditionNotFinished(snapshot);
+  const intent = {
+    expeditionId,
+    userId,
+    roomKey,
+    actionId,
+    selectedSupport,
+    roll: roll ?? null,
+    reroll: reroll ?? null,
+    useRoleAbility,
+    useSharedBuff,
+  };
   const replay = findIdempotentAction(transaction, {
     userId,
     idempotencyKey,
     expectedActionType: 'attempt',
     expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
@@ -1158,6 +1199,7 @@ function attemptRoom(options) {
     stat: action.stat,
     rawRoll: result.rawRoll,
     modifiers: result.modifiers,
+    intent,
     modifiedRoll: result.modifiedRoll,
     progressAwarded: result.progressAwarded,
     loot: result.loot,
@@ -1180,11 +1222,13 @@ function assistRoom(options) {
   } = options;
   const snapshot = readSnapshot(transaction, expeditionId);
   assertExpeditionNotFinished(snapshot);
+  const intent = { expeditionId, userId, roomKey };
   const replay = findIdempotentAction(transaction, {
     userId,
     idempotencyKey,
     expectedActionType: 'assist',
     expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
@@ -1205,6 +1249,7 @@ function assistRoom(options) {
     userId,
     actionType: 'assist',
     modifiers: { supportAdded: result.supportAdded },
+    intent,
     now,
   });
   return readSnapshot(transaction, expeditionId);
@@ -1223,11 +1268,13 @@ function revealRoom(options) {
   } = options;
   const snapshot = readSnapshot(transaction, expeditionId);
   assertExpeditionNotFinished(snapshot);
+  const intent = { expeditionId, userId, fromRoomKey, roomKey };
   const replay = findIdempotentAction(transaction, {
     userId,
     idempotencyKey,
     expectedActionType: 'reveal_room',
     expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   const connected = (snapshot.expedition.map.edges || [])
@@ -1257,6 +1304,7 @@ function revealRoom(options) {
     userId,
     actionType: 'reveal_room',
     modifiers: { revealedRoomKey: target.key },
+    intent,
     now,
   });
   return readSnapshot(transaction, expeditionId);
@@ -1275,11 +1323,13 @@ function equipFoundArtifactForMember(options) {
   } = options;
   const snapshot = readSnapshot(transaction, expeditionId);
   assertExpeditionNotFinished(snapshot);
+  const intent = { expeditionId, userId, artifactId, slotIndex: slotIndex ?? null };
   const replay = findIdempotentAction(transaction, {
     userId,
     idempotencyKey,
     expectedActionType: 'equip_found_artifact',
     expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
@@ -1300,6 +1350,7 @@ function equipFoundArtifactForMember(options) {
     userId,
     actionType: 'equip_found_artifact',
     modifiers: { artifactId, slotIndex },
+    intent,
     now,
   });
   return readSnapshot(transaction, expeditionId);
@@ -1314,11 +1365,13 @@ function finishExpedition(options) {
     userId,
     now = Math.floor(Date.now() / 1000),
   } = options;
+  const intent = { expeditionId, userId };
   const replay = findIdempotentAction(transaction, {
     userId,
     idempotencyKey,
     expectedActionType: 'finish_expedition',
     expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   const snapshot = readSnapshot(transaction, expeditionId);
@@ -1349,6 +1402,7 @@ function finishExpedition(options) {
     roomId: room.id,
     userId,
     actionType: 'finish_expedition',
+    intent,
     now,
   });
   return readSnapshot(transaction, expeditionId);
