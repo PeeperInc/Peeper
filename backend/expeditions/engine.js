@@ -51,9 +51,9 @@ function progressForRoll({ rawRoll, modifiedRoll, naturalOneProtected = false })
   return band?.progress ?? 0;
 }
 
-function normalizeSupport(value) {
+function normalizeSupport(value, available = MAX_SUPPORT) {
   if (!Number.isFinite(Number(value))) return 0;
-  return Math.max(0, Math.min(MAX_SUPPORT, Math.floor(Number(value))));
+  return Math.max(0, Math.min(MAX_SUPPORT, Math.floor(Number(value)), Math.max(0, available)));
 }
 
 function normalizeRoleDay(member, dayKey) {
@@ -98,15 +98,28 @@ function inventoryItemFor(inventory = [], artifactId) {
   return inventory.find(item => (item.artifactId ?? item.artifact_id) === artifactId);
 }
 
-function equipFoundArtifact({ loadout = [], inventory = [], artifactId, maxSlots = 2 } = {}) {
+function normalizeLoadout(loadout = [], maxSlots = 3) {
+  const normalized = clone(loadout || []).slice(0, maxSlots);
+  while (normalized.length < maxSlots) normalized.push(null);
+  return normalized;
+}
+
+function equipFoundArtifact({ loadout = [], inventory = [], artifactId, slotIndex, maxSlots = 3 } = {}) {
   if (!ARTIFACTS[artifactId]) throw new RangeError(`Unknown artifact: ${artifactId}`);
   const owned = inventoryItemFor(inventory, artifactId);
   if (!owned || ((owned.quantity ?? 0) <= 0 && (owned.charges ?? 0) <= 0)) {
     throw new RangeError(`Artifact not owned: ${artifactId}`);
   }
-  const next = clone(loadout || []).filter(slot => slot?.artifactId !== artifactId);
-  next.unshift(slotFromInventoryItem(owned));
-  return next.slice(0, maxSlots);
+  const targetSlot = slotIndex ?? normalizeLoadout(loadout, maxSlots).findIndex(slot => !slot || slot.exhausted);
+  if (!Number.isInteger(targetSlot) || targetSlot < 0 || targetSlot >= maxSlots) {
+    throw new RangeError('slotIndex must target one of three loadout slots');
+  }
+  const next = normalizeLoadout(loadout, maxSlots);
+  if (next[targetSlot] && !next[targetSlot].exhausted) {
+    throw new RangeError('slot is occupied');
+  }
+  next[targetSlot] = slotFromInventoryItem(owned);
+  return next;
 }
 
 function prepareMemberLoadout({ member, inventory = [], artifactIds = null } = {}) {
@@ -121,6 +134,7 @@ function prepareMemberLoadout({ member, inventory = [], artifactIds = null } = {
     }
   }
   if (Array.isArray(artifactIds)) {
+    if (artifactIds.length > 3) throw new RangeError('loadout cannot exceed three slots');
     prepared.loadout = artifactIds.map(artifactId => {
       const owned = inventoryItemFor(inventory, artifactId);
       if (!owned || ((owned.quantity ?? 0) <= 0 && (owned.charges ?? 0) <= 0)) {
@@ -128,8 +142,9 @@ function prepareMemberLoadout({ member, inventory = [], artifactIds = null } = {
       }
       return slotFromInventoryItem(owned);
     });
+    prepared.loadout = normalizeLoadout(prepared.loadout, 3);
   } else {
-    prepared.loadout = clone(prepared.loadout || []);
+    prepared.loadout = normalizeLoadout(prepared.loadout || [], 3);
   }
   return prepared;
 }
@@ -164,7 +179,7 @@ function buildRollModifiers({
     addPart(parts, 'role', role.bonus, { role: workingMember.role });
   }
 
-  const supportApplied = normalizeSupport(selectedSupport);
+  const supportApplied = normalizeSupport(selectedSupport, workingRoom.support ?? MAX_SUPPORT);
   total += supportApplied;
   addPart(parts, 'support', supportApplied);
 
@@ -175,7 +190,7 @@ function buildRollModifiers({
   }
 
   const debuff = workingMember.debuff;
-  if (debuff && debuff.type !== 'exhausted') {
+  if (debuff?.type === 'frightened') {
     const applies = !debuff.stat || debuff.stat === workingAction.stat;
     if (applies) {
       const amount = debuff.amount ?? -2;
@@ -202,6 +217,7 @@ function buildRollModifiers({
     loadout: workingMember.loadout || [],
     triggerHistory: workingMember.triggerHistory || [],
     debuff: clone(debuff),
+    artifactsDisabled: debuff?.type === 'cursed',
     rng,
   });
 
@@ -254,6 +270,7 @@ function resolveAttempt({
   rng = () => 0,
   now = Date.now(),
   useRoleAbility = false,
+  useSharedBuff = false,
 } = {}) {
   const dayKey = utcDayKey(now);
   const regenerated = regenerateAp(member || {}, dayKey);
@@ -263,10 +280,12 @@ function resolveAttempt({
 
   const nextRoom = clone(room || {});
   const nextExpedition = clone(expedition || {});
+  nextExpedition.sharedBuffs = clone(nextExpedition.sharedBuffs || {});
   const nextAction = clone(action || {});
   const events = [];
   const role = ROLES[nextMember.role];
   const canUseRoleAbility = Boolean(useRoleAbility && role && !nextMember.roleAbilityUsed);
+  const artifactsDisabledForAction = nextMember.debuff?.type === 'cursed';
   let rawRoll = rollD20(roll, rng);
   const initialRawRoll = rawRoll;
 
@@ -289,10 +308,20 @@ function resolveAttempt({
   nextMember.loadout = modifiers.loadout;
   nextMember.triggerHistory = modifiers.triggerHistory;
 
+  if (useSharedBuff && (nextExpedition.sharedBuffs.rollBonus?.uses ?? 0) > 0) {
+    const shared = nextExpedition.sharedBuffs.rollBonus;
+    modifiers.total += shared.amount;
+    modifiers.parts.push({ source: `shared:${shared.source || 'roll_bonus'}`, amount: shared.amount });
+    shared.uses -= 1;
+  }
   if (canUseRoleAbility && role.ability === 'blessing') {
-    modifiers.total += 2;
-    modifiers.parts.push({ source: 'role_ability:blessing', amount: 2 });
+    nextExpedition.sharedBuffs.rollBonus = {
+      amount: 3,
+      uses: (nextExpedition.sharedBuffs.rollBonus?.uses || 0) + 1,
+      source: 'cleric_blessing',
+    };
     nextMember.roleAbilityUsed = true;
+    events.push({ type: 'shared_blessing_added', amount: 3 });
   }
   if (canUseRoleAbility && role.ability === 'shield_wall') {
     nextMember.roleAbilityUsed = true;
@@ -320,6 +349,7 @@ function resolveAttempt({
     critical: rawRoll === 20,
     loadout: nextMember.loadout,
     triggerHistory: nextMember.triggerHistory,
+    artifactsDisabled: artifactsDisabledForAction,
     rng,
   });
   rawRoll = afterRoll.rawRoll;
@@ -334,15 +364,16 @@ function resolveAttempt({
     modifiedRoll = raiseModifiedRoll.value;
   }
 
-  const shieldProtected = canUseRoleAbility && role.ability === 'shield_wall' && initialRawRoll === 1;
+  const shieldProtected = canUseRoleAbility && role.ability === 'shield_wall';
   let progressAwarded = progressForRoll({
     rawRoll,
     modifiedRoll,
-    naturalOneProtected: shieldProtected,
+    naturalOneProtected: shieldProtected && initialRawRoll === 1,
   });
   if (shieldProtected && progressAwarded === 0) {
     progressAwarded = 1;
-    events.push({ type: 'natural_one_protected' });
+    events.push({ type: 'zero_progress_protected' });
+    if (initialRawRoll === 1) events.push({ type: 'natural_one_protected' });
   }
 
   const minimum = nextMember.provisionState?.minimumProgress;
@@ -367,6 +398,7 @@ function resolveAttempt({
     debuff: nextRoom.complication ? { type: nextRoom.complication, amount: 2 } : null,
     loadout: nextMember.loadout,
     triggerHistory: nextMember.triggerHistory,
+    artifactsDisabled: artifactsDisabledForAction,
     rng,
   });
   progressAwarded = beforeProgress.clearRoom ? nextRoom.progressTarget : beforeProgress.progress;
@@ -428,6 +460,7 @@ function resolveAttempt({
     roleAbilityUsed: nextMember.roleAbilityUsed,
     loadout: nextMember.loadout,
     triggerHistory: nextMember.triggerHistory,
+    artifactsDisabled: artifactsDisabledForAction,
     rng,
   });
   nextMember.loadout = afterProgress.loadout;
@@ -463,6 +496,7 @@ function resolveAttempt({
     artifactRolls: loot.artifactRolls,
     loadout: nextMember.loadout,
     triggerHistory: nextMember.triggerHistory,
+    artifactsDisabled: artifactsDisabledForAction,
     rng,
   });
   loot.coins = beforeLoot.coins * (beforeLoot.coinMultiplier || 1);
@@ -499,6 +533,12 @@ function resolveAssist({
   const nextMember = normalizeRoleDay({ ...(clone(member || {})), ...regenerated }, dayKey);
   const nextRoom = clone(room || {});
   if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
+  if (['hidden', 'locked', 'cleared'].includes(nextRoom.state)) {
+    throw new RangeError('room is not assistable');
+  }
+  if ((nextRoom.support || 0) >= MAX_SUPPORT) {
+    throw new RangeError('support is already capped');
+  }
   const baseAmount = nextMember.debuff?.type === 'exhausted' ? 1 : ASSIST_SUPPORT;
   const beforeAssist = applyArtifactEffects({
     phase: 'before_progress',
@@ -534,13 +574,36 @@ function unlockConnectedRooms({ map, rooms, fromRoomKey, now = Date.now() } = {}
   return [...roomByKey.values()];
 }
 
+function reachableRoomKeys(map) {
+  const rooms = map?.rooms || [];
+  const start = rooms.find(room => room.type === 'camp' || room.startingRoom)?.key;
+  if (!start) return new Set(rooms.map(room => room.key));
+  const outgoing = new Map();
+  for (const edge of map?.edges || []) {
+    const destinations = outgoing.get(edge.from) || [];
+    destinations.push(edge.to);
+    outgoing.set(edge.from, destinations);
+  }
+  const visited = new Set();
+  const pending = [start];
+  while (pending.length > 0) {
+    const key = pending.pop();
+    if (visited.has(key)) continue;
+    visited.add(key);
+    pending.push(...(outgoing.get(key) || []));
+  }
+  return visited;
+}
+
 function canFinishExpedition({ expedition, userId, rooms = [] } = {}) {
   if (expedition?.status === 'finished') return false;
   const bossDefeated = expedition?.status === 'boss_defeated'
     || rooms.some(room => room.type === 'boss' && (room.bossDefeated || room.state === 'cleared'));
   if (!bossDefeated) return false;
   if ((expedition.startedBy ?? expedition.started_by) === userId) return true;
-  return rooms.every(room => room.state === 'cleared');
+  const roomByKey = new Map(rooms.map(room => [room.key, room]));
+  const requiredKeys = expedition?.map ? reachableRoomKeys(expedition.map) : new Set(rooms.map(room => room.key));
+  return [...requiredKeys].every(key => roomByKey.get(key)?.state === 'cleared');
 }
 
 function assertMutationInput({ transaction, idempotencyKey } = {}) {
@@ -550,41 +613,645 @@ function assertMutationInput({ transaction, idempotencyKey } = {}) {
   }
 }
 
-function orchestrationStub(options = {}, actionType) {
-  assertMutationInput(options);
-  return clone({
+function parseJson(text, fallback) {
+  if (!text) return clone(fallback);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return clone(fallback);
+  }
+}
+
+function stringifyJson(value) {
+  return JSON.stringify(value ?? {});
+}
+
+function decodeDebuff(text) {
+  const value = parseJson(text, null);
+  if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) return null;
+  return value;
+}
+
+function encodeDebuff(value) {
+  return stringifyJson(value || {});
+}
+
+function findIdempotentAction(transaction, userId, idempotencyKey) {
+  return transaction.prepare(`
+    SELECT expedition_id AS expeditionId
+    FROM family_expedition_actions
+    WHERE user_id = ? AND idempotency_key = ?
+  `).get(userId, idempotencyKey);
+}
+
+function rowToExpedition(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    themeId: row.theme_id,
+    seed: row.seed,
+    status: row.status,
+    map: parseJson(row.map_json, {}),
+    sharedBuffs: parseJson(row.shared_buffs_json, {}),
+    startedBy: row.started_by,
+    startedAt: row.started_at,
+    bossDefeatedAt: row.boss_defeated_at,
+    finishedAt: row.finished_at,
+  };
+}
+
+function rowToRoom(row) {
+  const payload = parseJson(row.payload_json, {});
+  return {
+    ...payload,
+    id: row.id,
+    key: row.room_key,
+    type: row.room_type,
+    state: row.state,
+    progress: row.progress,
+    progressTarget: row.progress_target,
+    support: row.support,
+    unlockedAt: row.unlocked_at,
+    clearedAt: row.cleared_at,
+  };
+}
+
+function rowToMember(row) {
+  return {
+    expeditionId: row.expedition_id,
+    userId: row.user_id,
+    role: row.role,
+    ap: row.ap,
+    apRegenDay: row.ap_regen_day,
+    roleAbilityDay: row.role_ability_day,
+    roleAbilityUsed: Boolean(row.role_ability_used),
+    provisionId: row.provision_id,
+    provisionState: parseJson(row.provision_state_json, {}),
+    loadout: normalizeLoadout(parseJson(row.loadout_json, []), 3),
+    debuff: decodeDebuff(row.debuff_json),
+    contributionAp: row.contribution_ap,
+    contributionProgress: row.contribution_progress,
+    preparedAt: row.prepared_at,
+    bossRewardClaimedAt: row.boss_reward_claimed_at,
+  };
+}
+
+function rowToAction(row) {
+  return {
+    id: row.id,
+    idempotencyKey: row.idempotency_key,
+    expeditionId: row.expedition_id,
+    roomId: row.room_id,
+    userId: row.user_id,
+    actionType: row.action_type,
+    stat: row.stat,
+    rawRoll: row.raw_roll,
+    modifiers: parseJson(row.modifier_json, {}),
+    modifiedRoll: row.modified_roll,
+    progressAwarded: row.progress_awarded,
+    loot: parseJson(row.loot_json, {}),
+    narrationKey: row.narration_key,
+    createdAt: row.created_at,
+  };
+}
+
+function readSnapshot(transaction, expeditionId) {
+  const expedition = rowToExpedition(transaction.prepare(`
+    SELECT * FROM family_expeditions WHERE id = ?
+  `).get(expeditionId));
+  if (!expedition) throw new RangeError(`Unknown expedition: ${expeditionId}`);
+  const rooms = transaction.prepare(`
+    SELECT * FROM family_expedition_rooms WHERE expedition_id = ? ORDER BY id
+  `).all(expeditionId).map(rowToRoom);
+  const members = transaction.prepare(`
+    SELECT * FROM family_expedition_members WHERE expedition_id = ? ORDER BY user_id
+  `).all(expeditionId).map(rowToMember);
+  const actions = transaction.prepare(`
+    SELECT * FROM family_expedition_actions WHERE expedition_id = ? ORDER BY id
+  `).all(expeditionId).map(rowToAction);
+  return clone({ expedition, rooms, members, actions });
+}
+
+function roomPayload(room) {
+  const payload = clone(room || {});
+  delete payload.id;
+  delete payload.state;
+  delete payload.progress;
+  delete payload.progressTarget;
+  delete payload.support;
+  delete payload.unlockedAt;
+  delete payload.clearedAt;
+  return payload;
+}
+
+function defaultRoomState(room) {
+  if (typeof room.state === 'string') return room.state;
+  if (room.startingRoom || room.type === 'camp') return 'unlocked';
+  if (room.optional) return 'hidden';
+  return 'locked';
+}
+
+function insertAction(transaction, {
+  idempotencyKey,
+  expeditionId,
+  roomId,
+  userId,
+  actionType,
+  stat = null,
+  rawRoll = null,
+  modifiers = {},
+  modifiedRoll = null,
+  progressAwarded = 0,
+  loot = {},
+  narrationKey = null,
+  now,
+}) {
+  transaction.prepare(`
+    INSERT INTO family_expedition_actions (
+      idempotency_key, expedition_id, room_id, user_id, action_type, stat, raw_roll,
+      modifier_json, modified_roll, progress_awarded, loot_json, narration_key, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    idempotencyKey,
+    expeditionId,
+    roomId,
+    userId,
     actionType,
-    idempotencyKey: options.idempotencyKey,
-    state: options.state || {},
-  });
+    stat,
+    rawRoll,
+    stringifyJson(modifiers),
+    modifiedRoll,
+    progressAwarded,
+    stringifyJson(loot),
+    narrationKey,
+    now,
+  );
+}
+
+function campRoom(transaction, expeditionId) {
+  return transaction.prepare(`
+    SELECT * FROM family_expedition_rooms
+    WHERE expedition_id = ?
+    ORDER BY CASE WHEN room_type = 'camp' THEN 0 ELSE 1 END, id
+    LIMIT 1
+  `).get(expeditionId);
+}
+
+function getRoomRow(transaction, expeditionId, roomKey) {
+  const row = transaction.prepare(`
+    SELECT * FROM family_expedition_rooms WHERE expedition_id = ? AND room_key = ?
+  `).get(expeditionId, roomKey);
+  if (!row) throw new RangeError(`Unknown room: ${roomKey}`);
+  return row;
+}
+
+function getMemberRow(transaction, expeditionId, userId) {
+  const row = transaction.prepare(`
+    SELECT * FROM family_expedition_members WHERE expedition_id = ? AND user_id = ?
+  `).get(expeditionId, userId);
+  if (!row) throw new RangeError('member is not prepared');
+  return row;
+}
+
+function readInventory(transaction, userId) {
+  return transaction.prepare(`
+    SELECT artifact_id AS artifactId, quantity, charges
+    FROM expedition_artifact_inventory
+    WHERE user_id = ?
+  `).all(userId);
+}
+
+function mapWithRoomStates(map, rooms) {
+  const roomsByKey = new Map(rooms.map(room => [room.key, room]));
+  return {
+    ...clone(map || {}),
+    rooms: (map?.rooms || []).map(room => ({
+      ...room,
+      ...(roomsByKey.get(room.key) || {}),
+    })),
+  };
+}
+
+function updateMember(transaction, expeditionId, memberResult, contribution = {}) {
+  transaction.prepare(`
+    UPDATE family_expedition_members SET
+      ap = ?,
+      ap_regen_day = ?,
+      role_ability_day = ?,
+      role_ability_used = ?,
+      provision_state_json = ?,
+      loadout_json = ?,
+      debuff_json = ?,
+      contribution_ap = contribution_ap + ?,
+      contribution_progress = contribution_progress + ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(
+    memberResult.ap,
+    memberResult.apRegenDay,
+    memberResult.roleAbilityDay,
+    memberResult.roleAbilityUsed ? 1 : 0,
+    stringifyJson(memberResult.provisionState || {}),
+    stringifyJson(normalizeLoadout(memberResult.loadout || [], 3)),
+    encodeDebuff(memberResult.debuff),
+    contribution.ap || 0,
+    contribution.progress || 0,
+    expeditionId,
+    memberResult.userId,
+  );
+}
+
+function updateRoom(transaction, expeditionId, roomResult) {
+  transaction.prepare(`
+    UPDATE family_expedition_rooms SET
+      state = ?,
+      progress = ?,
+      support = ?,
+      payload_json = ?,
+      unlocked_at = ?,
+      cleared_at = ?
+    WHERE expedition_id = ? AND room_key = ?
+  `).run(
+    roomResult.state,
+    roomResult.progress,
+    roomResult.support || 0,
+    stringifyJson(roomPayload(roomResult)),
+    roomResult.unlockedAt ?? roomResult.unlocked_at ?? null,
+    roomResult.clearedAt ?? roomResult.cleared_at ?? null,
+    expeditionId,
+    roomResult.key,
+  );
+}
+
+function persistUnlocks(transaction, expeditionId, map, fromRoomKey, now) {
+  const rooms = readSnapshot(transaction, expeditionId).rooms;
+  const unlocked = unlockConnectedRooms({ map, rooms, fromRoomKey, now });
+  for (const room of unlocked) updateRoom(transaction, expeditionId, room);
+}
+
+function revealRoomByKey(transaction, expeditionId, roomKey, now) {
+  const row = getRoomRow(transaction, expeditionId, roomKey);
+  const room = rowToRoom(row);
+  if (room.state === 'cleared' || room.state === 'unlocked') return room;
+  room.state = 'unlocked';
+  room.unlockedAt = now;
+  updateRoom(transaction, expeditionId, room);
+  return room;
 }
 
 function createExpedition(options) {
-  return orchestrationStub(options, 'create_expedition');
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    familyId,
+    userId,
+    startedBy = userId,
+    themeId = 'root_king',
+    seed,
+    map,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const replay = findIdempotentAction(transaction, startedBy, idempotencyKey);
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+  if (!familyId || !startedBy || !map) throw new TypeError('familyId, userId, and map are required');
+
+  const expeditionInfo = transaction.prepare(`
+    INSERT INTO family_expeditions (
+      family_id, theme_id, seed, status, map_json, shared_buffs_json, started_by, started_at
+    ) VALUES (?, ?, ?, 'active', ?, '{}', ?, ?)
+  `).run(familyId, themeId, seed || String(now), stringifyJson(map), startedBy, now);
+  const expeditionId = Number(expeditionInfo.lastInsertRowid);
+
+  for (const room of map.rooms || []) {
+    const state = defaultRoomState(room);
+    transaction.prepare(`
+      INSERT INTO family_expedition_rooms (
+        expedition_id, room_key, room_type, state, progress, progress_target, support,
+        payload_json, unlocked_at, cleared_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+    `).run(
+      expeditionId,
+      room.key,
+      room.type,
+      state,
+      room.progress || 0,
+      room.progressTarget,
+      stringifyJson(roomPayload(room)),
+      state === 'unlocked' ? now : null,
+      state === 'cleared' ? now : null,
+    );
+  }
+
+  const room = campRoom(transaction, expeditionId);
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId: startedBy,
+    actionType: 'create_expedition',
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
 }
 
 function prepareMember(options) {
-  return orchestrationStub(options, 'prepare_member');
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    role,
+    provisionId = null,
+    artifactIds = [],
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const replay = findIdempotentAction(transaction, userId, idempotencyKey);
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+  if (!ROLES[role]) throw new RangeError(`Unknown role: ${role}`);
+  const dayKey = utcDayKey(now);
+  const prepared = prepareMemberLoadout({
+    member: {
+      userId,
+      role,
+      ap: DAILY_AP,
+      apRegenDay: dayKey,
+      roleAbilityDay: dayKey,
+      roleAbilityUsed: false,
+      provisionId,
+      provisionState: {},
+      loadout: [],
+      debuff: null,
+    },
+    inventory: readInventory(transaction, userId),
+    artifactIds,
+  });
+  transaction.prepare(`
+    INSERT INTO family_expedition_members (
+      expedition_id, user_id, role, ap, ap_regen_day, role_ability_day, role_ability_used,
+      provision_id, provision_state_json, loadout_json, debuff_json, prepared_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(expedition_id, user_id) DO UPDATE SET
+      role = excluded.role,
+      ap = excluded.ap,
+      ap_regen_day = excluded.ap_regen_day,
+      role_ability_day = excluded.role_ability_day,
+      role_ability_used = excluded.role_ability_used,
+      provision_id = excluded.provision_id,
+      provision_state_json = excluded.provision_state_json,
+      loadout_json = excluded.loadout_json,
+      debuff_json = excluded.debuff_json
+  `).run(
+    expeditionId,
+    userId,
+    role,
+    prepared.ap,
+    prepared.apRegenDay,
+    prepared.roleAbilityDay,
+    prepared.roleAbilityUsed ? 1 : 0,
+    provisionId,
+    stringifyJson(prepared.provisionState || {}),
+    stringifyJson(prepared.loadout || []),
+    encodeDebuff(prepared.debuff),
+    now,
+  );
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: campRoom(transaction, expeditionId).id,
+    userId,
+    actionType: 'prepare_member',
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
 }
 
 function attemptRoom(options) {
-  return orchestrationStub(options, 'attempt_room');
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    roomKey,
+    actionId,
+    selectedSupport = 0,
+    roll,
+    reroll,
+    rng = () => 0,
+    now = Math.floor(Date.now() / 1000),
+    useRoleAbility = false,
+    useSharedBuff = false,
+  } = options;
+  const replay = findIdempotentAction(transaction, userId, idempotencyKey);
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+  let snapshot = readSnapshot(transaction, expeditionId);
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  if (room.state === 'cleared') throw new RangeError('room is already cleared');
+  const memberRow = getMemberRow(transaction, expeditionId, userId);
+  const memberState = rowToMember(memberRow);
+  const action = (room.actions || []).find(candidate => candidate.id === actionId);
+  if (!action) throw new RangeError(`Unknown action: ${actionId}`);
+  const result = resolveAttempt({
+    expedition: {
+      id: expeditionId,
+      status: snapshot.expedition.status,
+      map: mapWithRoomStates(snapshot.expedition.map, snapshot.rooms),
+      sharedBuffs: snapshot.expedition.sharedBuffs,
+    },
+    member: memberState,
+    room,
+    action,
+    selectedSupport,
+    roll,
+    reroll,
+    rng,
+    now,
+    useRoleAbility,
+    useSharedBuff,
+  });
+  updateMember(transaction, expeditionId, result.member, { ap: 1, progress: result.progressAwarded });
+  updateRoom(transaction, expeditionId, result.room);
+  transaction.prepare(`
+    UPDATE family_expeditions SET status = ?, shared_buffs_json = ?, boss_defeated_at = COALESCE(?, boss_defeated_at)
+    WHERE id = ?
+  `).run(
+    result.expedition.status || snapshot.expedition.status,
+    stringifyJson(result.expedition.sharedBuffs || {}),
+    result.expedition.bossDefeatedAt || null,
+    expeditionId,
+  );
+  if (result.room.state === 'cleared') {
+    persistUnlocks(transaction, expeditionId, snapshot.expedition.map, result.room.key, now);
+  }
+  for (const revealedRoomKey of result.revealedRoomKeys || []) {
+    revealRoomByKey(transaction, expeditionId, revealedRoomKey, now);
+  }
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId,
+    actionType: 'attempt',
+    stat: action.stat,
+    rawRoll: result.rawRoll,
+    modifiers: result.modifiers,
+    modifiedRoll: result.modifiedRoll,
+    progressAwarded: result.progressAwarded,
+    loot: result.loot,
+    narrationKey: action.narration?.success || null,
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
 }
 
 function assistRoom(options) {
-  return orchestrationStub(options, 'assist_room');
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    roomKey,
+    rng = () => 0,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const replay = findIdempotentAction(transaction, userId, idempotencyKey);
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+  const snapshot = readSnapshot(transaction, expeditionId);
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
+  const result = resolveAssist({
+    expedition: { id: expeditionId, status: snapshot.expedition.status },
+    member: memberState,
+    room,
+    rng,
+    now,
+  });
+  updateMember(transaction, expeditionId, result.member, { ap: 1, progress: 0 });
+  updateRoom(transaction, expeditionId, result.room);
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId,
+    actionType: 'assist',
+    modifiers: { supportAdded: result.supportAdded },
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
 }
 
 function revealRoom(options) {
-  return orchestrationStub(options, 'reveal_room');
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    fromRoomKey,
+    roomKey,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const replay = findIdempotentAction(transaction, userId, idempotencyKey);
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+  const snapshot = readSnapshot(transaction, expeditionId);
+  const connected = (snapshot.expedition.map.edges || [])
+    .some(edge => edge.from === fromRoomKey && edge.to === roomKey);
+  if (!connected) throw new RangeError('room is not connected');
+  const fromRoom = getRoomRow(transaction, expeditionId, fromRoomKey);
+  const target = revealRoomByKey(transaction, expeditionId, roomKey, now);
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: fromRoom.id,
+    userId,
+    actionType: 'reveal_room',
+    modifiers: { revealedRoomKey: target.key },
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
 }
 
 function equipFoundArtifactForMember(options) {
-  return orchestrationStub(options, 'equip_found_artifact');
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    artifactId,
+    slotIndex,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const replay = findIdempotentAction(transaction, userId, idempotencyKey);
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+  const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
+  const loadout = equipFoundArtifact({
+    loadout: memberState.loadout,
+    inventory: readInventory(transaction, userId),
+    artifactId,
+    slotIndex,
+  });
+  transaction.prepare(`
+    UPDATE family_expedition_members SET loadout_json = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(stringifyJson(loadout), expeditionId, userId);
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: campRoom(transaction, expeditionId).id,
+    userId,
+    actionType: 'equip_found_artifact',
+    modifiers: { artifactId, slotIndex },
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
 }
 
 function finishExpedition(options) {
-  return orchestrationStub(options, 'finish_expedition');
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const replay = findIdempotentAction(transaction, userId, idempotencyKey);
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+  const snapshot = readSnapshot(transaction, expeditionId);
+  if (!canFinishExpedition({ expedition: snapshot.expedition, userId, rooms: snapshot.rooms })) {
+    throw new RangeError('user cannot finish expedition yet');
+  }
+  transaction.prepare(`
+    UPDATE family_expeditions SET status = 'finished', finished_at = ? WHERE id = ?
+  `).run(now, expeditionId);
+  transaction.prepare(`
+    INSERT INTO family_expedition_history (expedition_id, family_id, summary_json, finished_at)
+    VALUES (?, ?, ?, ?)
+  `).run(
+    expeditionId,
+    snapshot.expedition.familyId,
+    stringifyJson({
+      expeditionId,
+      finishedBy: userId,
+      roomsCleared: snapshot.rooms.filter(room => room.state === 'cleared').length,
+      members: snapshot.members.map(row => ({ userId: row.userId, progress: row.contributionProgress })),
+    }),
+    now,
+  );
+  const room = snapshot.rooms.find(candidate => candidate.type === 'boss') || snapshot.rooms[0];
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId,
+    actionType: 'finish_expedition',
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
 }
 
 module.exports = {

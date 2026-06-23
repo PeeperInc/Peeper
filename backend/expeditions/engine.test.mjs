@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+const Database = require('better-sqlite3');
 const engine = require('./engine.js');
 
 const {
@@ -95,6 +96,100 @@ function member(overrides = {}) {
   };
 }
 
+function expeditionDb() {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE family_expeditions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      theme_id TEXT NOT NULL,
+      seed TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('active','boss_defeated','finished')),
+      map_json TEXT NOT NULL,
+      shared_buffs_json TEXT NOT NULL DEFAULT '{}',
+      started_by INTEGER NOT NULL,
+      started_at INTEGER NOT NULL,
+      boss_defeated_at INTEGER,
+      finished_at INTEGER
+    );
+
+    CREATE TABLE family_expedition_rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      expedition_id INTEGER NOT NULL,
+      room_key TEXT NOT NULL,
+      room_type TEXT NOT NULL,
+      state TEXT NOT NULL,
+      progress INTEGER NOT NULL DEFAULT 0,
+      progress_target INTEGER NOT NULL,
+      support INTEGER NOT NULL DEFAULT 0,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      unlocked_at INTEGER,
+      cleared_at INTEGER,
+      UNIQUE(expedition_id, room_key)
+    );
+
+    CREATE TABLE family_expedition_members (
+      expedition_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      ap INTEGER NOT NULL DEFAULT 3,
+      ap_regen_day INTEGER NOT NULL,
+      role_ability_day INTEGER NOT NULL,
+      role_ability_used INTEGER NOT NULL DEFAULT 0,
+      provision_id TEXT,
+      provision_state_json TEXT NOT NULL DEFAULT '{}',
+      loadout_json TEXT NOT NULL DEFAULT '[]',
+      debuff_json TEXT NOT NULL DEFAULT '{}',
+      contribution_ap INTEGER NOT NULL DEFAULT 0,
+      contribution_progress INTEGER NOT NULL DEFAULT 0,
+      prepared_at INTEGER NOT NULL,
+      boss_reward_claimed_at INTEGER,
+      PRIMARY KEY(expedition_id, user_id)
+    );
+
+    CREATE TABLE expedition_artifact_inventory (
+      user_id INTEGER NOT NULL,
+      artifact_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      charges INTEGER NOT NULL DEFAULT 0,
+      first_acquired_at INTEGER NOT NULL,
+      last_acquired_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id, artifact_id)
+    );
+
+    CREATE TABLE family_expedition_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      idempotency_key TEXT NOT NULL,
+      expedition_id INTEGER NOT NULL,
+      room_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      action_type TEXT NOT NULL,
+      stat TEXT,
+      raw_roll INTEGER,
+      modifier_json TEXT NOT NULL DEFAULT '{}',
+      modified_roll INTEGER,
+      progress_awarded INTEGER NOT NULL DEFAULT 0,
+      loot_json TEXT NOT NULL DEFAULT '{}',
+      narration_key TEXT,
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_id, idempotency_key)
+    );
+
+    CREATE TABLE family_expedition_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      expedition_id INTEGER NOT NULL,
+      family_id INTEGER NOT NULL,
+      summary_json TEXT NOT NULL,
+      finished_at INTEGER NOT NULL
+    );
+  `);
+  return db;
+}
+
+function inTx(db, fn) {
+  return db.transaction(fn)();
+}
+
 test('UTC day keys and AP regeneration add three per elapsed day and cap at six', () => {
   assert.equal(utcDayKey(Date.UTC(2026, 5, 23, 23, 59, 59)), 20627);
   assert.deepEqual(regenerateAp({ ap: 1, apRegenDay: 100 }, 102), {
@@ -141,6 +236,19 @@ test('roll modifiers include action difficulty, matching role bonus, provision, 
     'artifact:worn_gloves',
   ]);
   assert.equal(modifiers.loadout[0].artifactId, 'worn_gloves');
+});
+
+test('selected support cannot exceed support stored on the room', () => {
+  const modifiers = buildRollModifiers({
+    member: member({ role: 'scout' }),
+    room: { ...hall, support: 2 },
+    action: hall.actions[0],
+    selectedSupport: 6,
+    dayKey: 20627,
+  });
+
+  assert.equal(modifiers.supportApplied, 2);
+  assert.equal(modifiers.total, 7);
 });
 
 test('resolveAttempt consumes AP, selected support, one-shot effects, and never regresses room progress', () => {
@@ -201,7 +309,22 @@ test('natural 1 can be protected by daily knight shield and natural 20 grants bo
   assert.equal(critical.loot.artifactRolls, 1);
 });
 
-test('daily role abilities cover scout reveal, mage reroll, and cleric blessing', () => {
+test('knight shield wall converts any zero-progress result into one progress', () => {
+  const protectedSetback = resolveAttempt({
+    expedition: { id: 56, status: 'active' },
+    member: member({ role: 'knight' }),
+    room: { ...hall, progress: 0 },
+    action: { ...hall.actions[0], modifier: 0 },
+    roll: 2,
+    useRoleAbility: true,
+    now: Date.UTC(2026, 5, 23),
+  });
+
+  assert.equal(protectedSetback.progressAwarded, 1);
+  assert.equal(protectedSetback.member.roleAbilityUsed, true);
+});
+
+test('daily role abilities cover scout reveal, mage reroll, and cleric shared blessing', () => {
   const scout = resolveAttempt({
     expedition: { id: 57, status: 'active', map },
     member: member({ role: 'scout' }),
@@ -235,8 +358,57 @@ test('daily role abilities cover scout reveal, mage reroll, and cleric blessing'
     useRoleAbility: true,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(cleric.modifiedRoll, 12);
-  assert.equal(cleric.modifiers.parts.some(part => part.source === 'role_ability:blessing'), true);
+  assert.equal(cleric.modifiedRoll, 10);
+  assert.deepEqual(cleric.expedition.sharedBuffs, {
+    rollBonus: { amount: 3, uses: 1, source: 'cleric_blessing' },
+  });
+
+  const blessed = resolveAttempt({
+    expedition: { id: 57, status: 'active', sharedBuffs: cleric.expedition.sharedBuffs },
+    member: member({ role: 'scout' }),
+    room: { ...hall, progress: 0 },
+    action: hall.actions[0],
+    roll: 7,
+    useSharedBuff: true,
+    now: Date.UTC(2026, 5, 23),
+  });
+  assert.equal(blessed.modifiedRoll, 15);
+  assert.equal(blessed.expedition.sharedBuffs.rollBonus.uses, 0);
+});
+
+test('cursed disables artifacts for one action and blinded clears without a generic roll penalty', () => {
+  const darkRoom = {
+    ...hall,
+    tags: ['dark'],
+    actions: [{ id: 'search_dark', stat: 'agility', modifier: 0, tags: [] }],
+  };
+  const cursed = resolveAttempt({
+    expedition: { id: 60, status: 'active' },
+    member: member({
+      role: 'scout',
+      debuff: { type: 'cursed' },
+      loadout: [{ artifactId: 'old_torch' }],
+    }),
+    room: darkRoom,
+    action: darkRoom.actions[0],
+    roll: 7,
+    now: Date.UTC(2026, 5, 23),
+  });
+  assert.equal(cursed.modifiedRoll, 10);
+  assert.deepEqual(cursed.modifiers.triggeredArtifacts, []);
+  assert.equal(cursed.member.debuff, null);
+
+  const blinded = resolveAttempt({
+    expedition: { id: 60, status: 'active' },
+    member: member({ role: 'scout', debuff: { type: 'blinded' } }),
+    room: darkRoom,
+    action: darkRoom.actions[0],
+    roll: 7,
+    now: Date.UTC(2026, 5, 23),
+  });
+  assert.equal(blinded.modifiedRoll, 10);
+  assert.equal(blinded.modifiers.parts.some(part => part.source === 'debuff'), false);
+  assert.equal(blinded.member.debuff, null);
 });
 
 test('provisions grant AP, prevent debuffs, protect minimum progress, and restore abilities at camp', () => {
@@ -311,6 +483,17 @@ test('assist costs one AP and adds capped support, with exhausted debuff reducin
   assert.equal(exhausted.room.support, 1);
   assert.equal(exhausted.supportAdded, 1);
   assert.equal(exhausted.member.debuff, null);
+
+  assert.throws(() => resolveAssist({
+    member: member({ ap: 2 }),
+    room: { ...hall, state: 'hidden' },
+    now: Date.UTC(2026, 5, 23),
+  }), /room is not assistable/);
+  assert.throws(() => resolveAssist({
+    member: member({ ap: 2 }),
+    room: { ...hall, support: 6 },
+    now: Date.UTC(2026, 5, 23),
+  }), /support is already capped/);
 });
 
 test('clearing rooms unlocks connected rooms without hiding already visible rooms', () => {
@@ -391,29 +574,53 @@ test('finish permissions allow founder after boss or any member after all reacha
     userId: 10,
     rooms: roomsAfterBoss.map(room => ({ ...room, state: 'cleared' })),
   }), true);
+  assert.equal(canFinishExpedition({
+    expedition: { startedBy: 11, status: 'boss_defeated', map },
+    userId: 10,
+    rooms: [
+      { ...camp },
+      { ...hall, state: 'cleared' },
+      { ...optionalVault, state: 'unlocked' },
+      { ...boss, state: 'cleared', bossDefeated: true },
+      { key: 'disconnected', state: 'unlocked' },
+    ],
+  }), false);
 });
 
-test('equipping found artifacts validates ownership and initializes slot state', () => {
+test('equipping found artifacts validates ownership and uses fixed three-slot loadouts', () => {
   const loadout = prepareMemberLoadout({
     member: member({ loadout: [{ artifactId: 'bent_sword' }] }),
     inventory: [
       { artifactId: 'bent_sword', quantity: 1, charges: 0 },
       { artifactId: 'rusty_lockpick', quantity: 0, charges: 3 },
+      { artifactId: 'chalk_rune', quantity: 1, charges: 0 },
     ],
-    artifactIds: ['rusty_lockpick', 'bent_sword'],
+    artifactIds: ['rusty_lockpick', 'bent_sword', 'chalk_rune'],
   }).loadout;
   assert.deepEqual(loadout, [
     { artifactId: 'rusty_lockpick', charges: 3, quantity: 0 },
     { artifactId: 'bent_sword', charges: 0, quantity: 1 },
+    { artifactId: 'chalk_rune', charges: 0, quantity: 1 },
   ]);
 
   assert.deepEqual(equipFoundArtifact({
-    loadout: [],
+    loadout: [{ artifactId: 'bent_sword' }, null, { artifactId: 'rabbit_foot', exhausted: true }],
     inventory: [{ artifactId: 'chalk_rune', quantity: 1, charges: 0 }],
     artifactId: 'chalk_rune',
-  }), [{ artifactId: 'chalk_rune', charges: 0, quantity: 1 }]);
+    slotIndex: 1,
+  }), [
+    { artifactId: 'bent_sword' },
+    { artifactId: 'chalk_rune', charges: 0, quantity: 1 },
+    { artifactId: 'rabbit_foot', exhausted: true },
+  ]);
 
   assert.throws(() => equipFoundArtifact({ loadout: [], inventory: [], artifactId: 'chalk_rune' }), /not owned/);
+  assert.throws(() => equipFoundArtifact({
+    loadout: [{ artifactId: 'bent_sword' }],
+    inventory: [{ artifactId: 'chalk_rune', quantity: 1, charges: 0 }],
+    artifactId: 'chalk_rune',
+    slotIndex: 0,
+  }), /slot is occupied/);
 });
 
 test('transactional orchestration helpers require active transactions and idempotency keys', () => {
@@ -430,13 +637,190 @@ test('transactional orchestration helpers require active transactions and idempo
     assert.throws(() => fn({ transaction: tx }), /idempotencyKey/);
     assert.throws(() => fn({ idempotencyKey: 'abc' }), /active caller transaction/);
   }
+});
 
-  const inputState = { nested: { value: 1 } };
-  const created = createExpedition({ transaction: tx, idempotencyKey: 'abc', state: inputState });
-  inputState.nested.value = 2;
-  assert.deepEqual(created, {
-    actionType: 'create_expedition',
-    idempotencyKey: 'abc',
-    state: { nested: { value: 1 } },
-  });
+test('transactional helpers persist attempts, unlocks, idempotent replay, and finish history', () => {
+  const db = expeditionDb();
+  const routeMap = {
+    rooms: [
+      { ...camp, state: undefined, progress: undefined },
+      { ...hall, progressTarget: 1, state: undefined, progress: undefined },
+      { ...optionalVault, state: undefined, progress: undefined },
+      { ...boss, state: undefined, progress: undefined },
+    ],
+    edges: map.edges,
+  };
+
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-1',
+    familyId: 77,
+    userId: 10,
+    seed: 'route-seed',
+    map: routeMap,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  assert.equal(created.rooms.find(room => room.key === 'camp_0').state, 'unlocked');
+  assert.equal(created.rooms.find(room => room.key === 'hall_1').state, 'locked');
+
+  const replayedCreate = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-1',
+    familyId: 77,
+    userId: 10,
+    seed: 'route-seed',
+    map: routeMap,
+    now: 1000,
+  }));
+  assert.equal(replayedCreate.expedition.id, expeditionId);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expeditions').get().count, 1);
+
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-1',
+    expeditionId,
+    userId: 10,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+
+  const attemptedCamp = inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-camp',
+    expeditionId,
+    userId: 10,
+    roomKey: 'camp_0',
+    actionId: 'tend_campfire',
+    roll: 20,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(attemptedCamp.rooms.find(room => room.key === 'hall_1').state, 'unlocked');
+
+  const attemptedHall = inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-hall',
+    expeditionId,
+    userId: 10,
+    roomKey: 'hall_1',
+    actionId: 'thread_gap',
+    roll: 20,
+    useRoleAbility: true,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(attemptedHall.rooms.find(room => room.key === 'hall_1').state, 'cleared');
+  assert.equal(attemptedHall.rooms.find(room => room.key === 'vault_1').state, 'unlocked');
+  assert.equal(attemptedHall.rooms.find(room => room.key === 'boss_1').state, 'unlocked');
+
+  const memberAfterAttempt = db.prepare(`
+    SELECT ap, contribution_ap AS contributionAp, contribution_progress AS contributionProgress
+    FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = ?
+  `).get(expeditionId, 10);
+  const replayedAttempt = inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-hall',
+    expeditionId,
+    userId: 10,
+    roomKey: 'hall_1',
+    actionId: 'thread_gap',
+    roll: 20,
+    useRoleAbility: true,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.deepEqual(db.prepare(`
+    SELECT ap, contribution_ap AS contributionAp, contribution_progress AS contributionProgress
+    FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = ?
+  `).get(expeditionId, 10), memberAfterAttempt);
+  assert.equal(replayedAttempt.actions.filter(action => action.idempotencyKey === 'attempt-hall').length, 1);
+
+  inTx(db, () => assistRoom({
+    transaction: db,
+    idempotencyKey: 'assist-1',
+    expeditionId,
+    userId: 10,
+    roomKey: 'boss_1',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(db.prepare(`
+    SELECT support FROM family_expedition_rooms WHERE expedition_id = ? AND room_key = 'boss_1'
+  `).get(expeditionId).support, 2);
+
+  db.prepare(`
+    UPDATE family_expeditions SET status = 'boss_defeated', boss_defeated_at = ?
+    WHERE id = ?
+  `).run(1999, expeditionId);
+  db.prepare(`
+    UPDATE family_expedition_rooms
+    SET state = 'cleared', progress = progress_target, cleared_at = ?
+    WHERE expedition_id = ? AND room_key = 'boss_1'
+  `).run(1999, expeditionId);
+  inTx(db, () => finishExpedition({
+    transaction: db,
+    idempotencyKey: 'finish-founder',
+    expeditionId,
+    userId: 10,
+    now: 2000,
+  }));
+  assert.equal(db.prepare('SELECT status FROM family_expeditions WHERE id = ?').get(expeditionId).status, 'finished');
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_history').get().count, 1);
+  db.close();
+});
+
+test('transactional reveal and found-artifact equip persist member and room state', () => {
+  const db = expeditionDb();
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-reveal',
+    familyId: 78,
+    userId: 11,
+    seed: 'reveal-seed',
+    map,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES
+      (11, 'bent_sword', 1, 0, 1000, 1000),
+      (11, 'chalk_rune', 1, 0, 1000, 1000)
+  `).run();
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-reveal',
+    expeditionId,
+    userId: 11,
+    role: 'scout',
+    artifactIds: ['bent_sword'],
+    now: Date.UTC(2026, 5, 23),
+  }));
+
+  const revealed = inTx(db, () => revealRoom({
+    transaction: db,
+    idempotencyKey: 'reveal-vault',
+    expeditionId,
+    userId: 11,
+    fromRoomKey: 'hall_1',
+    roomKey: 'vault_1',
+    now: 3000,
+  }));
+  assert.equal(revealed.rooms.find(room => room.key === 'vault_1').state, 'unlocked');
+
+  const equipped = inTx(db, () => equipFoundArtifactForMember({
+    transaction: db,
+    idempotencyKey: 'equip-found',
+    expeditionId,
+    userId: 11,
+    artifactId: 'chalk_rune',
+    slotIndex: 1,
+    now: 3001,
+  }));
+  assert.deepEqual(equipped.members.find(row => row.userId === 11).loadout, [
+    { artifactId: 'bent_sword', charges: 0, quantity: 1 },
+    { artifactId: 'chalk_rune', charges: 0, quantity: 1 },
+    null,
+  ]);
+  db.close();
 });
