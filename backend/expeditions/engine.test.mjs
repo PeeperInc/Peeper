@@ -496,6 +496,22 @@ test('assist costs one AP and adds capped support, with exhausted debuff reducin
   }), /support is already capped/);
 });
 
+test('cursed disables assist artifacts for one action', () => {
+  const assisted = resolveAssist({
+    member: member({
+      ap: 2,
+      debuff: { type: 'cursed' },
+      loadout: [{ artifactId: 'rusty_buckle' }],
+    }),
+    room: { ...hall, support: 0 },
+    now: Date.UTC(2026, 5, 23),
+  });
+
+  assert.equal(assisted.supportAdded, 2);
+  assert.equal(assisted.room.support, 2);
+  assert.equal(assisted.member.debuff, null);
+});
+
 test('clearing rooms unlocks connected rooms without hiding already visible rooms', () => {
   const result = unlockConnectedRooms({
     map,
@@ -796,6 +812,10 @@ test('transactional reveal and found-artifact equip persist member and room stat
     artifactIds: ['bent_sword'],
     now: Date.UTC(2026, 5, 23),
   }));
+  db.prepare(`
+    UPDATE family_expedition_rooms SET state = 'unlocked', unlocked_at = ?
+    WHERE expedition_id = ? AND room_key = 'hall_1'
+  `).run(2999, expeditionId);
 
   const revealed = inTx(db, () => revealRoom({
     transaction: db,
@@ -822,5 +842,239 @@ test('transactional reveal and found-artifact equip persist member and room stat
     { artifactId: 'chalk_rune', charges: 0, quantity: 1 },
     null,
   ]);
+  db.close();
+});
+
+test('transactional mutations reject finished expeditions', () => {
+  const db = expeditionDb();
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-finished',
+    familyId: 79,
+    userId: 12,
+    seed: 'finished-seed',
+    map,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES (12, 'chalk_rune', 1, 0, 1000, 1000)
+  `).run();
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-before-finish',
+    expeditionId,
+    userId: 12,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  db.prepare("UPDATE family_expeditions SET status = 'finished', finished_at = 2000 WHERE id = ?").run(expeditionId);
+
+  assert.throws(() => inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-after-finish',
+    expeditionId,
+    userId: 12,
+    role: 'scout',
+  })), /expedition is finished/);
+  assert.throws(() => inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-after-finish',
+    expeditionId,
+    userId: 12,
+    roomKey: 'camp_0',
+    actionId: 'tend_campfire',
+    roll: 20,
+  })), /expedition is finished/);
+  assert.throws(() => inTx(db, () => assistRoom({
+    transaction: db,
+    idempotencyKey: 'assist-after-finish',
+    expeditionId,
+    userId: 12,
+    roomKey: 'hall_1',
+  })), /expedition is finished/);
+  assert.throws(() => inTx(db, () => revealRoom({
+    transaction: db,
+    idempotencyKey: 'reveal-after-finish',
+    expeditionId,
+    userId: 12,
+    fromRoomKey: 'hall_1',
+    roomKey: 'vault_1',
+  })), /expedition is finished/);
+  assert.throws(() => inTx(db, () => equipFoundArtifactForMember({
+    transaction: db,
+    idempotencyKey: 'equip-after-finish',
+    expeditionId,
+    userId: 12,
+    artifactId: 'chalk_rune',
+    slotIndex: 1,
+  })), /expedition is finished/);
+  db.close();
+});
+
+test('transactional scout reveal requires reachable source, connected hidden target, and unused ability', () => {
+  const db = expeditionDb();
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-scout-reveal',
+    familyId: 80,
+    userId: 13,
+    seed: 'scout-reveal-seed',
+    map,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-scout-reveal',
+    expeditionId,
+    userId: 13,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  db.prepare(`
+    UPDATE family_expedition_rooms SET state = 'locked', unlocked_at = NULL
+    WHERE expedition_id = ? AND room_key = 'hall_1'
+  `).run(expeditionId);
+
+  assert.throws(() => inTx(db, () => revealRoom({
+    transaction: db,
+    idempotencyKey: 'reveal-from-locked',
+    expeditionId,
+    userId: 13,
+    fromRoomKey: 'hall_1',
+    roomKey: 'vault_1',
+    now: 3000,
+  })), /source room is not available/);
+
+  db.prepare(`
+    UPDATE family_expedition_rooms SET state = 'unlocked', unlocked_at = ?
+    WHERE expedition_id = ? AND room_key = 'hall_1'
+  `).run(2999, expeditionId);
+  const revealed = inTx(db, () => revealRoom({
+    transaction: db,
+    idempotencyKey: 'reveal-scout-vault',
+    expeditionId,
+    userId: 13,
+    fromRoomKey: 'hall_1',
+    roomKey: 'vault_1',
+    now: 3000,
+  }));
+  const scout = revealed.members.find(row => row.userId === 13);
+  assert.equal(revealed.rooms.find(room => room.key === 'vault_1').state, 'unlocked');
+  assert.equal(scout.roleAbilityUsed, true);
+
+  assert.throws(() => inTx(db, () => revealRoom({
+    transaction: db,
+    idempotencyKey: 'reveal-scout-boss',
+    expeditionId,
+    userId: 13,
+    fromRoomKey: 'hall_1',
+    roomKey: 'boss_1',
+    now: 3001,
+  })), /scout reveal ability is already used/);
+  db.close();
+});
+
+test('transactional attempts persist artifact trigger history across API calls', () => {
+  const db = expeditionDb();
+  const routeMap = {
+    rooms: [
+      { ...camp, state: 'cleared', progress: 1 },
+      { ...hall, progressTarget: 20, state: 'unlocked', progress: 0 },
+      { ...boss, state: 'locked' },
+    ],
+    edges: [
+      { from: 'camp_0', to: 'hall_1' },
+      { from: 'hall_1', to: 'boss_1' },
+    ],
+  };
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-history',
+    familyId: 81,
+    userId: 14,
+    seed: 'history-seed',
+    map: routeMap,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES (14, 'rabbit_foot', 1, 0, 1000, 1000)
+  `).run();
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-history',
+    expeditionId,
+    userId: 14,
+    role: 'scout',
+    artifactIds: ['rabbit_foot'],
+    now: Date.UTC(2026, 5, 23),
+  }));
+
+  const first = inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-history-1',
+    expeditionId,
+    userId: 14,
+    roomKey: 'hall_1',
+    actionId: 'thread_gap',
+    roll: 7,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  const second = inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-history-2',
+    expeditionId,
+    userId: 14,
+    roomKey: 'hall_1',
+    actionId: 'thread_gap',
+    roll: 7,
+    now: Date.UTC(2026, 5, 23),
+  }));
+
+  const firstAction = first.actions.find(action => action.idempotencyKey === 'attempt-history-1');
+  const secondAction = second.actions.find(action => action.idempotencyKey === 'attempt-history-2');
+  assert.deepEqual(firstAction.modifiers.triggeredArtifacts, ['rabbit_foot']);
+  assert.deepEqual(secondAction.modifiers.triggeredArtifacts, []);
+  assert.equal(second.members.find(row => row.userId === 14).triggerHistory.length, 1);
+  db.close();
+});
+
+test('idempotency replay rejects same key for different intent', () => {
+  const db = expeditionDb();
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-idem',
+    familyId: 82,
+    userId: 15,
+    seed: 'idem-seed',
+    map,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'same-key',
+    expeditionId,
+    userId: 15,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+
+  assert.throws(() => inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'same-key',
+    expeditionId,
+    userId: 15,
+    roomKey: 'camp_0',
+    actionId: 'tend_campfire',
+    roll: 20,
+    now: Date.UTC(2026, 5, 23),
+  })), /idempotency conflict/);
   db.close();
 });
