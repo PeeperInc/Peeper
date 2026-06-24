@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const express = require('express');
 const db = require('../database');
 const { validateTelegramInit } = require('../auth');
@@ -184,11 +185,16 @@ function getUnfinishedExpedition(familyId) {
 
 function existingIdempotentAction(userId, idempotencyKey) {
   if (!idempotencyKey) return null;
-  return db.prepare(`
-    SELECT expedition_id AS expeditionId, action_type AS actionType
+  const action = db.prepare(`
+    SELECT expedition_id AS expeditionId, action_type AS actionType, modifier_json AS modifierJson
     FROM family_expedition_actions
     WHERE user_id = ? AND idempotency_key = ?
   `).get(userId, idempotencyKey);
+  if (!action) return null;
+  return {
+    ...action,
+    modifiers: parseJson(action.modifierJson, {}),
+  };
 }
 
 function serializeFor(user, family, snapshot, canStart = false) {
@@ -208,6 +214,23 @@ function requireIdempotencyKey(req, res) {
     return null;
   }
   return String(idempotencyKey);
+}
+
+function secureD20() {
+  return 1 + crypto.randomInt(20);
+}
+
+function preparedMember(expeditionId, userId) {
+  return db.prepare(`
+    SELECT 1
+    FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = ?
+  `).get(expeditionId, userId);
+}
+
+function existingAttemptIntent(replay, expeditionId) {
+  if (replay?.actionType !== 'attempt' || replay.expeditionId !== expeditionId) return null;
+  return replay.modifiers?.intent || null;
 }
 
 function requireExpeditionAccess(req, res) {
@@ -240,6 +263,9 @@ function handleRouteError(res, error) {
   const message = error?.message || 'Expedition action failed';
   if (/room is already cleared/i.test(message)) {
     return res.status(409).json({ error: 'Room already cleared' });
+  }
+  if (/already prepared/i.test(message)) {
+    return res.status(409).json({ error: message });
   }
   if (/idempotency conflict/i.test(message)) {
     return res.status(409).json({ error: message });
@@ -312,6 +338,10 @@ router.post('/:id/prepare', (req, res) => {
   if (!idempotencyKey) return;
   const access = requireExpeditionAccess(req, res);
   if (!access) return;
+  const replay = existingIdempotentAction(req.currentUser.id, idempotencyKey);
+  if (preparedMember(access.expeditionId, req.currentUser.id) && !replay) {
+    return res.status(409).json({ error: 'Member is already prepared for this expedition' });
+  }
 
   try {
     const snapshot = db.transaction(() => prepareMember({
@@ -334,10 +364,16 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
   if (!idempotencyKey) return;
   const access = requireExpeditionAccess(req, res);
   if (!access) return;
+  const replay = existingIdempotentAction(req.currentUser.id, idempotencyKey);
   if (roomState(access.expeditionId, req.params.roomKey) === 'cleared') {
-    const replay = existingIdempotentAction(req.currentUser.id, idempotencyKey);
     if (!replay) return res.status(409).json({ error: 'Room already cleared' });
   }
+  const useRoleAbility = Boolean(req.body?.useRoleAbility);
+  const replayIntent = existingAttemptIntent(replay, access.expeditionId);
+  const roll = Number.isInteger(replayIntent?.roll) ? replayIntent.roll : secureD20();
+  const reroll = useRoleAbility
+    ? (Number.isInteger(replayIntent?.reroll) ? replayIntent.reroll : secureD20())
+    : null;
 
   try {
     const snapshot = db.transaction(() => attemptRoom({
@@ -348,9 +384,9 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
       roomKey: req.params.roomKey,
       actionId: req.body?.actionId,
       selectedSupport: req.body?.selectedSupport ?? 0,
-      roll: req.body?.roll,
-      reroll: req.body?.reroll,
-      useRoleAbility: Boolean(req.body?.useRoleAbility),
+      roll,
+      reroll,
+      useRoleAbility,
       useSharedBuff: Boolean(req.body?.useSharedBuff),
     }))();
     return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
@@ -471,6 +507,8 @@ router.get('/history', (req, res) => {
 });
 
 router.get('/artifacts', (req, res) => {
+  const family = getCurrentFamily(req.currentUser.id);
+  if (!family) return res.status(403).json({ error: 'You are not in a family' });
   return res.json({ artifactInventory: getArtifactInventory(req.currentUser.id) });
 });
 

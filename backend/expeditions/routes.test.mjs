@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -289,6 +290,70 @@ test('duplicate room attempt returns the same state without spending AP twice', 
   assert.equal(replay.body.recentActions.filter(action => action.actionType === 'attempt').length, 1);
 });
 
+test('POST room attempt ignores forced client rolls and uses server rolls for idempotent replay', async () => {
+  createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-secure-roll' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-secure-roll',
+    role: 'scout',
+  });
+  const camp = started.body.map.rooms.find(room => room.type === 'camp');
+  const actionId = camp.actions[0].id;
+  const originalRandomInt = crypto.randomInt;
+  crypto.randomInt = () => 6;
+  try {
+    const first = await request('POST', `/${expeditionId}/rooms/${camp.key}/attempt`, 'tg-owner', {
+      idempotencyKey: 'attempt-secure-roll',
+      actionId,
+      roll: 20,
+      reroll: 20,
+    });
+    assert.equal(first.status, 200);
+    const attempt = first.body.recentActions.find(action => action.actionType === 'attempt');
+    assert.equal(attempt.rawRoll, 7);
+
+    const replay = await request('POST', `/${expeditionId}/rooms/${camp.key}/attempt`, 'tg-owner', {
+      idempotencyKey: 'attempt-secure-roll',
+      actionId,
+      roll: 20,
+      reroll: 20,
+    });
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.recentActions.filter(action => action.actionType === 'attempt').length, 1);
+    assert.equal(replay.body.recentActions.find(action => action.actionType === 'attempt').rawRoll, 7);
+  } finally {
+    crypto.randomInt = originalRandomInt;
+  }
+});
+
+test('POST prepare rejects changing an already prepared member while allowing exact idempotent replay', async () => {
+  createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-reprepare' });
+  const expeditionId = started.body.expedition.id;
+
+  const first = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-reprepare-original',
+    role: 'scout',
+  });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.member.role, 'scout');
+
+  const replay = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-reprepare-original',
+    role: 'scout',
+  });
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.member.role, 'scout');
+
+  const changed = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-reprepare-changed',
+    role: 'mage',
+  });
+  assert.equal(changed.status, 409);
+  assert.match(changed.body.error, /already prepared/i);
+});
+
 test('former family members cannot mutate an expedition they helped start', async () => {
   const { familyId, userIds } = createFamilyWithMembers(['tg-owner']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-former' });
@@ -344,6 +409,26 @@ test('GET /artifacts only returns the authenticated user inventory', async () =>
   assert.deepEqual(response.body.artifactInventory, [
     { artifactId: 'bent_sword', quantity: 1, charges: 0 },
   ]);
+});
+
+test('GET /artifacts requires current family membership', async () => {
+  createUser('tg-solo', 'Solo');
+  const noFamily = await request('GET', '/artifacts', 'tg-solo');
+  assert.equal(noFamily.status, 403);
+  assert.equal(noFamily.body.error, 'You are not in a family');
+
+  resetDb();
+  const { familyId, userIds } = createFamilyWithMembers(['tg-owner']);
+  db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES (?, 'bent_sword', 1, 0, 1000, 1000)
+  `).run(userIds[0]);
+  db.prepare('DELETE FROM family_members WHERE family_id = ? AND user_id = ?').run(familyId, userIds[0]);
+
+  const formerMember = await request('GET', '/artifacts', 'tg-owner');
+  assert.equal(formerMember.status, 403);
+  assert.equal(formerMember.body.error, 'You are not in a family');
 });
 
 test('backend server registers the expedition API route', () => {
