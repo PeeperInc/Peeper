@@ -15,6 +15,7 @@ const db      = require('./database');
 const { liveStats } = require('./gameLogic');
 const { isNotificationEnabled } = require('./notificationSettings');
 const { getFarmCropReadiness, getFarmAnimalReadiness } = require('./farmState');
+const { regenerateAp, utcDayKey } = require('./expeditions/engine');
 
 const INTERVAL_MS = 60 * 1000;
 const APP_URL     = 'https://peeper.frenzyradio.online';
@@ -115,43 +116,61 @@ function clearFlag(userId, type) {
 function shouldSend(userId, type) {
   const sentAt   = getSentAt(userId, type);
   if (sentAt === null) return true;
-  const cooldown = COOLDOWNS[type] ?? 0;
+  const baseType = type.includes(':') ? type.slice(0, type.indexOf(':')) : type;
+  const cooldown = COOLDOWNS[type] ?? COOLDOWNS[baseType] ?? 0;
   if (cooldown === 0) return false;           // one-shot until cleared
   return (ts() - sentAt) >= cooldown;
 }
 
-function rowsToUserIdSet(rows) {
-  return new Set(rows.map(row => Number(row.user_id)));
+function expeditionNotificationType(baseType, expeditionId) {
+  return `${baseType}:${expeditionId}`;
 }
 
-function clearStaleFlags(type, activeUserIds) {
-  const rows = db.prepare('SELECT user_id FROM notifications_sent WHERE type = ?').all(type);
+function expeditionFlagKey(userId, type) {
+  return `${Number(userId)}\u0000${type}`;
+}
+
+function clearStaleExpeditionFlags(baseType, activeRows) {
+  const activeFlags = new Set(activeRows.map(row => (
+    expeditionFlagKey(row.user_id, expeditionNotificationType(baseType, row.expedition_id))
+  )));
+  const prefix = `${baseType}:`;
+  const rows = db.prepare(`
+    SELECT user_id, type FROM notifications_sent
+    WHERE substr(type, 1, ?) = ?
+  `).all(prefix.length, prefix);
+
   for (const row of rows) {
-    if (!activeUserIds.has(Number(row.user_id))) {
-      clearFlag(row.user_id, type);
+    if (!activeFlags.has(expeditionFlagKey(row.user_id, row.type))) {
+      clearFlag(row.user_id, row.type);
     }
   }
 }
 
-async function sendExpeditionRows({ type, rows, text, send }) {
+async function sendExpeditionRows({ type: baseType, rows, text, send }) {
   for (const row of rows) {
     const userId = row.user_id;
+    const type = expeditionNotificationType(baseType, row.expedition_id);
     if (!row.telegram_id || !shouldSend(userId, type)) continue;
     const delivered = await sendExpeditionNotification(userId, row.telegram_id, text(row), send);
     if (delivered) markSent(userId, type);
   }
 }
 
-function getExpeditionApFullRows() {
-  return db.prepare(`
-    SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id, m.ap
+function getExpeditionApFullRows(currentDay = utcDayKey()) {
+  const rows = db.prepare(`
+    SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id,
+           m.ap, m.ap_regen_day AS apRegenDay
     FROM family_expedition_members m
     JOIN family_expeditions e ON e.id = m.expedition_id
     JOIN users u ON u.id = m.user_id
     WHERE e.status != 'finished'
       AND m.prepared_at IS NOT NULL
-      AND m.ap >= ?
-  `).all(EXPEDITION_AP_CAP);
+  `).all();
+
+  return rows.filter(row => (
+    regenerateAp({ ap: row.ap, apRegenDay: row.apRegenDay }, currentDay).ap >= EXPEDITION_AP_CAP
+  ));
 }
 
 function getExpeditionBossReadyRows() {
@@ -195,9 +214,10 @@ function getExpeditionFinishedRows(now = ts()) {
 async function checkExpeditionNotifications(options = {}) {
   const now = options.now ?? ts();
   const send = options.send || sendMessage;
+  const currentDay = utcDayKey(now);
 
-  const apFullRows = getExpeditionApFullRows();
-  clearStaleFlags('expedition_ap_full', rowsToUserIdSet(apFullRows));
+  const apFullRows = getExpeditionApFullRows(currentDay);
+  clearStaleExpeditionFlags('expedition_ap_full', apFullRows);
   await sendExpeditionRows({
     type: 'expedition_ap_full',
     rows: apFullRows,
@@ -206,7 +226,7 @@ async function checkExpeditionNotifications(options = {}) {
   });
 
   const bossReadyRows = getExpeditionBossReadyRows();
-  clearStaleFlags('expedition_boss_ready', rowsToUserIdSet(bossReadyRows));
+  clearStaleExpeditionFlags('expedition_boss_ready', bossReadyRows);
   await sendExpeditionRows({
     type: 'expedition_boss_ready',
     rows: bossReadyRows,
@@ -215,7 +235,7 @@ async function checkExpeditionNotifications(options = {}) {
   });
 
   const bossRewardRows = getExpeditionBossRewardRows();
-  clearStaleFlags('expedition_boss_reward', rowsToUserIdSet(bossRewardRows));
+  clearStaleExpeditionFlags('expedition_boss_reward', bossRewardRows);
   await sendExpeditionRows({
     type: 'expedition_boss_reward',
     rows: bossRewardRows,
@@ -224,7 +244,7 @@ async function checkExpeditionNotifications(options = {}) {
   });
 
   const finishedRows = getExpeditionFinishedRows(now);
-  clearStaleFlags('expedition_finished', rowsToUserIdSet(finishedRows));
+  clearStaleExpeditionFlags('expedition_finished', finishedRows);
   await sendExpeditionRows({
     type: 'expedition_finished',
     rows: finishedRows,
