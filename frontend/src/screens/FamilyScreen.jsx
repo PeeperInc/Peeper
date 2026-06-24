@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import FamilyProfile from '../components/FamilyProfile';
 import BottomSheet from '../components/BottomSheet';
 import SupporterStar from '../components/SupporterStar';
+import FamilyExpeditionTab from './FamilyExpeditionTab';
 import { useApp } from '../context/AppContext';
 import * as api from '../api';
 import { avatarUrl } from '../utils/avatarUrl';
@@ -886,7 +887,7 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange }) {
 
       {/* Tab switcher */}
       <div className="inner-tabs" style={{ marginTop: 4 }}>
-        {[['members','👥 Members'],['chat','💬 Chat']].map(([id, label]) => (
+        {[['members','👥 Members'],['expedition','🗺️ Expedition'],['chat','💬 Chat']].map(([id, label]) => (
           <button key={id} className={`inner-tab${activeTab === id ? ' active' : ''}`}
             onClick={() => setActiveTab(id)}>
             <span className="family-tab-label">{label}</span>
@@ -922,6 +923,10 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange }) {
             onFamilyUnreadChange?.(0);
           }}
         />
+      )}
+
+      {activeTab === 'expedition' && (
+        <FamilyExpeditionTab />
       )}
 
       {activeTab === 'chat' && (

@@ -142,3 +142,30 @@ export const getFamilyLeaderboard = (limit = 10) => get(`/family/leaderboard?lim
 export const getFamilyProfile = (familyId) => get(`/family/${familyId}/profile`);
 export const inviteFamilyMember = (targetUserId) => post('/family/invite', { targetUserId });
 export const getPendingInvites = () => get('/family/invites/pending');
+
+export const getExpeditionCurrent = () => get('/expeditions/current');
+export const startExpedition = (idempotencyKey) => post('/expeditions/start', { idempotencyKey });
+export const prepareExpedition = (expeditionId, { role, provisionId = null, artifactIds = [], idempotencyKey }) =>
+  post(`/expeditions/${expeditionId}/prepare`, { role, provisionId, artifactIds, idempotencyKey });
+export const attemptExpeditionRoom = (
+  expeditionId,
+  roomKey,
+  { actionId, selectedSupport = 0, useRoleAbility = false, useSharedBuff = false, idempotencyKey } = {},
+) => post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/attempt`, {
+  actionId,
+  selectedSupport,
+  useRoleAbility,
+  useSharedBuff,
+  idempotencyKey,
+});
+export const assistExpeditionRoom = (expeditionId, roomKey, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/assist`, { idempotencyKey });
+export const revealExpeditionRoom = (expeditionId, roomKey, { fromRoomKey, idempotencyKey } = {}) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/reveal`, { fromRoomKey, idempotencyKey });
+export const equipFoundExpeditionArtifact = (expeditionId, { artifactId, slotIndex, idempotencyKey } = {}) =>
+  post(`/expeditions/${expeditionId}/equip-found-artifact`, { artifactId, slotIndex, idempotencyKey });
+export const finishExpedition = (expeditionId, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/finish`, { idempotencyKey });
+export const expeditionLog = (expeditionId) => get(`/expeditions/${expeditionId}/log`);
+export const expeditionHistory = () => get('/expeditions/history');
+export const expeditionArtifacts = () => get('/expeditions/artifacts');
