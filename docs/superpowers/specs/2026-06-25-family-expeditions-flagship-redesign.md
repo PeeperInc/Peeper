@@ -17,12 +17,13 @@ The expedition must never hard-fail. A solo player can finish slowly. A coordina
 1. Family opens an expedition and prepares roles/artifacts.
 2. Family chooses a Rally Room: the main room everyone is encouraged to push.
 3. A player opens the current encounter.
-4. Player chooses a tactical stance.
-5. Player taps one large `Roll d20` button.
-6. Result advances progress, changes threat, triggers role effects, may create an Opening for the family.
-7. Other family members return while the Opening is active to combo.
-8. Room clears, reward/chest moment plays, next rooms open.
-9. Boss phases use the same system but with stronger enemy intents and more dramatic visuals.
+4. Player reads the room mini-mechanic: trap choice, shrine blessing, mimic tell, puzzle clue, enemy intent, or boss phase rule.
+5. Player can optionally use a preparation slot or activate an artifact.
+6. Player taps one large `Roll d20` button.
+7. Result advances progress, changes threat, triggers role effects, may create an Opening for the family.
+8. Other family members return while the Opening is active to combo.
+9. Room clears, reward/chest moment plays, next rooms open.
+10. Boss phases use the same system but with stronger phase-specific mechanics and more dramatic visuals.
 
 ## Room Model
 Each room becomes an encounter:
@@ -66,37 +67,42 @@ Every encounter shows what the enemy is about to do:
 
 The intent makes the next roll choice meaningful.
 
-## One Roll Button With Tactical Choices
+## One Roll Button With Room Mini-Mechanics
 There is one main button:
 
 `Roll d20 as Scout`
 
-The player still chooses a stance before rolling. This is the main gameplay decision.
+The player does not choose between four class actions or abstract modes. Gameplay variety comes from room-specific rules, preparation slots, boss mechanics, and active artifacts.
 
-### Stances
-`Advance`
-- Best for raw progress.
-- Normal threat risk.
-- Good when the room is close to clearing.
+### Room Mini-Mechanics
+Each room type has a small, readable mechanic:
 
-`Control`
-- Less progress.
-- Reduces threat or blocks enemy intent on decent rolls.
-- Good when threat is high.
+`Combat`
+- Shows an enemy sprite and enemy intent.
+- The room has one or two weak roles.
+- Correct role gets a bonus effect, but any role can progress.
 
-`Setup`
-- Less immediate progress.
-- Better chance to create an Opening for another role.
-- Good for family coordination.
+`Trap`
+- Shows 2-3 visible route choices before roll.
+- Choices are not class actions; they are room options such as `Safe Path`, `Fast Path`, `Greedy Path`.
+- Safe path lowers threat risk, fast path raises progress variance, greedy path improves clear reward but adds threat on low roll.
 
-`Loot`
-- Riskier.
-- Less reliable progress.
-- Improves clear reward or chest quality if the room is finished soon.
-- Available only in treasure and mystery rooms for the first implementation.
-- Not available in boss phases.
+`Treasure / Mimic`
+- Shows a tell/guess moment before roll, such as choosing the real chest or baiting the mimic.
+- Correct read gives bonus progress or better chest.
+- Wrong read never fails the room, but raises threat or removes chest bonus.
 
-The CTA remains one button. The decision is not "which class action do I press?", but "what is my plan for this roll?"
+`Shrine`
+- Offers a family blessing choice before the roll.
+- Examples: `Bless next roll`, `Restore 1 AP to lowest AP member`, `Reduce threat in Rally Room`.
+- The roll determines blessing strength.
+
+`Puzzle`
+- Each roll reveals a symbol/clue.
+- Family members can combine clues; matching role may reveal two clues.
+- Progress still accumulates, so solo play is always possible.
+
+The CTA remains one button. The decision is not "which class action do I press?", but "how do we handle this room's mechanic before the roll?"
 
 ## Roll Bands
 Base d20 outcome:
@@ -104,10 +110,10 @@ Base d20 outcome:
 - `2-5`: 0 progress, +1 threat.
 - `6-10`: +1 progress.
 - `11-15`: +2 progress.
-- `16-19`: +3 progress and role/stance effect.
-- `20`: +5 progress, strong role effect, cinematic critical, bonus reward chance.
+- `16-19`: +3 progress and room/role effect.
+- `20`: +5 progress, strong room/role effect, cinematic critical, bonus reward chance.
 
-Modifiers still exist from role, artifacts, support, opening, and stance.
+Modifiers still exist from role, artifacts, support, opening, preparation, and room mini-mechanics.
 
 ## Role Identity
 Roles are automatic. The room decides who is especially useful.
@@ -151,6 +157,23 @@ When Scout rolls well, the room may show:
 
 This creates a reason to ping or return. If nobody uses it, the expedition still continues, just slower.
 
+## Preparation Slots
+Preparation slots are lightweight help actions that can be used between AP rolls.
+
+Rules:
+- Each prepared member has `1 prep charge` that refreshes every `6 hours`.
+- Prep does not spend AP.
+- Prep cannot clear a room by itself.
+- Prep creates small tactical value for the next AP roll.
+
+Role prep examples:
+- Knight: `Raise Banner` gives next roll `-1 threat gain`.
+- Scout: `Mark Target` gives next matching weak-role roll `+1`.
+- Mage: `Charge Rune` gives next roll a chance to upgrade one roll band.
+- Cleric: `Bless Party` softens the next setback in the room.
+
+This gives players a reason to open expeditions even when AP is empty.
+
 ## Family Mechanics
 ### Rally Room
 One room can be marked as family focus.
@@ -177,6 +200,42 @@ Room UI displays:
 - `Cleric can cleanse`
 - `Mage can break shield`
 - `Any role can finish`
+
+## Boss Mechanics
+Boss fights are not role-locked. A solo player can clear every phase, but correct roles reduce penalties and speed up the phase.
+
+Phase examples:
+- Phase 1 `Break the Bark Armor`: boss is `Guarding`; Knight and Mage reduce armor faster.
+- Phase 2 `Survive the Root Tide`: boss is `Striking/Hiding`; Scout and Cleric reduce threat and prevent curse.
+- Phase 3 `Expose the Root Heart`: all roles can finish; role relay and openings produce larger progress spikes.
+
+Boss roll penalties:
+- Wrong role never blocks progress.
+- Wrong role may roll with `-1` or miss the secondary effect.
+- Correct role may get `+1`, reduce threat, or create Opening.
+
+Boss visuals:
+- Always render `boss_sanctum` background behind phase art.
+- Boss art uses full contain rendering and never crops to belly/legs.
+- Each phase has a short intro copy and result animation.
+
+## Artifacts As Decisions
+Artifacts should not all be passive stat sticks. A subset becomes active decisions.
+
+Rules:
+- Player still equips up to 3 artifacts.
+- Some artifacts are passive.
+- Some artifacts have active charges.
+- Active artifacts are used before rolling and can change the room state or roll result.
+
+Examples:
+- `Loaded Die`: active reroll once per expedition.
+- `Map Scrap`: active reveal a hidden connected room.
+- `Warding Nail`: active prevent next threat gain.
+- `Mimic Whistle`: active identify mimic tell.
+- `Silver Lantern`: active remove dark penalty for this room.
+
+Active artifacts must have clear buttons, charges, and result feedback.
 
 ## Rewards
 Target: an active participant earns about `300 coins` per full expedition.
@@ -213,7 +272,7 @@ Main room scene:
 Persistent HUD:
 - Top: Back, AP timer, Map, Vault.
 - Center: encounter scene.
-- Lower: progress/threat bars, weakness chips, stance chips.
+- Lower: progress/threat bars, weakness chips, mechanic hint, and artifact/prep buttons.
 - Bottom sticky: one big roll button.
 
 Avoid:
@@ -247,13 +306,15 @@ Every combat/treasure/mystery room should have either an enemy or a special obje
 - Add threat and opening state.
 - Add AP regen: cap 5, +1 every 3h.
 - Do not add AP-ready Telegram notifications in this phase.
+- Add room mini-mechanic metadata.
+- Add preparation charges.
 - Keep old APIs stable where possible.
 - Preserve no-hard-fail rule.
 
 ### Phase 2: Room Scene UI
 - Replace card actions with one room encounter scene.
 - Render enemy sprites and boss backgrounds correctly.
-- Add stance selector and one roll CTA.
+- Add room mini-mechanic UI and one roll CTA.
 - Add dice/result animation.
 - Add clear/chest animation.
 
@@ -264,14 +325,19 @@ Every combat/treasure/mystery room should have either an enemy or a special obje
 - Need Role badges.
 - Better family combat log.
 
-### Phase 4: Economy And Tuning
+### Phase 4: Active Artifacts And Boss Polish
+- Add active artifact buttons and charges.
+- Add boss phase mechanics and phase intros.
+- Add stronger boss result animations.
+
+### Phase 5: Economy And Tuning
 - Tune room progress and threat values.
 - Tune rewards to about 300 coins per active clear.
 - Tune expedition duration:
   - Solo: slow but steady.
   - Active family: much faster and more rewarding.
 
-### Phase 5: Polish
+### Phase 6: Polish
 - More enemy intents.
 - Better boss phase presentation.
 - Seasonal dungeon packs.
