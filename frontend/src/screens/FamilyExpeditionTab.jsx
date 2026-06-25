@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from '../api';
 import assetCatalog from '../assets/expeditions/root-king/asset-catalog.json';
 import './FamilyExpeditionTab.css';
@@ -45,6 +45,10 @@ function roleImage(role) {
 function normalizeEntries(value) {
   if (Array.isArray(value)) return value.map(item => [item.id, item]);
   return Object.entries(value || {});
+}
+
+function artifactIdFromLoadoutSlot(slot) {
+  return slot?.artifactId ?? slot;
 }
 
 function formatTime(ts) {
@@ -242,7 +246,9 @@ function ExpeditionDashboard({ state }) {
     return counts;
   }, { total: 0 });
   const member = state.member;
-  const loadout = (member?.loadout || []).filter(Boolean);
+  const loadout = (member?.loadout || [])
+    .map(artifactIdFromLoadoutSlot)
+    .filter(Boolean);
   const provision = member?.provisionId ? provisions.get(member.provisionId) : null;
 
   return (
@@ -265,9 +271,9 @@ function ExpeditionDashboard({ state }) {
           <strong>{provision?.name || titleize(member?.provisionId || 'None')}</strong>
         </div>
         <div className="expedition-mini-loadout">
-          {loadout.length > 0 ? loadout.map(id => {
+          {loadout.length > 0 ? loadout.map((id, index) => {
             const meta = artifacts.get(id);
-            return <span key={id}>{meta?.name || titleize(id)}</span>;
+            return <span key={`${id}-${index}`}>{meta?.name || titleize(id)}</span>;
           }) : <span>No artifacts equipped</span>}
         </div>
       </div>
@@ -318,14 +324,18 @@ export default function FamilyExpeditionTab() {
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   const [error, setError] = useState('');
+  const startIdempotencyKeyRef = useRef(null);
+  const prepareIdempotencyKeyRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       setState(await api.getExpeditionCurrent());
+      return true;
     } catch (err) {
       setError(err.message || 'Could not load expedition');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -336,10 +346,15 @@ export default function FamilyExpeditionTab() {
   async function handleStart() {
     setMutating(true);
     setError('');
+    startIdempotencyKeyRef.current ||= makeIdempotencyKey('expedition-start');
     try {
-      setState(await api.startExpedition(makeIdempotencyKey('expedition-start')));
-      await load();
+      setState(await api.startExpedition(startIdempotencyKeyRef.current));
+      if (await load()) startIdempotencyKeyRef.current = null;
     } catch (err) {
+      if (err.status === 409) {
+        if (await load()) startIdempotencyKeyRef.current = null;
+        return;
+      }
       setError(err.message || 'Could not start expedition');
     } finally {
       setMutating(false);
@@ -350,13 +365,18 @@ export default function FamilyExpeditionTab() {
     if (!state?.expedition?.id) return;
     setMutating(true);
     setError('');
+    prepareIdempotencyKeyRef.current ||= makeIdempotencyKey('expedition-prepare');
     try {
       setState(await api.prepareExpedition(state.expedition.id, {
         ...payload,
-        idempotencyKey: makeIdempotencyKey('expedition-prepare'),
+        idempotencyKey: prepareIdempotencyKeyRef.current,
       }));
-      await load();
+      if (await load()) prepareIdempotencyKeyRef.current = null;
     } catch (err) {
+      if (err.status === 409) {
+        if (await load()) prepareIdempotencyKeyRef.current = null;
+        return;
+      }
       setError(err.message || 'Could not prepare expedition');
     } finally {
       setMutating(false);
