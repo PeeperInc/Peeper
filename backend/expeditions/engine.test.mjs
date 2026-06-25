@@ -23,6 +23,7 @@ const {
   assistRoom,
   revealRoom,
   equipFoundArtifactForMember,
+  claimBossReward,
   finishExpedition,
 } = engine;
 
@@ -181,6 +182,19 @@ function expeditionDb() {
       family_id INTEGER NOT NULL,
       summary_json TEXT NOT NULL,
       finished_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY,
+      coins INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE farm_inventory (
+      user_id INTEGER NOT NULL,
+      product_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id, product_id)
     );
   `);
   return db;
@@ -781,6 +795,210 @@ test('transactional helpers persist attempts, unlocks, idempotent replay, and fi
   }));
   assert.equal(db.prepare('SELECT status FROM family_expeditions WHERE id = ?').get(expeditionId).status, 'finished');
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_history').get().count, 1);
+  db.close();
+});
+
+test('transactional attempts award personal coins and artifacts exactly once', () => {
+  const db = expeditionDb();
+  db.prepare('INSERT INTO users (id, coins) VALUES (10, 0)').run();
+  const lootVault = {
+    ...optionalVault,
+    state: undefined,
+    progress: undefined,
+    progressTarget: 1,
+    loot: { coins: { min: 8, max: 8 }, artifactRolls: 1 },
+  };
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-loot',
+    familyId: 80,
+    userId: 10,
+    seed: 'loot-seed',
+    map: {
+      rooms: [
+        { ...camp, state: undefined, progress: undefined },
+        lootVault,
+      ],
+      edges: [{ from: 'camp_0', to: 'vault_1' }],
+    },
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  db.prepare(`
+    UPDATE family_expedition_rooms SET state = 'unlocked'
+    WHERE expedition_id = ? AND room_key = 'vault_1'
+  `).run(expeditionId);
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-loot',
+    expeditionId,
+    userId: 10,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+
+  inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-loot',
+    expeditionId,
+    userId: 10,
+    roomKey: 'vault_1',
+    actionId: 'pick_vault',
+    roll: 20,
+    rng: () => 0.99,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 8);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 2);
+
+  inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-loot',
+    expeditionId,
+    userId: 10,
+    roomKey: 'vault_1',
+    actionId: 'pick_vault',
+    roll: 20,
+    rng: () => 0.99,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 8);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_actions WHERE idempotency_key = ?').get('attempt-loot').count, 1);
+  db.close();
+});
+
+test('preparation provisions consume farm inventory and replay without double spending', () => {
+  const db = expeditionDb();
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-provision',
+    familyId: 81,
+    userId: 15,
+    seed: 'provision-seed',
+    map,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  db.prepare("INSERT INTO farm_inventory (user_id, product_id, quantity, updated_at) VALUES (15, 'carrot', 20, 1000)").run();
+
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-provision',
+    expeditionId,
+    userId: 15,
+    role: 'scout',
+    provisionId: 'carrot_rations',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(db.prepare("SELECT COALESCE(quantity, 0) AS quantity FROM farm_inventory WHERE user_id = 15 AND product_id = 'carrot'").get()?.quantity || 0, 0);
+  assert.equal(db.prepare('SELECT ap FROM family_expedition_members WHERE expedition_id = ? AND user_id = 15').get(expeditionId).ap, 4);
+
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-provision',
+    expeditionId,
+    userId: 15,
+    role: 'scout',
+    provisionId: 'carrot_rations',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM family_expedition_actions WHERE idempotency_key = 'prepare-provision'").get().count, 1);
+
+  const second = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-provision-short',
+    familyId: 82,
+    userId: 16,
+    seed: 'provision-short-seed',
+    map,
+    now: 1000,
+  }));
+  db.prepare("INSERT INTO farm_inventory (user_id, product_id, quantity, updated_at) VALUES (16, 'carrot', 19, 1000)").run();
+  assert.throws(() => inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-provision-short',
+    expeditionId: second.expedition.id,
+    userId: 16,
+    role: 'scout',
+    provisionId: 'carrot_rations',
+    now: Date.UTC(2026, 5, 23),
+  })), /Not enough Carrot/);
+  db.close();
+});
+
+test('boss reward claim requires three AP contribution and is idempotent', () => {
+  const db = expeditionDb();
+  db.prepare('INSERT INTO users (id, coins) VALUES (20, 0), (21, 0)').run();
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-claim',
+    familyId: 83,
+    userId: 20,
+    seed: 'claim-seed',
+    map,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-claim-eligible',
+    expeditionId,
+    userId: 20,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-claim-short',
+    expeditionId,
+    userId: 21,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  db.prepare(`
+    UPDATE family_expeditions SET status = 'boss_defeated', boss_defeated_at = 2000
+    WHERE id = ?
+  `).run(expeditionId);
+  db.prepare(`
+    UPDATE family_expedition_members SET contribution_ap = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(3, expeditionId, 20);
+  db.prepare(`
+    UPDATE family_expedition_members SET contribution_ap = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(2, expeditionId, 21);
+
+  assert.throws(() => inTx(db, () => claimBossReward({
+    transaction: db,
+    idempotencyKey: 'claim-short',
+    expeditionId,
+    userId: 21,
+    rng: () => 0.99,
+    now: 3000,
+  })), /at least 3 AP/);
+
+  inTx(db, () => claimBossReward({
+    transaction: db,
+    idempotencyKey: 'claim-eligible',
+    expeditionId,
+    userId: 20,
+    rng: () => 0.99,
+    now: 3000,
+  }));
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 20').get().coins, 70);
+  assert.equal(db.prepare('SELECT boss_reward_claimed_at FROM family_expedition_members WHERE expedition_id = ? AND user_id = 20').get(expeditionId).boss_reward_claimed_at, 3000);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 20').get().count, 1);
+
+  inTx(db, () => claimBossReward({
+    transaction: db,
+    idempotencyKey: 'claim-eligible',
+    expeditionId,
+    userId: 20,
+    rng: () => 0.99,
+    now: 3001,
+  }));
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 20').get().coins, 70);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_actions WHERE idempotency_key = ?').get('claim-eligible').count, 1);
   db.close();
 });
 

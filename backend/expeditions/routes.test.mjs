@@ -60,6 +60,7 @@ function resetDb() {
     DELETE FROM family_expedition_rooms;
     DELETE FROM family_expeditions;
     DELETE FROM expedition_artifact_inventory;
+    DELETE FROM farm_inventory;
     DELETE FROM family_members;
     DELETE FROM families;
     DELETE FROM users;
@@ -352,6 +353,76 @@ test('POST prepare rejects changing an already prepared member while allowing ex
   });
   assert.equal(changed.status, 409);
   assert.match(changed.body.error, /already prepared/i);
+});
+
+test('POST prepare consumes selected farm provision recipe', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-provision-route' });
+  const expeditionId = started.body.expedition.id;
+  db.prepare(`
+    INSERT INTO farm_inventory (user_id, product_id, quantity, updated_at)
+    VALUES (?, 'carrot', 20, 1000)
+  `).run(userIds[0]);
+
+  const prepared = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-route-provision',
+    role: 'scout',
+    provisionId: 'carrot_rations',
+  });
+
+  assert.equal(prepared.status, 200);
+  assert.equal(prepared.body.member.provisionId, 'carrot_rations');
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM farm_inventory WHERE user_id = ? AND product_id = 'carrot'").get(userIds[0]).count, 0);
+
+  const replay = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-route-provision',
+    role: 'scout',
+    provisionId: 'carrot_rations',
+  });
+  assert.equal(replay.status, 200);
+});
+
+test('POST claim-boss-reward enforces contribution threshold and claims once', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-low']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-claim-route' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-claim-owner',
+    role: 'scout',
+  });
+  await request('POST', `/${expeditionId}/prepare`, 'tg-low', {
+    idempotencyKey: 'prepare-claim-low',
+    role: 'scout',
+  });
+  db.prepare("UPDATE family_expeditions SET status = 'boss_defeated', boss_defeated_at = 2000 WHERE id = ?").run(expeditionId);
+  db.prepare('UPDATE family_expedition_members SET contribution_ap = 3 WHERE expedition_id = ? AND user_id = ?').run(expeditionId, userIds[0]);
+  db.prepare('UPDATE family_expedition_members SET contribution_ap = 2 WHERE expedition_id = ? AND user_id = ?').run(expeditionId, userIds[1]);
+
+  const rejected = await request('POST', `/${expeditionId}/claim-boss-reward`, 'tg-low', {
+    idempotencyKey: 'claim-low-route',
+  });
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.body.error, /3 AP/);
+
+  const originalRandomInt = crypto.randomInt;
+  crypto.randomInt = () => 999_999;
+  try {
+    const claimed = await request('POST', `/${expeditionId}/claim-boss-reward`, 'tg-owner', {
+      idempotencyKey: 'claim-owner-route',
+    });
+    assert.equal(claimed.status, 200);
+    assert.ok(claimed.body.member.bossRewardClaimedAt);
+    assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').get(userIds[0]).coins, 570);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = ?').get(userIds[0]).count, 1);
+
+    const replay = await request('POST', `/${expeditionId}/claim-boss-reward`, 'tg-owner', {
+      idempotencyKey: 'claim-owner-route',
+    });
+    assert.equal(replay.status, 200);
+    assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').get(userIds[0]).coins, 570);
+  } finally {
+    crypto.randomInt = originalRandomInt;
+  }
 });
 
 test('former family members cannot mutate an expedition they helped start', async () => {

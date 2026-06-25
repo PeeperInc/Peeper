@@ -195,6 +195,7 @@ function getExpeditionBossRewardRows() {
     JOIN users u ON u.id = m.user_id
     WHERE e.status = 'boss_defeated'
       AND m.prepared_at IS NOT NULL
+      AND m.contribution_ap >= 3
       AND m.boss_reward_claimed_at IS NULL
   `).all();
 }

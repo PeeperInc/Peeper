@@ -164,6 +164,8 @@ export const revealExpeditionRoom = (expeditionId, roomKey, { fromRoomKey, idemp
   post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/reveal`, { fromRoomKey, idempotencyKey });
 export const equipFoundExpeditionArtifact = (expeditionId, { artifactId, slotIndex, idempotencyKey } = {}) =>
   post(`/expeditions/${expeditionId}/equip-found-artifact`, { artifactId, slotIndex, idempotencyKey });
+export const claimExpeditionBossReward = (expeditionId, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/claim-boss-reward`, { idempotencyKey });
 export const finishExpedition = (expeditionId, idempotencyKey) =>
   post(`/expeditions/${expeditionId}/finish`, { idempotencyKey });
 export const expeditionLog = (expeditionId) => get(`/expeditions/${expeditionId}/log`);

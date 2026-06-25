@@ -260,12 +260,12 @@ function PreparationFlow({ state, loading, onPrepare }) {
   const roleEntries = normalizeEntries(state.catalog?.roles);
   const provisionEntries = normalizeEntries(state.catalog?.provisions);
   const [role, setRole] = useState(() => roleEntries[0]?.[0] || 'knight');
-  const [provisionId, setProvisionId] = useState(() => provisionEntries[0]?.[0] || null);
+  const [provisionId, setProvisionId] = useState(null);
   const [artifactIds, setArtifactIds] = useState([]);
 
   useEffect(() => {
     if (!roleEntries.some(([id]) => id === role)) setRole(roleEntries[0]?.[0] || 'knight');
-    if (provisionId && !provisionEntries.some(([id]) => id === provisionId)) setProvisionId(provisionEntries[0]?.[0] || null);
+    if (provisionId && !provisionEntries.some(([id]) => id === provisionId)) setProvisionId(null);
   }, [provisionEntries, provisionId, role, roleEntries]);
 
   function toggleArtifact(id) {
@@ -713,6 +713,7 @@ function ExpeditionDashboard({
   onAssist,
   onReveal,
   onFinish,
+  onClaimBossReward,
   finishMessage,
 }) {
   const { artifacts, provisions } = useCatalogMaps();
@@ -734,6 +735,10 @@ function ExpeditionDashboard({
     .filter(Boolean);
   const provision = member?.provisionId ? provisions.get(member.provisionId) : null;
   const selectedRoom = rooms.find(room => room.key === selectedRoomKey) || null;
+  const bossDefeated = ['boss_defeated', 'finished'].includes(state.expedition?.status);
+  const rewardClaimed = Boolean(member?.bossRewardClaimedAt);
+  const contributionAp = member?.contributionAp || 0;
+  const bossRewardProgress = Math.min(100, Math.round((Math.min(contributionAp, 3) / 3) * 100));
 
   useEffect(() => {
     if (selectedRoomKey && rooms.some(room => room.key === selectedRoomKey && isVisibleRoom(room))) return;
@@ -771,6 +776,32 @@ function ExpeditionDashboard({
           )}
         </div>
       </div>
+
+      {bossDefeated && (
+        <div className={`expedition-card expedition-boss-spoils${rewardClaimed ? ' claimed' : ''}`}>
+          <div className="expedition-boss-spoils-mark" aria-hidden="true">III</div>
+          <div className="expedition-boss-spoils-copy">
+            <div className="expedition-kicker">Root King's Spoils</div>
+            <strong>{rewardClaimed ? 'Chest claimed' : contributionAp >= 3 ? 'Your chest is ready' : 'Earn 3 AP contribution'}</strong>
+            <span>
+              {rewardClaimed
+                ? 'Your personal reward was added to the vault.'
+                : contributionAp >= 3
+                  ? 'Claim coins and a personal artifact roll.'
+                  : `${contributionAp}/3 AP contributed. Help clear rooms to unlock your reward.`}
+            </span>
+            <i><b style={{ width: `${bossRewardProgress}%` }} /></i>
+          </div>
+          <button
+            type="button"
+            className={`btn ${rewardClaimed ? 'btn-secondary' : 'btn-primary'} expedition-boss-spoils-button`}
+            onClick={onClaimBossReward}
+            disabled={mutating || rewardClaimed || contributionAp < 3}
+          >
+            {rewardClaimed ? 'Claimed' : contributionAp >= 3 ? 'Claim Chest' : `${contributionAp}/3 AP`}
+          </button>
+        </div>
+      )}
 
       <div className="expedition-card expedition-loadout-card">
         <div className="expedition-dashboard-row">
@@ -946,6 +977,7 @@ export default function FamilyExpeditionTab() {
   const startIdempotencyKeyRef = useRef(null);
   const prepareIdempotencyKeyRef = useRef(null);
   const finishIdempotencyKeyRef = useRef(null);
+  const claimBossIdempotencyKeyRef = useRef(null);
   const attemptIdempotencyKeysRef = useRef(new Map());
   const assistIdempotencyKeysRef = useRef(new Map());
   const revealIdempotencyKeysRef = useRef(new Map());
@@ -1101,6 +1133,18 @@ export default function FamilyExpeditionTab() {
     return next;
   }
 
+  async function handleClaimBossReward() {
+    claimBossIdempotencyKeyRef.current ||= makeIdempotencyKey('expedition-boss-claim');
+    const next = await mutateExpedition(expeditionId => api.claimExpeditionBossReward(
+      expeditionId,
+      claimBossIdempotencyKeyRef.current,
+    ), 'Could not claim boss chest');
+    if (next) {
+      claimBossIdempotencyKeyRef.current = null;
+      loadArchive();
+    }
+  }
+
   async function handleFinishExpedition() {
     finishIdempotencyKeyRef.current ||= makeIdempotencyKey('expedition-finish');
     const next = await mutateExpedition(expeditionId => api.finishExpedition(
@@ -1186,6 +1230,7 @@ export default function FamilyExpeditionTab() {
             onAssist={handleAssistRoom}
             onReveal={handleRevealRoom}
             onFinish={handleFinishExpedition}
+            onClaimBossReward={handleClaimBossReward}
             finishMessage={finishMessage}
           />
         </div>
@@ -1200,6 +1245,7 @@ export default function FamilyExpeditionTab() {
           onAssist={handleAssistRoom}
           onReveal={handleRevealRoom}
           onFinish={handleFinishExpedition}
+          onClaimBossReward={handleClaimBossReward}
           finishMessage={finishMessage}
         />
       )}

@@ -56,11 +56,12 @@ function createFamilyWithUsers(userIds) {
 }
 
 function createExpedition({ familyId, status = 'active', finishedAt = null, bossDefeatedAt = null }) {
+  const founderId = db.prepare('SELECT founder_id FROM families WHERE id = ?').get(familyId)?.founder_id || familyId;
   return Number(db.prepare(`
     INSERT INTO family_expeditions (
       family_id, theme_id, seed, status, map_json, started_by, started_at, boss_defeated_at, finished_at
     ) VALUES (?, 'root_king', 'seed', ?, '{}', ?, ?, ?, ?)
-  `).run(familyId, status, familyId, NOW - 3600, bossDefeatedAt, finishedAt).lastInsertRowid);
+  `).run(familyId, status, founderId, NOW - 3600, bossDefeatedAt, finishedAt).lastInsertRowid);
 }
 
 function addBossRoom(expeditionId, state = 'locked') {
@@ -76,13 +77,14 @@ function prepareMember(expeditionId, userId, overrides = {}) {
     ap = 3,
     apRegenDay = NOW_DAY_KEY,
     bossRewardClaimedAt = null,
+    contributionAp = 3,
   } = overrides;
 
   db.prepare(`
     INSERT INTO family_expedition_members (
-      expedition_id, user_id, role, ap, ap_regen_day, role_ability_day, prepared_at, boss_reward_claimed_at
-    ) VALUES (?, ?, 'scout', ?, ?, ?, ?, ?)
-  `).run(expeditionId, userId, ap, apRegenDay, NOW_DAY_KEY, NOW - 1800, bossRewardClaimedAt);
+      expedition_id, user_id, role, ap, ap_regen_day, role_ability_day, prepared_at, boss_reward_claimed_at, contribution_ap
+    ) VALUES (?, ?, 'scout', ?, ?, ?, ?, ?, ?)
+  `).run(expeditionId, userId, ap, apRegenDay, NOW_DAY_KEY, NOW - 1800, bossRewardClaimedAt, contributionAp);
 }
 
 async function collectNotifications(now = NOW) {
@@ -184,16 +186,20 @@ test('boss ready notification sends to prepared members when the boss room is un
 
 test('boss reward notification sends after victory until claimed', async () => {
   const userId = createUser('tg-reward', 'Vesper');
-  const familyId = createFamilyWithUsers([userId]);
+  const inactiveUserId = createUser('tg-no-reward', 'Moss');
+  const familyId = createFamilyWithUsers([userId, inactiveUserId]);
   const expeditionId = createExpedition({ familyId, status: 'boss_defeated', bossDefeatedAt: NOW - 60 });
   addBossRoom(expeditionId, 'cleared');
   prepareMember(expeditionId, userId, { bossRewardClaimedAt: null });
+  prepareMember(expeditionId, inactiveUserId, { bossRewardClaimedAt: null, contributionAp: 2 });
 
   const sent = await collectNotifications();
 
   assert.equal(sent.length, 1);
+  assert.equal(sent[0].telegramId, 'tg-reward');
   assert.match(sent[0].text, /reward/i);
   assert.equal(wasSent(userId, expeditionType('expedition_boss_reward', expeditionId)), true);
+  assert.equal(wasSent(inactiveUserId, expeditionType('expedition_boss_reward', expeditionId)), false);
   assert.equal((await collectNotifications()).length, 0);
 
   db.prepare(`

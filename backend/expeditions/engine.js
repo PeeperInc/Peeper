@@ -9,10 +9,30 @@ const {
   ROLES,
 } = require('./catalog');
 const { applyArtifactEffects } = require('./artifactEffects');
+const {
+  LOOT_TABLES,
+  grantArtifact,
+  rollCoins,
+  rollPersonalLoot,
+} = require('./loot');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_SUPPORT = 6;
 const ASSIST_SUPPORT = 2;
+const BOSS_REWARD_AP_REQUIREMENT = 3;
+const BOSS_REWARD_LOOT = Object.freeze({
+  coins: Object.freeze({ min: 40, max: 70 }),
+  artifactRolls: 1,
+});
+const FARM_PRODUCT_NAMES = Object.freeze({
+  carrot: 'Carrot',
+  tomato: 'Tomato',
+  potato: 'Potato',
+  egg: 'Egg',
+  milk: 'Milk',
+  truffle: 'Truffle',
+  magic_squash: 'Magic Squash',
+});
 
 function clone(value) {
   if (value === undefined) return undefined;
@@ -84,6 +104,87 @@ function provisionStateFor(provisionId) {
     return { raiseModifiedRoll: { uses: config.uses, below: config.below, value: config.value } };
   }
   return {};
+}
+
+function consumeProvisionRecipe(transaction, userId, provisionId, now) {
+  if (!provisionId) return null;
+  const provision = PROVISIONS[provisionId];
+  if (!provision) throw new RangeError(`Unknown provision: ${provisionId}`);
+  const { productId, quantity } = provision.recipe || {};
+  if (!productId || !Number.isInteger(quantity) || quantity <= 0) {
+    throw new RangeError(`Invalid provision recipe: ${provisionId}`);
+  }
+  const row = transaction.prepare(`
+    SELECT quantity
+    FROM farm_inventory
+    WHERE user_id = ? AND product_id = ?
+  `).get(userId, productId);
+  if (!row || row.quantity < quantity) {
+    throw new RangeError(`Not enough ${FARM_PRODUCT_NAMES[productId] || productId}`);
+  }
+  transaction.prepare(`
+    UPDATE farm_inventory
+    SET quantity = quantity - ?, updated_at = ?
+    WHERE user_id = ? AND product_id = ? AND quantity >= ?
+  `).run(quantity, now, userId, productId, quantity);
+  transaction.prepare('DELETE FROM farm_inventory WHERE user_id = ? AND quantity <= 0').run(userId);
+  return { productId, quantity };
+}
+
+function lootTableForRoom(room = {}) {
+  if (room.type === 'boss') return { name: 'boss', table: LOOT_TABLES.boss };
+  if ((room.tags || []).includes('elite')) return { name: 'elite', table: LOOT_TABLES.elite };
+  return { name: 'base', table: LOOT_TABLES.base };
+}
+
+function upgradedLootTable(name) {
+  if (name === 'base') return { name: 'elite', table: LOOT_TABLES.elite };
+  return { name: 'boss', table: LOOT_TABLES.boss };
+}
+
+function rollAttemptLoot({ room = {}, member, rawRoll, rng }) {
+  const roomLoot = room.loot || {};
+  const criticalRolls = rawRoll === 20 ? 1 + (room.criticalBonusLootRolls || 0) : 0;
+  const coins = rollCoins(roomLoot.coins || { min: 0, max: 0 }, rng);
+  const artifactRolls = Math.max(0, Number(roomLoot.artifactRolls || 0) + criticalRolls);
+  let table = lootTableForRoom(room);
+  const upgrade = member.provisionState?.upgradeLootRarity;
+  if ((upgrade?.uses ?? 0) > 0 && artifactRolls > 0) {
+    for (let index = 0; index < (upgrade.tiers || 1); index += 1) {
+      table = upgradedLootTable(table.name);
+    }
+    upgrade.uses -= 1;
+  }
+  const rolled = rollPersonalLoot({
+    coinRange: { min: 0, max: 0 },
+    artifactRolls,
+    table: table.table,
+    rng,
+  });
+  return {
+    coins,
+    artifacts: rolled.artifacts,
+    artifactRolls,
+    table: table.name,
+  };
+}
+
+function grantPersonalLoot({ transaction, userId, loot = {}, rng = () => 0, now }) {
+  let coinsAwarded = Math.max(0, Math.floor(Number(loot.coins || 0)));
+  const artifactGrants = [];
+  for (const artifactId of loot.artifacts || []) {
+    const grant = grantArtifact({ transaction, userId, artifactId, rng, now });
+    artifactGrants.push(grant);
+    if (grant.kind === 'coins') coinsAwarded += grant.coins;
+  }
+  if (coinsAwarded > 0) {
+    transaction.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(coinsAwarded, userId);
+  }
+  return {
+    ...loot,
+    coins: coinsAwarded,
+    artifactGrants,
+  };
 }
 
 function slotFromInventoryItem(item) {
@@ -473,10 +574,7 @@ function resolveAttempt({
     restore.uses -= 1;
   }
 
-  const loot = {
-    coins: 0,
-    artifactRolls: rawRoll === 20 ? 1 + (nextRoom.criticalBonusLootRolls || 0) : 0,
-  };
+  const loot = rollAttemptLoot({ room: nextRoom, member: nextMember, rawRoll, rng });
   const beforeLoot = applyArtifactEffects({
     phase: 'before_loot',
     actionType: 'attempt',
@@ -501,6 +599,15 @@ function resolveAttempt({
   });
   loot.coins = beforeLoot.coins * (beforeLoot.coinMultiplier || 1);
   loot.artifactRolls = beforeLoot.artifactRolls;
+  if (loot.artifactRolls !== loot.artifacts.length) {
+    const rolled = rollPersonalLoot({
+      coinRange: { min: 0, max: 0 },
+      artifactRolls: loot.artifactRolls,
+      table: LOOT_TABLES[loot.table] || lootTableForRoom(nextRoom).table,
+      rng,
+    });
+    loot.artifacts = rolled.artifacts;
+  }
   nextMember.loadout = beforeLoot.loadout;
   nextMember.triggerHistory = beforeLoot.triggerHistory;
 
@@ -1053,6 +1160,7 @@ function prepareMember(options) {
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   if (!ROLES[role]) throw new RangeError(`Unknown role: ${role}`);
+  consumeProvisionRecipe(transaction, userId, provisionId, now);
   const dayKey = utcDayKey(now);
   const prepared = prepareMemberLoadout({
     member: {
@@ -1175,6 +1283,13 @@ function attemptRoom(options) {
   });
   updateMember(transaction, expeditionId, result.member, { ap: 1, progress: result.progressAwarded });
   updateRoom(transaction, expeditionId, result.room);
+  const grantedLoot = grantPersonalLoot({
+    transaction,
+    userId,
+    loot: result.loot,
+    rng,
+    now,
+  });
   transaction.prepare(`
     UPDATE family_expeditions SET status = ?, shared_buffs_json = ?, boss_defeated_at = COALESCE(?, boss_defeated_at)
     WHERE id = ?
@@ -1202,7 +1317,7 @@ function attemptRoom(options) {
     intent,
     modifiedRoll: result.modifiedRoll,
     progressAwarded: result.progressAwarded,
-    loot: result.loot,
+    loot: grantedLoot,
     narrationKey: action.narration?.success || null,
     now,
   });
@@ -1356,6 +1471,69 @@ function equipFoundArtifactForMember(options) {
   return readSnapshot(transaction, expeditionId);
 }
 
+function claimBossReward(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    rng = () => 0,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const intent = { expeditionId, userId };
+  const replay = findIdempotentAction(transaction, {
+    userId,
+    idempotencyKey,
+    expectedActionType: 'claim_boss_reward',
+    expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
+  });
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+
+  const snapshot = readSnapshot(transaction, expeditionId);
+  if (!['boss_defeated', 'finished'].includes(snapshot.expedition.status)) {
+    throw new RangeError('boss reward is not ready');
+  }
+  const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
+  if ((memberState.contributionAp || 0) < BOSS_REWARD_AP_REQUIREMENT) {
+    throw new RangeError(`Boss reward requires at least ${BOSS_REWARD_AP_REQUIREMENT} AP contribution`);
+  }
+  if (memberState.bossRewardClaimedAt) throw new RangeError('boss reward already claimed');
+
+  const rolled = rollPersonalLoot({
+    coinRange: BOSS_REWARD_LOOT.coins,
+    artifactRolls: BOSS_REWARD_LOOT.artifactRolls,
+    table: LOOT_TABLES.boss,
+    rng,
+  });
+  const grantedLoot = grantPersonalLoot({
+    transaction,
+    userId,
+    loot: { ...rolled, artifactRolls: rolled.artifacts.length, table: 'boss' },
+    rng,
+    now,
+  });
+  transaction.prepare(`
+    UPDATE family_expedition_members
+    SET boss_reward_claimed_at = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(now, expeditionId, userId);
+  const bossRoom = snapshot.rooms.find(candidate => candidate.type === 'boss') || snapshot.rooms[0];
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: bossRoom.id,
+    userId,
+    actionType: 'claim_boss_reward',
+    modifiers: { contributionAp: memberState.contributionAp },
+    intent,
+    loot: grantedLoot,
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
+}
+
 function finishExpedition(options) {
   assertMutationInput(options);
   const {
@@ -1425,5 +1603,6 @@ module.exports = {
   assistRoom,
   revealRoom,
   equipFoundArtifactForMember,
+  claimBossReward,
   finishExpedition,
 };

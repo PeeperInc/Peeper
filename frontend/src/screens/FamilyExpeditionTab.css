@@ -460,6 +460,98 @@
   gap: 6px;
 }
 
+.expedition-boss-spoils {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-radius: 4px;
+  border-color: rgba(217, 167, 67, 0.46);
+  background:
+    radial-gradient(circle at 11% 50%, rgba(214, 82, 63, 0.22), transparent 28%),
+    linear-gradient(90deg, rgba(217, 167, 67, 0.14), transparent 46%),
+    linear-gradient(180deg, #1f170b, #070806);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 0 26px rgba(217, 167, 67, 0.08);
+}
+
+.expedition-boss-spoils.claimed {
+  border-color: rgba(157, 206, 69, 0.32);
+  background:
+    radial-gradient(circle at 11% 50%, rgba(157, 206, 69, 0.18), transparent 28%),
+    linear-gradient(90deg, rgba(157, 206, 69, 0.12), transparent 46%),
+    linear-gradient(180deg, #121a0f, #060806);
+}
+
+.expedition-boss-spoils-mark {
+  width: 54px;
+  height: 54px;
+  border: 1px solid rgba(217, 167, 67, 0.64);
+  background:
+    radial-gradient(circle at 50% 26%, rgba(255, 224, 139, 0.28), transparent 42%),
+    linear-gradient(135deg, #3a220d, #0a0704);
+  color: var(--dungeon-gold);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  box-shadow: 0 7px 0 rgba(0, 0, 0, 0.32);
+}
+
+.expedition-boss-spoils-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.expedition-boss-spoils-copy strong {
+  overflow: hidden;
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 950;
+  line-height: 1.02;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.expedition-boss-spoils-copy span {
+  color: rgba(233, 223, 189, 0.78);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.expedition-boss-spoils-copy i {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(217, 167, 67, 0.26);
+  background: rgba(0, 0, 0, 0.44);
+}
+
+.expedition-boss-spoils-copy b {
+  display: block;
+  height: 100%;
+  background:
+    linear-gradient(90deg, var(--dungeon-blood), var(--dungeon-gold)),
+    repeating-linear-gradient(90deg, transparent 0 10px, rgba(0, 0, 0, 0.16) 10px 12px);
+}
+
+.expedition-boss-spoils-button {
+  min-height: 42px;
+  border-radius: 2px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
 .expedition-finish-button {
   min-height: 34px;
   padding-inline: 10px;
@@ -1175,6 +1267,22 @@
 
   .expedition-finish-button {
     max-width: 120px;
+  }
+
+  .expedition-boss-spoils {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .expedition-boss-spoils-mark {
+    width: 42px;
+    height: 42px;
+    font-size: 11px;
+  }
+
+  .expedition-boss-spoils-button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .expedition-map-node {

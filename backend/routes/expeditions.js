@@ -11,6 +11,7 @@ const {
   assistRoom,
   revealRoom,
   equipFoundArtifactForMember,
+  claimBossReward,
   finishExpedition,
 } = require('../expeditions/engine');
 const { THEME_ID } = require('../expeditions/catalog');
@@ -220,6 +221,10 @@ function secureD20() {
   return 1 + crypto.randomInt(20);
 }
 
+function secureRng() {
+  return crypto.randomInt(1_000_000) / 1_000_000;
+}
+
 function preparedMember(expeditionId, userId) {
   return db.prepare(`
     SELECT 1
@@ -386,6 +391,7 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
       selectedSupport: req.body?.selectedSupport ?? 0,
       roll,
       reroll,
+      rng: secureRng,
       useRoleAbility,
       useSharedBuff: Boolean(req.body?.useSharedBuff),
     }))();
@@ -454,6 +460,26 @@ router.post('/:id/equip-found-artifact', (req, res) => {
       userId: req.currentUser.id,
       artifactId: req.body?.artifactId,
       slotIndex: req.body?.slotIndex,
+    }))();
+    return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
+  } catch (error) {
+    return handleRouteError(res, error);
+  }
+});
+
+router.post('/:id/claim-boss-reward', (req, res) => {
+  const idempotencyKey = requireIdempotencyKey(req, res);
+  if (!idempotencyKey) return;
+  const access = requireExpeditionAccess(req, res);
+  if (!access) return;
+
+  try {
+    const snapshot = db.transaction(() => claimBossReward({
+      transaction: db,
+      idempotencyKey,
+      expeditionId: access.expeditionId,
+      userId: req.currentUser.id,
+      rng: secureRng,
     }))();
     return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
   } catch (error) {
