@@ -52,6 +52,10 @@ function roleImage(role) {
   return assetById(roleImages, `role_${role}`);
 }
 
+function artifactImage(artifactId) {
+  return assetById(artifactImages, artifactId);
+}
+
 function normalizeEntries(value) {
   if (Array.isArray(value)) return value.map(item => [item.id, item]);
   return Object.entries(value || {});
@@ -179,11 +183,12 @@ function buildRoomLayout(rooms = [], edges = []) {
       if (a.optional !== b.optional) return a.optional ? 1 : -1;
       return String(a.key).localeCompare(String(b.key));
     });
-    const lanes = row.length === 1 ? [0] : row.length === 2 ? [-0.9, 0.9] : [-1.15, 0, 1.15, -1.75, 1.75];
+    const center = (row.length - 1) / 2;
+    const spacing = row.length <= 3 ? 1.15 : Math.max(0.62, 4.2 / Math.max(1, row.length - 1));
     row.forEach((room, index) => {
-      const lane = lanes[index % lanes.length] + (room.optional ? (index % 2 === 0 ? -0.18 : 0.18) : 0);
+      const lane = (index - center) * spacing + (room.optional ? (index % 2 === 0 ? -0.12 : 0.12) : 0);
       positions.set(room.key, {
-        x: Math.max(14, Math.min(86, 50 + lane * 26)),
+        x: Math.max(8, Math.min(92, 50 + lane * 20)),
         y: 34 + rowIndex * 92,
         rowIndex,
       });
@@ -213,7 +218,7 @@ function hiddenNeighbors(room, rooms = [], edges = []) {
   return edges
     .filter(edge => edge.from === room.key)
     .map(edge => roomByKey.get(edge.to))
-    .filter(candidate => candidate?.state === 'hidden');
+    .filter(candidate => candidate && ['hidden', 'locked'].includes(candidate.state));
 }
 
 function useCatalogMaps() {
@@ -689,7 +694,7 @@ function RoomPanel({
                   onClick={() => onReveal(target.key, room.key)}
                   disabled={mutating}
                 >
-                  Reveal hidden passage at depth {target.depth ?? '?'}
+                  Reveal {target.state === 'locked' ? 'sealed path' : 'hidden passage'} at depth {target.depth ?? '?'}
                 </button>
               ))}
             </div>
@@ -702,6 +707,7 @@ function RoomPanel({
 
 function ExpeditionDashboard({
   state,
+  archive,
   mutating,
   onAttempt,
   onAssist,
@@ -834,12 +840,105 @@ function ExpeditionDashboard({
           )}
         </div>
       </section>
+
+      <ExpeditionArchivePanel
+        archive={archive}
+        currentInventory={state.artifactInventory}
+        familyMembers={state.familyMembers}
+      />
     </div>
+  );
+}
+
+function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers = [] }) {
+  const { artifacts } = useCatalogMaps();
+  const memberNameById = useMemo(() => new Map(
+    (familyMembers || []).map(member => [member.userId, member.firstName || member.username || 'Family']),
+  ), [familyMembers]);
+  const inventory = (currentInventory?.length ? currentInventory : archive?.artifactInventory || [])
+    .slice()
+    .sort((a, b) => {
+      const rarityOrder = { legendary: 0, epic: 1, rare: 2, common: 3 };
+      const metaA = artifacts.get(a.artifactId);
+      const metaB = artifacts.get(b.artifactId);
+      return (rarityOrder[metaA?.rarity] ?? 9) - (rarityOrder[metaB?.rarity] ?? 9)
+        || String(metaA?.name || a.artifactId).localeCompare(String(metaB?.name || b.artifactId));
+    });
+  const history = archive?.history || [];
+  const ownedCount = inventory.length;
+  const catalogCount = artifacts.size;
+
+  return (
+    <section className="expedition-archive-grid">
+      <div className="expedition-card expedition-vault-card">
+        <div className="expedition-panel-heading">
+          <div>
+            <div className="expedition-kicker">Relics Vault</div>
+            <h3>{ownedCount}/{catalogCount} artifacts</h3>
+          </div>
+          <span className="expedition-ledger-stamp">Personal</span>
+        </div>
+        <div className="expedition-vault-grid">
+          {inventory.length > 0 ? inventory.slice(0, 8).map(item => {
+            const meta = artifacts.get(item.artifactId);
+            const image = artifactImage(item.artifactId);
+            return (
+              <div key={item.artifactId} className={`expedition-vault-item rarity-${meta?.rarity || 'common'}`}>
+                {image ? <img src={image} alt="" /> : <span />}
+                <div>
+                  <strong>{meta?.name || titleize(item.artifactId)}</strong>
+                  <small>{titleize(meta?.rarity || 'common')} / {item.charges ? `${item.charges} charges` : `x${item.quantity || 1}`}</small>
+                  <em>{meta?.effect || 'Dungeon artifact'}</em>
+                </div>
+              </div>
+            );
+          }) : (
+            <div className="expedition-empty expedition-vault-empty">
+              No relics yet. Critical rolls and boss rooms can bring the first one home.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="expedition-card expedition-ledger-card">
+        <div className="expedition-panel-heading">
+          <div>
+            <div className="expedition-kicker">Family Ledger</div>
+            <h3>{history.length > 0 ? `${history.length} sealed runs` : 'No sealed runs'}</h3>
+          </div>
+          <span className="expedition-ledger-stamp">Archive</span>
+        </div>
+        <div className="expedition-ledger-list">
+          {history.length > 0 ? history.slice(0, 4).map(entry => {
+            const members = (entry.summary?.members || [])
+              .slice()
+              .sort((a, b) => (b.progress || 0) - (a.progress || 0));
+            const topMember = members[0];
+            return (
+              <div key={entry.id} className="expedition-ledger-row">
+                <div>
+                  <strong>Expedition #{entry.expeditionId}</strong>
+                  <small>{formatTime(entry.finishedAt)} / {entry.summary?.roomsCleared || 0} rooms cleared</small>
+                </div>
+                <span>
+                  {topMember ? `${memberNameById.get(topMember.userId) || 'Hero'} +${topMember.progress || 0}` : 'No progress'}
+                </span>
+              </div>
+            );
+          }) : (
+            <div className="expedition-empty">
+              The first victory will carve your family name into the Root King's ledger.
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
 export default function FamilyExpeditionTab() {
   const [state, setState] = useState(null);
+  const [archive, setArchive] = useState({ history: [], artifactInventory: [] });
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   const [error, setError] = useState('');
@@ -847,6 +946,20 @@ export default function FamilyExpeditionTab() {
   const startIdempotencyKeyRef = useRef(null);
   const prepareIdempotencyKeyRef = useRef(null);
   const finishIdempotencyKeyRef = useRef(null);
+  const attemptIdempotencyKeysRef = useRef(new Map());
+  const assistIdempotencyKeysRef = useRef(new Map());
+  const revealIdempotencyKeysRef = useRef(new Map());
+
+  const getPendingMutationKey = useCallback((ref, signature, prefix) => {
+    if (!ref.current.has(signature)) {
+      ref.current.set(signature, makeIdempotencyKey(prefix));
+    }
+    return ref.current.get(signature);
+  }, []);
+
+  const clearPendingMutationKey = useCallback((ref, signature) => {
+    ref.current.delete(signature);
+  }, []);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -862,7 +975,29 @@ export default function FamilyExpeditionTab() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadArchive = useCallback(async () => {
+    try {
+      const [historyResult, artifactsResult] = await Promise.all([
+        api.expeditionHistory(),
+        api.expeditionArtifacts(),
+      ]);
+      setArchive({
+        history: historyResult?.history || [],
+        artifactInventory: artifactsResult?.artifactInventory || [],
+      });
+    } catch (err) {
+      if (err.status === 403 || err.status === 404) {
+        setArchive({ history: [], artifactInventory: [] });
+      } else {
+        console.warn('[expeditions] archive load failed:', err.message || err);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    loadArchive();
+  }, [load, loadArchive]);
 
   async function handleStart() {
     setMutating(true);
@@ -930,28 +1065,40 @@ export default function FamilyExpeditionTab() {
   }
 
   async function handleAttemptRoom(roomKey, actionId, options = {}) {
-    return mutateExpedition(expeditionId => api.attemptExpeditionRoom(expeditionId, roomKey, {
+    const payload = {
       actionId,
       selectedSupport: options.selectedSupport || 0,
       useRoleAbility: Boolean(options.useRoleAbility),
       useSharedBuff: Boolean(options.useSharedBuff),
-      idempotencyKey: makeIdempotencyKey('expedition-attempt'),
+    };
+    const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, roomKey, ...payload });
+    const next = await mutateExpedition(expeditionId => api.attemptExpeditionRoom(expeditionId, roomKey, {
+      ...payload,
+      idempotencyKey: getPendingMutationKey(attemptIdempotencyKeysRef, signature, 'expedition-attempt'),
     }), 'Could not attempt room');
+    if (next) clearPendingMutationKey(attemptIdempotencyKeysRef, signature);
+    return next;
   }
 
   async function handleAssistRoom(roomKey) {
-    return mutateExpedition(expeditionId => api.assistExpeditionRoom(
+    const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, roomKey });
+    const next = await mutateExpedition(expeditionId => api.assistExpeditionRoom(
       expeditionId,
       roomKey,
-      makeIdempotencyKey('expedition-assist'),
+      getPendingMutationKey(assistIdempotencyKeysRef, signature, 'expedition-assist'),
     ), 'Could not assist room');
+    if (next) clearPendingMutationKey(assistIdempotencyKeysRef, signature);
+    return next;
   }
 
   async function handleRevealRoom(targetKey, fromRoomKey) {
-    return mutateExpedition(expeditionId => api.revealExpeditionRoom(expeditionId, targetKey, {
+    const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, targetKey, fromRoomKey });
+    const next = await mutateExpedition(expeditionId => api.revealExpeditionRoom(expeditionId, targetKey, {
       fromRoomKey,
-      idempotencyKey: makeIdempotencyKey('expedition-reveal'),
+      idempotencyKey: getPendingMutationKey(revealIdempotencyKeysRef, signature, 'expedition-reveal'),
     }), 'Could not reveal room');
+    if (next) clearPendingMutationKey(revealIdempotencyKeysRef, signature);
+    return next;
   }
 
   async function handleFinishExpedition() {
@@ -963,6 +1110,7 @@ export default function FamilyExpeditionTab() {
     if (next) {
       finishIdempotencyKeyRef.current = null;
       setFinishMessage(true);
+      loadArchive();
     }
   }
 
@@ -986,25 +1134,39 @@ export default function FamilyExpeditionTab() {
       {error && <div className="expedition-error">{error}</div>}
 
       {!hasExpedition && finishMessage && (
-        <div className="expedition-card expedition-finished-card">
-          <div className="expedition-kicker">Expedition Complete</div>
-          <h2>The dungeon is sealed.</h2>
-          <p className="expedition-muted">
-            Final rewards and family records are archived in expedition history. Refresh or begin the next run when your family is ready.
-          </p>
-          <button
-            type="button"
-            className="btn btn-primary btn-full expedition-cta"
-            onClick={handleStart}
-            disabled={mutating || !permissions?.canStart}
-          >
-            {mutating ? 'Opening gate...' : permissions?.canStart ? 'Start Next Expedition' : 'Waiting for permission'}
-          </button>
-        </div>
+        <>
+          <div className="expedition-card expedition-finished-card">
+            <div className="expedition-kicker">Expedition Complete</div>
+            <h2>The dungeon is sealed.</h2>
+            <p className="expedition-muted">
+              Final rewards and family records are archived in expedition history. Refresh or begin the next run when your family is ready.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary btn-full expedition-cta"
+              onClick={handleStart}
+              disabled={mutating || !permissions?.canStart}
+            >
+              {mutating ? 'Opening gate...' : permissions?.canStart ? 'Start Next Expedition' : 'Waiting for permission'}
+            </button>
+          </div>
+          <ExpeditionArchivePanel
+            archive={archive}
+            currentInventory={state?.artifactInventory}
+            familyMembers={state?.familyMembers}
+          />
+        </>
       )}
 
       {!hasExpedition && !finishMessage && (
-        <ExpeditionIntro loading={mutating} onStart={handleStart} permissions={permissions} />
+        <>
+          <ExpeditionIntro loading={mutating} onStart={handleStart} permissions={permissions} />
+          <ExpeditionArchivePanel
+            archive={archive}
+            currentInventory={state?.artifactInventory}
+            familyMembers={state?.familyMembers}
+          />
+        </>
       )}
 
       {canPrepare && (
@@ -1018,6 +1180,7 @@ export default function FamilyExpeditionTab() {
           <p className="expedition-muted">You are not prepared for this run, but you can still follow family progress here.</p>
           <ExpeditionDashboard
             state={state}
+            archive={archive}
             mutating={mutating}
             onAttempt={handleAttemptRoom}
             onAssist={handleAssistRoom}
@@ -1031,6 +1194,7 @@ export default function FamilyExpeditionTab() {
       {isPrepared && (
         <ExpeditionDashboard
           state={state}
+          archive={archive}
           mutating={mutating}
           onAttempt={handleAttemptRoom}
           onAssist={handleAssistRoom}
