@@ -322,16 +322,23 @@ function PreparationFlow({ state, loading, onPrepare }) {
           {provisionEntries.map(([id, meta]) => {
             const named = provisionNames.get(id);
             const image = assetById(provisionImages, id);
+            const recipe = meta?.recipe;
+            const unavailable = Boolean(recipe && meta.available === false);
+            const recipeLabel = recipe
+              ? `${meta.ownedQuantity || 0}/${recipe.quantity} ${titleize(recipe.productId)}`
+              : titleize(meta?.effect?.type || 'provision');
             return (
               <button
                 type="button"
                 key={id}
-                className={`expedition-choice expedition-provision-card${provisionId === id ? ' selected' : ''}`}
+                className={`expedition-choice expedition-provision-card${provisionId === id ? ' selected' : ''}${unavailable ? ' unavailable' : ''}`}
                 onClick={() => setProvisionId(id)}
+                disabled={unavailable}
               >
                 {image && <img src={image} alt="" />}
                 <strong>{meta?.name || named?.name || titleize(id)}</strong>
-                <small>{titleize(meta?.effect?.type || 'provision')}</small>
+                <span>{recipeLabel}</span>
+                <small>{unavailable ? 'Missing farm product' : titleize(meta?.effect?.type || 'provision')}</small>
               </button>
             );
           })}
@@ -967,7 +974,7 @@ function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers 
   );
 }
 
-export default function FamilyExpeditionTab() {
+export default function FamilyExpeditionTab({ onExpeditionChange } = {}) {
   const [state, setState] = useState(null);
   const [archive, setArchive] = useState({ history: [], artifactInventory: [] });
   const [loading, setLoading] = useState(true);
@@ -1031,6 +1038,20 @@ export default function FamilyExpeditionTab() {
     loadArchive();
   }, [load, loadArchive]);
 
+  useEffect(() => {
+    function refreshIfVisible() {
+      if (document.visibilityState !== 'visible' || mutating) return;
+      load({ silent: true });
+    }
+
+    const id = window.setInterval(refreshIfVisible, 10000);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [load, mutating]);
+
   async function handleStart() {
     setMutating(true);
     setError('');
@@ -1040,10 +1061,14 @@ export default function FamilyExpeditionTab() {
       if (await load()) {
         startIdempotencyKeyRef.current = null;
         setFinishMessage(false);
+        onExpeditionChange?.();
       }
     } catch (err) {
       if (err.status === 409) {
-        if (await load()) startIdempotencyKeyRef.current = null;
+        if (await load()) {
+          startIdempotencyKeyRef.current = null;
+          onExpeditionChange?.();
+        }
         return;
       }
       setError(err.message || 'Could not start expedition');
@@ -1062,10 +1087,16 @@ export default function FamilyExpeditionTab() {
         ...payload,
         idempotencyKey: prepareIdempotencyKeyRef.current,
       }));
-      if (await load()) prepareIdempotencyKeyRef.current = null;
+      if (await load()) {
+        prepareIdempotencyKeyRef.current = null;
+        onExpeditionChange?.();
+      }
     } catch (err) {
       if (err.status === 409) {
-        if (await load()) prepareIdempotencyKeyRef.current = null;
+        if (await load()) {
+          prepareIdempotencyKeyRef.current = null;
+          onExpeditionChange?.();
+        }
         return;
       }
       setError(err.message || 'Could not prepare expedition');
@@ -1083,10 +1114,12 @@ export default function FamilyExpeditionTab() {
       setState(next);
       const fresh = await api.getExpeditionCurrent();
       setState(fresh);
+      onExpeditionChange?.();
       return next;
     } catch (err) {
       if (err.status === 409) {
         await load({ silent: true });
+        onExpeditionChange?.();
         return null;
       }
       setError(err.message || fallbackMessage);

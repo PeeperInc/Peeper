@@ -693,6 +693,26 @@ img { animation-play-state: var(--animation-play-state, running); }
   padding: 0 6px;
 }
 
+.family-expedition-badge {
+  margin-left: 6px;
+  flex-shrink: 0;
+  min-width: 28px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 221, 116, 0.72);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 241, 169, 0.34), transparent 56%),
+    linear-gradient(180deg, #ffd76b, #b46f1e);
+  color: #160d03;
+  box-shadow: 0 0 14px rgba(255, 206, 75, 0.28);
+  animation: family-expedition-badge-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes family-expedition-badge-pulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.05); filter: brightness(1.14); }
+}
+
 /* ── Divider ──────────────────────────────────────────────────────── */
 .divider {
   height: 1px;
@@ -2524,6 +2544,13 @@ h1, h2, h3 {
 .family-chat-unread-badge {
   background: linear-gradient(135deg, #ff7d65, #ff3f6e);
   box-shadow: 0 0 0 2px rgba(255,255,255,0.08), 0 8px 18px rgba(255, 63, 110, 0.3);
+}
+
+.family-expedition-badge {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 241, 169, 0.34), transparent 56%),
+    linear-gradient(180deg, #ffd76b, #b46f1e);
+  box-shadow: 0 0 14px rgba(255, 206, 75, 0.28);
 }
 
 .stat-bar-track {

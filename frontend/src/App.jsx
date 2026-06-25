@@ -353,6 +353,7 @@ function AppContent() {
           <FamilyScreen
             onViewProfile={(uid) => { setProfileUserId(uid); setShowProfile(true); }}
             onFamilyUnreadChange={setFamilyUnreadCount}
+            onGameplayOpenChange={setGameplayOpen}
           />
         )}
         {activeTab === 'gift'        && <GiftScreen initialRecipient={giftRecipient} key={giftRecipient?.id ?? 'no-recipient'} />}

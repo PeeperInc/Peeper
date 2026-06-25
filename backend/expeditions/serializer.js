@@ -182,11 +182,29 @@ function serializeInventory(inventory = []) {
   }));
 }
 
+function serializeProvisions(farmInventory = []) {
+  const quantities = new Map(farmInventory.map(item => [
+    item.productId ?? item.product_id,
+    item.quantity || 0,
+  ]));
+  return Object.fromEntries(Object.entries(PROVISIONS).map(([id, provision]) => {
+    const recipe = provision.recipe || null;
+    const ownedQuantity = recipe?.productId ? (quantities.get(recipe.productId) || 0) : 0;
+    return [id, {
+      ...clone(provision),
+      ownedQuantity,
+      requiredQuantity: recipe?.quantity || 0,
+      available: !recipe || ownedQuantity >= recipe.quantity,
+    }];
+  }));
+}
+
 function serializeExpeditionState({
   snapshot = null,
   userId = null,
   familyMembers = [],
   artifactInventory = [],
+  farmInventory = [],
   canStart = false,
 } = {}) {
   const expedition = snapshot?.expedition || null;
@@ -206,7 +224,7 @@ function serializeExpeditionState({
     artifactInventory: serializeInventory(artifactInventory),
     catalog: {
       roles: clone(ROLES),
-      provisions: clone(PROVISIONS),
+      provisions: serializeProvisions(farmInventory),
       theme: { id: expedition?.themeId || THEME_ID },
     },
     permissions: {

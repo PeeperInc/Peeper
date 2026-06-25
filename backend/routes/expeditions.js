@@ -175,6 +175,15 @@ function getArtifactInventory(userId) {
   `).all(userId);
 }
 
+function getFarmInventory(userId) {
+  return db.prepare(`
+    SELECT product_id AS productId, quantity
+    FROM farm_inventory
+    WHERE user_id = ?
+    ORDER BY product_id ASC
+  `).all(userId);
+}
+
 function getUnfinishedExpedition(familyId) {
   return rowToExpedition(db.prepare(`
     SELECT * FROM family_expeditions
@@ -204,6 +213,7 @@ function serializeFor(user, family, snapshot, canStart = false) {
     snapshot,
     familyMembers: family ? getFamilyMembers(family.id) : [],
     artifactInventory: getArtifactInventory(user.id),
+    farmInventory: getFarmInventory(user.id),
     canStart,
   });
 }

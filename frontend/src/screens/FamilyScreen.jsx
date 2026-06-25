@@ -65,6 +65,14 @@ function HungerBar({ hunger, alive }) {
   );
 }
 
+function expeditionBadgeLabel(summary) {
+  if (!summary?.active) return '';
+  if (summary.rewardWaiting) return 'Chest';
+  if (summary.bossReady) return 'Boss';
+  if (summary.apFull) return 'AP';
+  return '';
+}
+
 
 function FamilyLeaderboard({ limit = 10, onSelect }) {
   const [rows, setRows] = useState([]);
@@ -736,13 +744,14 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
 }
 
 // ── Main FamilyScreen ─────────────────────────────────────────────────────────
-export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange }) {
+export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGameplayOpenChange }) {
   const { user, refreshGameState, showToast } = useApp();
   const [family, setFamily]           = useState(null);
   const [members, setMembers]         = useState([]);
   const [fedToday, setFedToday]       = useState(null);
   const [bigFeast, setBigFeast]       = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [expeditionSummary, setExpeditionSummary] = useState(null);
   const [loading, setLoading]         = useState(true);
   const [activeTab, setActiveTab]         = useState('members');
   const [viewingFamilyId, setViewingFamilyId] = useState(null);
@@ -760,6 +769,7 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange }) {
       setFedToday(r.fedTodayUserId || null);
       setBigFeast(r.bigFeast || null);
       setUnreadCount(r.unreadCount || 0);
+      setExpeditionSummary(r.expeditionSummary || null);
       onFamilyUnreadChange?.(r.unreadCount || 0);
     } catch {}
     finally { setLoading(false); }
@@ -795,6 +805,12 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange }) {
       onFamilyUnreadChange?.(0);
     }
   }, [family, onFamilyUnreadChange]);
+
+  useEffect(() => {
+    const expeditionOpen = Boolean(family && activeTab === 'expedition');
+    onGameplayOpenChange?.(expeditionOpen);
+    return () => onGameplayOpenChange?.(false);
+  }, [activeTab, family, onGameplayOpenChange]);
 
   const handleBigFeast = useCallback(async () => {
     if (bigFeastLoading) return;
@@ -840,6 +856,7 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange }) {
   );
 
   const isFounder = family.founder_id === user?.id;
+  const expeditionBadge = expeditionBadgeLabel(expeditionSummary);
 
   return (
     <div style={{ paddingBottom: 0 }}>
@@ -894,6 +911,9 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange }) {
             {id === 'chat' && unreadCount > 0 && (
               <span className="badge family-chat-unread-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
             )}
+            {id === 'expedition' && expeditionBadge && (
+              <span className="badge family-expedition-badge">{expeditionBadge}</span>
+            )}
           </button>
         ))}
       </div>
@@ -919,6 +939,7 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange }) {
             setFamily(null);
             setMembers([]);
             setBigFeast(null);
+            setExpeditionSummary(null);
             setUnreadCount(0);
             onFamilyUnreadChange?.(0);
           }}
@@ -926,7 +947,7 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange }) {
       )}
 
       {activeTab === 'expedition' && (
-        <FamilyExpeditionTab />
+        <FamilyExpeditionTab onExpeditionChange={load} />
       )}
 
       {activeTab === 'chat' && (
