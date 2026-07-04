@@ -437,12 +437,12 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
         { from: 'user_id', table: 'users', on_delete: 'CASCADE' },
       ],
       family_expedition_room_effects: [
-        { from: 'expedition_id', table: 'family_expeditions', on_delete: 'CASCADE' },
+        { from: 'expedition_id', table: 'family_expedition_rooms', on_delete: 'CASCADE' },
         { from: 'placed_by', table: 'users', on_delete: 'CASCADE' },
         { from: 'room_id', table: 'family_expedition_rooms', on_delete: 'CASCADE' },
       ],
       family_expedition_minigame_attempts: [
-        { from: 'expedition_id', table: 'family_expeditions', on_delete: 'CASCADE' },
+        { from: 'expedition_id', table: 'family_expedition_rooms', on_delete: 'CASCADE' },
         { from: 'room_id', table: 'family_expedition_rooms', on_delete: 'CASCADE' },
         { from: 'user_id', table: 'users', on_delete: 'CASCADE' },
       ],
@@ -482,6 +482,12 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
       ],
       family_expedition_rooms: [
         {
+          name: 'idx_expedition_room_identity',
+          origin: 'c',
+          unique: 1,
+          columns: [{ name: 'id', desc: 0 }, { name: 'expedition_id', desc: 0 }],
+        },
+        {
           name: 'idx_family_expedition_rooms_expedition',
           origin: 'c',
           unique: 0,
@@ -513,13 +519,37 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
             { name: 'effect_type', desc: 0 },
           ],
         },
+        {
+          name: 'idx_expedition_room_effect_placed_by',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'placed_by', desc: 0 }],
+        },
+        {
+          name: 'idx_expedition_room_effect_room',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'room_id', desc: 0 }],
+        },
       ],
       family_expedition_minigame_attempts: [
+        {
+          name: 'idx_expedition_attempt_room',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'room_id', desc: 0 }],
+        },
         {
           name: 'idx_expedition_attempt_token',
           origin: 'c',
           unique: 1,
           columns: [{ name: 'attempt_token', desc: 0 }],
+        },
+        {
+          name: 'idx_expedition_attempt_user',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'user_id', desc: 0 }],
         },
         {
           name: 'idx_expedition_open_attempt',
@@ -539,8 +569,31 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
           unique: 1,
           columns: [{ name: 'expedition_id', desc: 0 }, { name: 'user_id', desc: 0 }],
         },
+        {
+          name: 'idx_expedition_pending_reward_user',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'user_id', desc: 0 }, { name: 'claimed_at', desc: 0 }],
+        },
       ],
-      family_expedition_member_events: [],
+      family_expedition_member_events: [
+        {
+          name: 'idx_expedition_member_events_expedition_user',
+          origin: 'c',
+          unique: 0,
+          columns: [
+            { name: 'expedition_id', desc: 0 },
+            { name: 'user_id', desc: 0 },
+            { name: 'created_at', desc: 1 },
+          ],
+        },
+        {
+          name: 'idx_expedition_member_events_pending_user',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'user_id', desc: 0 }, { name: 'created_at', desc: 0 }],
+        },
+      ],
       expedition_artifact_inventory: [
         {
           name: 'auto',
@@ -584,6 +637,10 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
       indexSql(db, 'idx_expedition_open_attempt'),
       /WHERE\s+status\s+IN\s*\(\s*'ready'\s*,\s*'active'\s*,\s*'retry'\s*\)/i,
     );
+    assert.match(
+      indexSql(db, 'idx_expedition_member_events_pending_user'),
+      /WHERE\s+acknowledged_at\s+IS\s+NULL/i,
+    );
   });
 });
 
@@ -598,7 +655,8 @@ test('expedition schema enforces status, uniqueness, foreign keys, and cascades'
       ) VALUES (?, 10, 'root-king', 'seed', ?, '{}', 1, 1000)
     `);
     insertExpedition.run(100, 'active');
-    assert.throws(() => insertExpedition.run(101, 'failed'), /CHECK constraint failed/);
+    insertExpedition.run(101, 'active');
+    assert.throws(() => insertExpedition.run(102, 'failed'), /CHECK constraint failed/);
 
     const insertRoom = db.prepare(`
       INSERT INTO family_expedition_rooms (
@@ -606,8 +664,22 @@ test('expedition schema enforces status, uniqueness, foreign keys, and cascades'
       ) VALUES (?, ?, ?, 'combat', 'available', 5)
     `);
     insertRoom.run(200, 100, 'room-1');
-    assert.throws(() => insertRoom.run(201, 100, 'room-1'), /UNIQUE constraint failed/);
-    assert.throws(() => insertRoom.run(202, 999, 'orphan'), /FOREIGN KEY constraint failed/);
+    insertRoom.run(201, 101, 'room-1');
+    assert.throws(() => insertRoom.run(202, 100, 'room-1'), /UNIQUE constraint failed/);
+    assert.throws(() => insertRoom.run(203, 999, 'orphan'), /FOREIGN KEY constraint failed/);
+
+    assert.throws(() => db.prepare(`
+      INSERT INTO family_expedition_room_effects (
+        expedition_id, room_id, effect_type, placed_by, created_at
+      ) VALUES (100, 201, 'knight_shield', 1, 1000)
+    `).run(), /FOREIGN KEY constraint failed/);
+    assert.throws(() => db.prepare(`
+      INSERT INTO family_expedition_minigame_attempts (
+        attempt_token, expedition_id, room_id, user_id, game_type, seed,
+        status, started_at, expires_at
+      ) VALUES ('cross-expedition', 100, 201, 2, 'roots', 'seed',
+                'active', 1000, 1100)
+    `).run(), /FOREIGN KEY constraint failed/);
 
     db.prepare(`
       INSERT INTO family_expedition_members (
@@ -644,8 +716,17 @@ test('expedition schema enforces status, uniqueness, foreign keys, and cascades'
       'family_expedition_actions',
       'family_expedition_history',
     ]) {
-      assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0, table);
+      assert.equal(
+        db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE expedition_id = 100`).get().count,
+        0,
+        table,
+      );
     }
+    assert.equal(
+      db.prepare('SELECT COUNT(*) AS count FROM family_expedition_rooms WHERE expedition_id = 101').get().count,
+      1,
+      'deleting one expedition preserves rooms from another expedition',
+    );
     assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory').get().count, 1);
 
     db.prepare('DELETE FROM users WHERE id = 2').run();

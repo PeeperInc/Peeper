@@ -426,21 +426,23 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS family_expedition_room_effects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
-    room_id INTEGER NOT NULL REFERENCES family_expedition_rooms(id) ON DELETE CASCADE,
+    expedition_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL,
     effect_type TEXT NOT NULL,
     placed_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     remaining_uses INTEGER NOT NULL DEFAULT 1,
     payload_json TEXT NOT NULL DEFAULT '{}',
     created_at INTEGER NOT NULL,
-    consumed_at INTEGER
+    consumed_at INTEGER,
+    FOREIGN KEY(room_id, expedition_id)
+      REFERENCES family_expedition_rooms(id, expedition_id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS family_expedition_minigame_attempts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     attempt_token TEXT NOT NULL,
-    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
-    room_id INTEGER NOT NULL REFERENCES family_expedition_rooms(id) ON DELETE CASCADE,
+    expedition_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     game_type TEXT NOT NULL,
     seed TEXT NOT NULL,
@@ -450,7 +452,9 @@ db.exec(`
     started_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
     finished_at INTEGER,
-    result_json TEXT NOT NULL DEFAULT '{}'
+    result_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY(room_id, expedition_id)
+      REFERENCES family_expedition_rooms(id, expedition_id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS family_expedition_pending_rewards (
@@ -512,6 +516,8 @@ db.exec(`
     ON family_expeditions(family_id, status);
   CREATE INDEX IF NOT EXISTS idx_family_expedition_rooms_expedition
     ON family_expedition_rooms(expedition_id, state);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_room_identity
+    ON family_expedition_rooms(id, expedition_id);
   CREATE INDEX IF NOT EXISTS idx_family_expedition_actions_chronology
     ON family_expedition_actions(expedition_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_family_expedition_history_family
@@ -519,13 +525,28 @@ db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_room_effect_active
     ON family_expedition_room_effects(expedition_id, room_id, effect_type)
     WHERE consumed_at IS NULL;
+  CREATE INDEX IF NOT EXISTS idx_expedition_room_effect_room
+    ON family_expedition_room_effects(room_id);
+  CREATE INDEX IF NOT EXISTS idx_expedition_room_effect_placed_by
+    ON family_expedition_room_effects(placed_by);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_attempt_token
     ON family_expedition_minigame_attempts(attempt_token);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_open_attempt
     ON family_expedition_minigame_attempts(expedition_id, room_id, user_id)
     WHERE status IN ('ready', 'active', 'retry');
+  CREATE INDEX IF NOT EXISTS idx_expedition_attempt_room
+    ON family_expedition_minigame_attempts(room_id);
+  CREATE INDEX IF NOT EXISTS idx_expedition_attempt_user
+    ON family_expedition_minigame_attempts(user_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_pending_reward
     ON family_expedition_pending_rewards(expedition_id, user_id);
+  CREATE INDEX IF NOT EXISTS idx_expedition_pending_reward_user
+    ON family_expedition_pending_rewards(user_id, claimed_at);
+  CREATE INDEX IF NOT EXISTS idx_expedition_member_events_expedition_user
+    ON family_expedition_member_events(expedition_id, user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_expedition_member_events_pending_user
+    ON family_expedition_member_events(user_id, created_at)
+    WHERE acknowledged_at IS NULL;
 `);
 db.exec('DROP INDEX IF EXISTS idx_expedition_artifacts_user');
 addColumnIfMissing('family_expedition_members', 'ap_regen_at', 'INTEGER NOT NULL DEFAULT 0');
