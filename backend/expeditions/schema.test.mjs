@@ -203,6 +203,75 @@ test('existing redundant artifact ownership index is removed', () => {
   }
 });
 
+test('legacy expedition members migrate idempotently without losing rows', () => {
+  const { directory, databasePath } = createTempDatabasePath();
+  const legacyDb = new Database(databasePath);
+  legacyDb.exec(`
+    CREATE TABLE family_expedition_members (
+      expedition_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      ap INTEGER NOT NULL DEFAULT 3,
+      ap_regen_day INTEGER NOT NULL,
+      role_ability_day INTEGER NOT NULL,
+      role_ability_used INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(expedition_id, user_id)
+    );
+    INSERT INTO family_expedition_members (
+      expedition_id, user_id, role, ap, ap_regen_day, role_ability_day
+    ) VALUES (7, 42, 'scout', 2, 100, 100);
+  `);
+  legacyDb.close();
+
+  const expectedRow = {
+    expedition_id: 7,
+    user_id: 42,
+    role: 'scout',
+    ap: 2,
+    role_charge: 1,
+    role_charge_progress: 0,
+    room_coins_earned: 0,
+  };
+  let db;
+  try {
+    for (let initialization = 0; initialization < 2; initialization += 1) {
+      db = initializeDatabaseAt(databasePath);
+      assert.deepEqual(
+        db.prepare(`
+          SELECT expedition_id, user_id, role, ap,
+                 role_charge, role_charge_progress, room_coins_earned
+          FROM family_expedition_members
+        `).get(),
+        expectedRow,
+        `legacy row after initialization ${initialization + 1}`,
+      );
+
+      const migratedColumns = Object.fromEntries(
+        columns(db, 'family_expedition_members')
+          .filter(({ name }) => [
+            'role_charge',
+            'role_charge_progress',
+            'room_coins_earned',
+          ].includes(name))
+          .map(({ name, notnull, dflt_value }) => [name, { notnull, dflt_value }]),
+      );
+      assert.deepEqual(migratedColumns, {
+        role_charge: { notnull: 1, dflt_value: '1' },
+        role_charge_progress: { notnull: 1, dflt_value: '0' },
+        room_coins_earned: { notnull: 1, dflt_value: '0' },
+      });
+
+      db.close();
+      db = null;
+    }
+  } finally {
+    db?.close();
+    delete require.cache[databaseModulePath];
+    delete require.cache[notificationModulePath];
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('expedition schema exposes required columns, foreign keys, and indexes', () => {
   withTempDatabase((db) => {
     const column = (name, type, notnull, dflt_value = null, pk = 0) => ({
@@ -243,7 +312,7 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
         column('expedition_id', 'INTEGER', 1, null, 1),
         column('user_id', 'INTEGER', 1, null, 2),
         column('role', 'TEXT', 1),
-        column('ap', 'INTEGER', 1, '5'),
+        column('ap', 'INTEGER', 1, '3'),
         column('ap_regen_day', 'INTEGER', 1),
         column('ap_regen_at', 'INTEGER', 1, '0'),
         column('hero_hp', 'INTEGER', 1, '3'),

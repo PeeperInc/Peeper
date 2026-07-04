@@ -403,7 +403,7 @@ db.exec(`
     expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role TEXT NOT NULL,
-    ap INTEGER NOT NULL DEFAULT 5,
+    ap INTEGER NOT NULL DEFAULT 3,
     ap_regen_day INTEGER NOT NULL,
     ap_regen_at INTEGER NOT NULL DEFAULT 0,
     hero_hp INTEGER NOT NULL DEFAULT 3,
