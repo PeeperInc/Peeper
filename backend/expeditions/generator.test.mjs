@@ -36,6 +36,17 @@ test('generator satisfies structural constraints across 500 seeds', () => {
     const actionStats = new Set(proceduralRooms.flatMap(room => room.actions.map(action => action.stat)));
 
     assert.equal(requiredRooms.length >= 8 && requiredRooms.length <= 12, true, map.seed);
+    const requiredCombatCount = requiredRooms.filter(room => room.type === 'combat').length;
+    assert.equal(
+      requiredCombatCount >= Math.round(requiredRooms.length * 0.7),
+      true,
+      `${map.seed}: expected combat-heavy required path, got ${requiredCombatCount}/${requiredRooms.length}`,
+    );
+    let eventStreak = 0;
+    for (const room of requiredRooms) {
+      eventStreak = room.type === 'combat' ? 0 : eventStreak + 1;
+      assert.equal(eventStreak <= 2, true, `${map.seed}: too many event rooms in a row`);
+    }
     assert.equal(optionalRooms.length >= 3 && optionalRooms.length <= 5, true, map.seed);
     assert.equal(treasureRooms.length >= 1 && treasureRooms.length <= 2, true, map.seed);
     assert.equal(roomKeys.size, map.rooms.length, map.seed);
@@ -53,6 +64,22 @@ test('generator satisfies structural constraints across 500 seeds', () => {
   }
 });
 
+test('generated event rooms expose varied mini-game contracts', () => {
+  const kinds = new Set();
+
+  for (let index = 0; index < 80; index += 1) {
+    const map = generateExpeditionMap(`minigame-variety-${index}`);
+    for (const room of map.rooms) {
+      if (room.required && !['camp', 'boss', 'combat'].includes(room.type)) {
+        assert.ok(room.miniGame?.kind, `${room.key} is missing miniGame.kind`);
+        kinds.add(room.miniGame.kind);
+      }
+    }
+  }
+
+  assert.ok(kinds.size >= 4, `expected varied mini-games, received ${[...kinds].join(', ')}`);
+});
+
 test('generation guarantees procedural stat coverage for coverage-probe-892690', () => {
   const map = generateExpeditionMap('coverage-probe-892690');
   const proceduralRooms = map.rooms.filter(room => room.type !== 'camp' && room.type !== 'boss');
@@ -60,6 +87,35 @@ test('generation guarantees procedural stat coverage for coverage-probe-892690',
 
   assert.deepEqual([...stats].sort(), [...STATS].sort());
   assert.deepEqual(validateExpeditionMap(map), []);
+});
+
+test('combat quota survives stat coverage enforcement for known low-combat seed', () => {
+  const map = generateExpeditionMap('probe-fixed-2');
+  const requiredRooms = map.rooms.filter(room => room.required && room.type !== 'camp' && room.type !== 'boss');
+  const combatCount = requiredRooms.filter(room => room.type === 'combat').length;
+
+  assert.equal(combatCount >= Math.round(requiredRooms.length * 0.7), true);
+});
+
+test('generated required paths offer three scout choices for the next room', () => {
+  const map = generateExpeditionMap('scout-choice-generation');
+  const requiredSources = map.rooms.filter(room => (
+    room.required
+    && room.type !== 'boss'
+    && map.edges.some(edge => {
+      const target = map.rooms.find(candidate => candidate.key === edge.to);
+      return edge.from === room.key && target?.required && target.type !== 'boss';
+    })
+  ));
+
+  assert.ok(requiredSources.length > 0);
+  for (const room of requiredSources) {
+    assert.equal(room.scoutChoices.length, 3, `${room.key} should expose three choices`);
+    const targetKeys = new Set(room.scoutChoices.map(choice => choice.targetKey));
+    const typeLabels = new Set(room.scoutChoices.map(choice => choice.room.type));
+    assert.equal(targetKeys.size, 1, `${room.key} choices should point at the same next slot`);
+    assert.equal(typeLabels.size, 3, `${room.key} choices should be visibly different room types`);
+  }
 });
 
 test('different seeds produce meaningful map content variety', () => {
@@ -100,12 +156,23 @@ test('generated room gameplay data comes from authored templates', () => {
     for (const room of map.rooms) {
       const { key, depth, required, optional, ...gameplayData } = room;
       const authoredGameplayData = { ...authoredTemplates.get(room.id) };
+      delete gameplayData.scoutChoices;
       delete authoredGameplayData.optional;
       assert.ok(key);
       assert.equal(Number.isInteger(depth), true);
       assert.deepEqual(gameplayData, authoredGameplayData, `${map.seed}: ${room.id}`);
     }
   }
+});
+
+test('combat and boss targets are harder without changing event targets', () => {
+  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.progressTarget), [7, 6]);
+  assert.deepEqual(ROOM_TEMPLATES.boss.map(room => room.progressTarget), [9, 9, 9]);
+  assert.deepEqual(ROOM_TEMPLATES.trap.map(room => room.progressTarget), [4, 4]);
+  assert.deepEqual(ROOM_TEMPLATES.arcane.map(room => room.progressTarget), [5, 5]);
+  assert.deepEqual(ROOM_TEMPLATES.exploration.map(room => room.progressTarget), [5, 4]);
+  assert.deepEqual(ROOM_TEMPLATES.shrine.map(room => room.progressTarget), [4, 4]);
+  assert.deepEqual(ROOM_TEMPLATES.mystery.map(room => room.progressTarget), [4, 3]);
 });
 
 test('validation reports backward edges and an unreachable boss', () => {

@@ -9,6 +9,8 @@ const engine = require('./engine.js');
 const {
   utcDayKey,
   regenerateAp,
+  combatRollOutcome,
+  recoverHeroIfReady,
   progressForRoll,
   buildRollModifiers,
   resolveAttempt,
@@ -22,6 +24,8 @@ const {
   attemptRoom,
   assistRoom,
   revealRoom,
+  chooseScoutRoom,
+  completeEventRoom,
   equipFoundArtifactForMember,
   claimBossReward,
   finishExpedition,
@@ -82,11 +86,14 @@ const map = {
 };
 
 function member(overrides = {}) {
+  const preparedAt = Math.floor(Date.UTC(2026, 5, 23) / 1000);
   return {
     userId: 10,
     role: 'scout',
-    ap: 3,
+    ap: 5,
     apRegenDay: utcDayKey(Date.UTC(2026, 5, 23)),
+    apRegenAt: preparedAt,
+    heroHp: 3,
     roleAbilityDay: utcDayKey(Date.UTC(2026, 5, 23)),
     roleAbilityUsed: false,
     provisionState: {},
@@ -133,8 +140,11 @@ function expeditionDb() {
       expedition_id INTEGER NOT NULL,
       user_id INTEGER NOT NULL,
       role TEXT NOT NULL,
-      ap INTEGER NOT NULL DEFAULT 3,
+      ap INTEGER NOT NULL DEFAULT 5,
       ap_regen_day INTEGER NOT NULL,
+      ap_regen_at INTEGER NOT NULL DEFAULT 0,
+      hero_hp INTEGER NOT NULL DEFAULT 3,
+      hero_recover_at INTEGER,
       role_ability_day INTEGER NOT NULL,
       role_ability_used INTEGER NOT NULL DEFAULT 0,
       provision_id TEXT,
@@ -204,15 +214,28 @@ function inTx(db, fn) {
   return db.transaction(fn)();
 }
 
-test('UTC day keys and AP regeneration add three per elapsed day and cap at six', () => {
+test('UTC day keys and AP regeneration add one AP every three hours and cap at five', () => {
   assert.equal(utcDayKey(Date.UTC(2026, 5, 23, 23, 59, 59)), 20627);
-  assert.deepEqual(regenerateAp({ ap: 1, apRegenDay: 100 }, 102), {
-    ap: 6,
-    apRegenDay: 102,
+  const startedAt = Math.floor(Date.UTC(2026, 5, 23, 0, 0, 0) / 1000);
+  assert.deepEqual(regenerateAp({ ap: 1, apRegenAt: startedAt }, startedAt + 6 * 60 * 60), {
+    ap: 3,
+    apRegenAt: startedAt + 6 * 60 * 60,
+    apRegenDay: utcDayKey(startedAt + 6 * 60 * 60),
   });
-  assert.deepEqual(regenerateAp({ ap: 4, apRegenDay: 102 }, 102), {
+  assert.deepEqual(regenerateAp({ ap: 4, apRegenAt: startedAt }, startedAt + 2 * 60 * 60), {
     ap: 4,
-    apRegenDay: 102,
+    apRegenAt: startedAt,
+    apRegenDay: utcDayKey(startedAt),
+  });
+  assert.deepEqual(regenerateAp({ ap: 4, apRegenAt: startedAt }, startedAt + 9 * 60 * 60), {
+    ap: 5,
+    apRegenAt: startedAt + 3 * 60 * 60,
+    apRegenDay: utcDayKey(startedAt + 3 * 60 * 60),
+  });
+  assert.deepEqual(regenerateAp({ ap: 5, apRegenAt: startedAt }, startedAt + 9 * 60 * 60), {
+    ap: 5,
+    apRegenAt: startedAt + 9 * 60 * 60,
+    apRegenDay: utcDayKey(startedAt + 9 * 60 * 60),
   });
 });
 
@@ -223,6 +246,95 @@ test('modified rolls map to progress bands with natural 1 and natural 20 overrid
   assert.equal(progressForRoll({ rawRoll: 15, modifiedRoll: 15 }), 2);
   assert.equal(progressForRoll({ rawRoll: 19, modifiedRoll: 19 }), 3);
   assert.equal(progressForRoll({ rawRoll: 20, modifiedRoll: 3 }), 5);
+});
+
+test('combat rooms use simple d20 hit bands and only low rolls damage the hero', () => {
+  const combatRoom = { ...hall, type: 'combat', encounterType: 'combat', progress: 0, progressTarget: 4 };
+  const wounded = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 3 }),
+    room: combatRoom,
+    action: { ...hall.actions[0], modifier: 0, stat: 'might' },
+    roll: 4,
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  });
+  const strongHit = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 3 }),
+    room: combatRoom,
+    action: { ...hall.actions[0], modifier: 0, stat: 'might' },
+    roll: 16,
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  });
+  const crit = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 3 }),
+    room: combatRoom,
+    action: { ...hall.actions[0], modifier: 0, stat: 'might' },
+    roll: 20,
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  });
+  const boosted = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 3 }),
+    room: combatRoom,
+    action: { ...hall.actions[0], modifier: 2, stat: 'might' },
+    roll: 7,
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  });
+  const knockedOut = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 1 }),
+    room: combatRoom,
+    action: { ...hall.actions[0], modifier: 0, stat: 'might' },
+    roll: 4,
+    now: 1000,
+  });
+  const roomCleared = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 2 }),
+    room: { ...combatRoom, progress: 3, progressTarget: 4 },
+    action: { ...hall.actions[0], modifier: 0, stat: 'might' },
+    roll: 12,
+    now: 1000,
+  });
+
+  assert.equal(wounded.progressAwarded, 0);
+  assert.equal(wounded.member.heroHp, 2);
+  assert.equal(wounded.events.some(event => event.type === 'hero_damaged'), true);
+  assert.equal(strongHit.progressAwarded, 2);
+  assert.equal(strongHit.member.heroHp, 3);
+  assert.equal(crit.progressAwarded, 3);
+  assert.equal(boosted.progressAwarded, 1);
+  assert.equal(knockedOut.member.heroHp, 0);
+  assert.equal(knockedOut.member.heroRecoverAt, 1000 + 6 * 60 * 60);
+  assert.equal(knockedOut.events.some(event => event.type === 'hero_recovering'), true);
+  assert.equal(roomCleared.room.state, 'cleared');
+  assert.equal(roomCleared.member.heroHp, 2);
+  assert.equal(roomCleared.events.some(event => event.type === 'hero_refreshed'), false);
+});
+
+test('combat d20 outcome uses the exact public-test bands', () => {
+  assert.deepEqual(combatRollOutcome(1), { label: 'hero_hit', heroDamage: 1, progress: 0 });
+  assert.deepEqual(combatRollOutcome(5), { label: 'hero_hit', heroDamage: 1, progress: 0 });
+  assert.deepEqual(combatRollOutcome(6), { label: 'standoff', heroDamage: 0, progress: 0 });
+  assert.deepEqual(combatRollOutcome(8), { label: 'standoff', heroDamage: 0, progress: 0 });
+  assert.deepEqual(combatRollOutcome(9), { label: 'enemy_hit', heroDamage: 0, progress: 1 });
+  assert.deepEqual(combatRollOutcome(15), { label: 'enemy_hit', heroDamage: 0, progress: 1 });
+  assert.deepEqual(combatRollOutcome(16), { label: 'enemy_hit_hard', heroDamage: 0, progress: 2 });
+  assert.deepEqual(combatRollOutcome(19), { label: 'enemy_hit_hard', heroDamage: 0, progress: 2 });
+  assert.deepEqual(combatRollOutcome(20), { label: 'critical_hit', heroDamage: 0, progress: 3 });
+});
+
+test('knocked-out heroes recover to full HP only after six hours', () => {
+  const recoverAt = 1000 + 6 * 60 * 60;
+  const recovering = { heroHp: 0, heroRecoverAt: recoverAt };
+
+  assert.deepEqual(recoverHeroIfReady(recovering, recoverAt - 1), recovering);
+  assert.deepEqual(recoverHeroIfReady(recovering, recoverAt), {
+    heroHp: 3,
+    heroRecoverAt: null,
+  });
 });
 
 test('roll modifiers include action difficulty, matching role bonus, provision, debuff, artifacts, and capped selected support', () => {
@@ -265,6 +377,39 @@ test('selected support cannot exceed support stored on the room', () => {
   assert.equal(modifiers.total, 7);
 });
 
+test('room mechanic choices are real roll decisions, not decorative labels', () => {
+  const routeRoom = {
+    ...hall,
+    miniMechanic: {
+      type: 'route_choice',
+      options: [
+        { id: 'safe_path', label: 'Safe Path' },
+        { id: 'fast_path', label: 'Fast Path' },
+        { id: 'greedy_path', label: 'Greedy Path' },
+      ],
+    },
+  };
+
+  const safe = buildRollModifiers({
+    member: member({ role: 'scout' }),
+    room: routeRoom,
+    action: routeRoom.actions[0],
+    mechanicChoice: 'safe_path',
+    dayKey: 20627,
+  });
+  const greedy = buildRollModifiers({
+    member: member({ role: 'scout' }),
+    room: routeRoom,
+    action: routeRoom.actions[0],
+    mechanicChoice: 'greedy_path',
+    dayKey: 20627,
+  });
+
+  assert.equal(safe.total, 6);
+  assert.equal(greedy.total, 8);
+  assert.deepEqual(greedy.parts.at(-1), { source: 'mechanic:greedy_path', amount: 3 });
+});
+
 test('resolveAttempt consumes AP, selected support, one-shot effects, and never regresses room progress', () => {
   const result = resolveAttempt({
     expedition: { id: 55, status: 'active' },
@@ -295,6 +440,113 @@ test('resolveAttempt consumes AP, selected support, one-shot effects, and never 
   assert.equal(result.member.loadout[0].artifactId, 'rabbit_foot');
   assert.equal(Object.isFrozen(result), true);
   assert.doesNotThrow(() => JSON.stringify(result));
+});
+
+test('attempts can resolve from one roll button without a client action id', () => {
+  const db = expeditionDb();
+  db.prepare('INSERT INTO users (id, coins) VALUES (10, 0)').run();
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-one-roll',
+    familyId: 84,
+    userId: 10,
+    seed: 'one-roll-seed',
+    map,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-one-roll',
+    expeditionId,
+    userId: 10,
+    role: 'scout',
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  }));
+  db.prepare(`
+    UPDATE family_expedition_rooms SET state = 'unlocked'
+    WHERE expedition_id = ? AND room_key = 'hall_1'
+  `).run(expeditionId);
+
+  const attempted = inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-one-roll',
+    expeditionId,
+    userId: 10,
+    roomKey: 'hall_1',
+    roll: 10,
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  }));
+  const action = attempted.actions.find(row => row.idempotencyKey === 'attempt-one-roll');
+
+  assert.equal(action.stat, 'agility');
+  assert.equal(action.modifiers.intent.actionId, 'thread_gap');
+  assert.equal(attempted.members.find(row => row.userId === 10).ap, 4);
+  db.close();
+});
+
+test('room threat rises on setbacks and clears when the room is completed', () => {
+  const setback = resolveAttempt({
+    expedition: { id: 56, status: 'active' },
+    member: member({ role: 'scout' }),
+    room: { ...hall, progress: 0, threat: 0, threatMax: 5 },
+    action: { ...hall.actions[0], modifier: 0 },
+    roll: 1,
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  });
+  assert.equal(setback.progressAwarded, 0);
+  assert.equal(setback.room.threat, 2);
+  assert.equal(setback.room.threatState, 'guarded');
+
+  const cleared = resolveAttempt({
+    expedition: { id: 56, status: 'active' },
+    member: member({ role: 'scout' }),
+    room: { ...hall, progress: 3, threat: 4, threatMax: 5 },
+    action: hall.actions[0],
+    roll: 20,
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  });
+  assert.equal(cleared.room.state, 'cleared');
+  assert.equal(cleared.room.threat, 0);
+  assert.equal(cleared.room.threatState, null);
+});
+
+test('room mechanic choices can trade safety for higher threat risk', () => {
+  const routeRoom = {
+    ...hall,
+    progress: 0,
+    threat: 0,
+    threatMax: 5,
+    miniMechanic: {
+      type: 'route_choice',
+      options: [
+        { id: 'safe_path', label: 'Safe Path' },
+        { id: 'greedy_path', label: 'Greedy Path' },
+      ],
+    },
+  };
+
+  const safe = resolveAttempt({
+    expedition: { id: 56, status: 'active' },
+    member: member({ role: 'scout' }),
+    room: routeRoom,
+    action: { ...routeRoom.actions[0], modifier: -10 },
+    mechanicChoice: 'safe_path',
+    roll: 1,
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  });
+  const greedy = resolveAttempt({
+    expedition: { id: 56, status: 'active' },
+    member: member({ role: 'scout' }),
+    room: routeRoom,
+    action: { ...routeRoom.actions[0], modifier: -10 },
+    mechanicChoice: 'greedy_path',
+    roll: 1,
+    now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
+  });
+
+  assert.equal(safe.room.threat, 1);
+  assert.equal(greedy.room.threat, 3);
 });
 
 test('natural 1 can be protected by daily knight shield and natural 20 grants bonus loot roll', () => {
@@ -798,14 +1050,14 @@ test('transactional helpers persist attempts, unlocks, idempotent replay, and fi
   db.close();
 });
 
-test('transactional attempts award personal coins and artifacts exactly once', () => {
+test('transactional attempts award personal coins and artifacts only when the room is cleared', () => {
   const db = expeditionDb();
   db.prepare('INSERT INTO users (id, coins) VALUES (10, 0)').run();
   const lootVault = {
     ...optionalVault,
     state: undefined,
     progress: undefined,
-    progressTarget: 1,
+    progressTarget: 4,
     loot: { coins: { min: 8, max: 8 }, artifactRolls: 1 },
   };
   const created = inTx(db, () => createExpedition({
@@ -839,31 +1091,47 @@ test('transactional attempts award personal coins and artifacts exactly once', (
 
   inTx(db, () => attemptRoom({
     transaction: db,
-    idempotencyKey: 'attempt-loot',
+    idempotencyKey: 'attempt-loot-progress',
     expeditionId,
     userId: 10,
     roomKey: 'vault_1',
     actionId: 'pick_vault',
-    roll: 20,
+    roll: 10,
     rng: () => 0.99,
     now: Date.UTC(2026, 5, 23),
   }));
-  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 8);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 2);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 0);
+  assert.equal(db.prepare("SELECT state FROM family_expedition_rooms WHERE expedition_id = ? AND room_key = 'vault_1'").get(expeditionId).state, 'unlocked');
 
   inTx(db, () => attemptRoom({
     transaction: db,
-    idempotencyKey: 'attempt-loot',
+    idempotencyKey: 'attempt-loot-clear',
     expeditionId,
     userId: 10,
     roomKey: 'vault_1',
     actionId: 'pick_vault',
-    roll: 20,
+    roll: 10,
     rng: () => 0.99,
     now: Date.UTC(2026, 5, 23),
   }));
   assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 8);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_actions WHERE idempotency_key = ?').get('attempt-loot').count, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 1);
+
+  inTx(db, () => attemptRoom({
+    transaction: db,
+    idempotencyKey: 'attempt-loot-clear',
+    expeditionId,
+    userId: 10,
+    roomKey: 'vault_1',
+    actionId: 'pick_vault',
+    roll: 10,
+    rng: () => 0.99,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 8);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_actions WHERE idempotency_key = ?').get('attempt-loot-clear').count, 1);
   db.close();
 });
 
@@ -891,7 +1159,7 @@ test('preparation provisions consume farm inventory and replay without double sp
     now: Date.UTC(2026, 5, 23),
   }));
   assert.equal(db.prepare("SELECT COALESCE(quantity, 0) AS quantity FROM farm_inventory WHERE user_id = 15 AND product_id = 'carrot'").get()?.quantity || 0, 0);
-  assert.equal(db.prepare('SELECT ap FROM family_expedition_members WHERE expedition_id = ? AND user_id = 15').get(expeditionId).ap, 4);
+  assert.equal(db.prepare('SELECT ap FROM family_expedition_members WHERE expedition_id = ? AND user_id = 15').get(expeditionId).ap, 5);
 
   inTx(db, () => prepareMember({
     transaction: db,
@@ -1193,6 +1461,206 @@ test('transactional scout reveal requires reachable source, connected hidden tar
     roomKey: 'boss_1',
     now: 3001,
   })), /scout reveal ability is already used/);
+  db.close();
+});
+
+test('transactional scout choice locks one next room option per source room', () => {
+  const db = expeditionDb();
+  const choiceMap = {
+    rooms: [
+      {
+        ...camp,
+        state: undefined,
+        progress: undefined,
+        scoutChoices: [
+          {
+            id: 'combat-path',
+            targetKey: 'hall_1',
+            label: 'Root Bruiser',
+            room: {
+              ...hall,
+              type: 'combat',
+              name: 'Root Bruiser',
+              encounterType: 'combat',
+              weakRoles: ['knight'],
+              actions: [{ id: 'strike_bruiser', stat: 'might', modifier: 1, tags: ['combat'] }],
+              progressTarget: 3,
+            },
+          },
+          {
+            id: 'trap-path',
+            targetKey: 'hall_1',
+            label: 'Needle Floor',
+            room: {
+              ...hall,
+              type: 'trap',
+              name: 'Needle Floor',
+              encounterType: 'event',
+              weakRoles: ['scout'],
+              actions: [{ id: 'cross_needles', stat: 'agility', modifier: 2, tags: ['trap'] }],
+              progressTarget: 2,
+            },
+          },
+          {
+            id: 'mystery-path',
+            targetKey: 'hall_1',
+            label: 'Whispering Door',
+            room: {
+              ...hall,
+              type: 'mystery',
+              name: 'Whispering Door',
+              encounterType: 'event',
+              weakRoles: ['mage'],
+              actions: [{ id: 'read_door', stat: 'arcana', modifier: 2, tags: ['mystery'] }],
+              progressTarget: 2,
+            },
+          },
+        ],
+      },
+      { ...hall, state: undefined, progress: undefined },
+    ],
+    edges: [{ from: 'camp_0', to: 'hall_1' }],
+  };
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-choice',
+    familyId: 90,
+    userId: 21,
+    seed: 'choice-seed',
+    map: choiceMap,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-choice',
+    expeditionId,
+    userId: 21,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+
+  const chosen = inTx(db, () => chooseScoutRoom({
+    transaction: db,
+    idempotencyKey: 'choose-trap',
+    expeditionId,
+    userId: 21,
+    fromRoomKey: 'camp_0',
+    choiceId: 'trap-path',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  const source = chosen.rooms.find(room => room.key === 'camp_0');
+  const target = chosen.rooms.find(room => room.key === 'hall_1');
+  const memberAfterChoice = chosen.members.find(row => row.userId === 21);
+
+  assert.equal(source.scoutChoice.choiceId, 'trap-path');
+  assert.equal(target.type, 'trap');
+  assert.equal(target.name, 'Needle Floor');
+  assert.equal(target.progressTarget, 2);
+  assert.equal(memberAfterChoice.roleAbilityUsed, true);
+  assert.throws(() => inTx(db, () => chooseScoutRoom({
+    transaction: db,
+    idempotencyKey: 'choose-again',
+    expeditionId,
+    userId: 21,
+    fromRoomKey: 'camp_0',
+    choiceId: 'mystery-path',
+    now: Date.UTC(2026, 5, 23),
+  })), /next room is already chosen/);
+  db.close();
+});
+
+test('transactional event minigame clears event rooms without d20 and pays loot only on clear', () => {
+  const db = expeditionDb();
+  db.prepare('INSERT INTO users (id, coins) VALUES (22, 0)').run();
+  const puzzleRoom = {
+    ...hall,
+    key: 'rune_1',
+    type: 'arcane',
+    name: 'Rune Lock',
+    encounterType: 'event',
+    miniGame: { type: 'sequence', label: 'Trace the runes' },
+    progressTarget: 2,
+    loot: { coins: { min: 12, max: 12 }, artifactRolls: 0 },
+    state: undefined,
+    progress: undefined,
+  };
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-event',
+    familyId: 91,
+    userId: 22,
+    seed: 'event-seed',
+    map: {
+      rooms: [
+        { ...camp, state: undefined, progress: undefined },
+        puzzleRoom,
+      ],
+      edges: [{ from: 'camp_0', to: 'rune_1' }],
+    },
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  db.prepare(`
+    UPDATE family_expedition_rooms SET state = 'unlocked'
+    WHERE expedition_id = ? AND room_key = 'rune_1'
+  `).run(expeditionId);
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-event',
+    expeditionId,
+    userId: 22,
+    role: 'mage',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  db.prepare(`
+    UPDATE family_expedition_members SET hero_hp = 2
+    WHERE expedition_id = ? AND user_id = 22
+  `).run(expeditionId);
+
+  const first = inTx(db, () => completeEventRoom({
+    transaction: db,
+    idempotencyKey: 'event-first',
+    expeditionId,
+    userId: 22,
+    roomKey: 'rune_1',
+    score: 70,
+    rng: () => 0.99,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(first.rooms.find(room => room.key === 'rune_1').state, 'unlocked');
+  assert.equal(first.rooms.find(room => room.key === 'rune_1').progress, 1);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 22').get().coins, 0);
+
+  const failed = inTx(db, () => completeEventRoom({
+    transaction: db,
+    idempotencyKey: 'event-failed',
+    expeditionId,
+    userId: 22,
+    roomKey: 'rune_1',
+    score: 35,
+    rng: () => 0.99,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(failed.rooms.find(room => room.key === 'rune_1').state, 'unlocked');
+  assert.equal(failed.rooms.find(room => room.key === 'rune_1').progress, 1);
+  assert.equal(failed.actions.at(-1).progressAwarded, 0);
+
+  const second = inTx(db, () => completeEventRoom({
+    transaction: db,
+    idempotencyKey: 'event-second',
+    expeditionId,
+    userId: 22,
+    roomKey: 'rune_1',
+    score: 95,
+    rng: () => 0.99,
+    now: Date.UTC(2026, 5, 23),
+  }));
+  assert.equal(second.rooms.find(room => room.key === 'rune_1').state, 'cleared');
+  assert.equal(second.members.find(member => member.userId === 22).heroHp, 2);
+  assert.equal(second.actions.at(-1).actionType, 'event_minigame');
+  assert.equal(second.actions.at(-1).rawRoll, null);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 22').get().coins, 12);
   db.close();
 });
 

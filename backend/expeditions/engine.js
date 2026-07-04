@@ -1,6 +1,7 @@
 'use strict';
 
 const {
+  AP_REGEN_SECONDS,
   ARTIFACTS,
   DAILY_AP,
   MAX_AP,
@@ -20,6 +21,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_SUPPORT = 6;
 const ASSIST_SUPPORT = 2;
 const BOSS_REWARD_AP_REQUIREMENT = 3;
+const HERO_RECOVERY_SECONDS = 6 * 60 * 60;
 const BOSS_REWARD_LOOT = Object.freeze({
   coins: Object.freeze({ min: 40, max: 70 }),
   artifactRolls: 1,
@@ -52,16 +54,69 @@ function utcDayKey(value = Date.now()) {
   return Math.floor(milliseconds / MS_PER_DAY);
 }
 
-function regenerateAp(member, currentDay = utcDayKey()) {
-  const apRegenDay = Number.isInteger(member?.apRegenDay) ? member.apRegenDay : currentDay;
-  const elapsedDays = Math.max(0, currentDay - apRegenDay);
-  if (elapsedDays === 0) {
-    return { ap: Math.min(MAX_AP, member?.ap ?? DAILY_AP), apRegenDay };
+function unixSeconds(value = Date.now()) {
+  const time = value instanceof Date ? value.getTime() : Number(value);
+  if (!Number.isFinite(time)) throw new TypeError('A valid timestamp is required');
+  return Math.floor(Math.abs(time) > 1_000_000_000_000 ? time / 1000 : time);
+}
+
+function memberApRegenAt(member, fallbackNow = unixSeconds()) {
+  if (Number.isInteger(member?.apRegenAt) && member.apRegenAt > 0) return member.apRegenAt;
+  if (Number.isInteger(member?.ap_regen_at) && member.ap_regen_at > 0) return member.ap_regen_at;
+  if (Number.isInteger(member?.apRegenDay)) return member.apRegenDay * 24 * 60 * 60;
+  if (Number.isInteger(member?.ap_regen_day)) return member.ap_regen_day * 24 * 60 * 60;
+  return fallbackNow;
+}
+
+function regenerateAp(member, now = unixSeconds()) {
+  const currentTime = unixSeconds(now);
+  const currentAp = Math.min(MAX_AP, Math.max(0, Math.floor(Number(member?.ap ?? DAILY_AP))));
+  const previousRegenAt = Math.min(currentTime, memberApRegenAt(member, currentTime));
+
+  if (currentAp >= MAX_AP) {
+    return {
+      ap: MAX_AP,
+      apRegenAt: currentTime,
+      apRegenDay: utcDayKey(currentTime),
+    };
   }
+
+  const elapsedIntervals = Math.floor(Math.max(0, currentTime - previousRegenAt) / AP_REGEN_SECONDS);
+  if (elapsedIntervals <= 0) {
+    return {
+      ap: currentAp,
+      apRegenAt: previousRegenAt,
+      apRegenDay: utcDayKey(previousRegenAt),
+    };
+  }
+
+  const granted = Math.min(elapsedIntervals, MAX_AP - currentAp);
+  const apRegenAt = previousRegenAt + granted * AP_REGEN_SECONDS;
   return {
-    ap: Math.min(MAX_AP, (member?.ap ?? 0) + elapsedDays * DAILY_AP),
-    apRegenDay: currentDay,
+    ap: currentAp + granted,
+    apRegenAt,
+    apRegenDay: utcDayKey(apRegenAt),
   };
+}
+
+function recoverHeroIfReady(member, now = unixSeconds()) {
+  const currentTime = unixSeconds(now);
+  const recoverAt = Number(member?.heroRecoverAt ?? member?.hero_recover_at ?? 0);
+  if (recoverAt > 0 && recoverAt <= currentTime) {
+    return {
+      ...clone(member || {}),
+      heroHp: 3,
+      heroRecoverAt: null,
+    };
+  }
+  return clone(member || {});
+}
+
+function assertHeroCanAct(member, now = unixSeconds()) {
+  const recoverAt = Number(member?.heroRecoverAt ?? member?.hero_recover_at ?? 0);
+  if (recoverAt > unixSeconds(now) || Number(member?.heroHp ?? 3) <= 0) {
+    throw new RangeError('hero is recovering');
+  }
 }
 
 function progressForRoll({ rawRoll, modifiedRoll, naturalOneProtected = false }) {
@@ -69,6 +124,14 @@ function progressForRoll({ rawRoll, modifiedRoll, naturalOneProtected = false })
   if (rawRoll === 1 && !naturalOneProtected) return 0;
   const band = PROGRESS_BANDS.find(({ max }) => modifiedRoll <= max);
   return band?.progress ?? 0;
+}
+
+function combatRollOutcome(rawRoll) {
+  if (rawRoll <= 5) return { label: 'hero_hit', heroDamage: 1, progress: 0 };
+  if (rawRoll <= 8) return { label: 'standoff', heroDamage: 0, progress: 0 };
+  if (rawRoll <= 15) return { label: 'enemy_hit', heroDamage: 0, progress: 1 };
+  if (rawRoll <= 19) return { label: 'enemy_hit_hard', heroDamage: 0, progress: 2 };
+  return { label: 'critical_hit', heroDamage: 0, progress: 3 };
 }
 
 function normalizeSupport(value, available = MAX_SUPPORT) {
@@ -83,6 +146,28 @@ function normalizeRoleDay(member, dayKey) {
     normalized.roleAbilityUsed = false;
   }
   return normalized;
+}
+
+function actionForMemberRole(room = {}, member = {}) {
+  const actions = Array.isArray(room.actions) ? room.actions : [];
+  const role = ROLES[member?.role];
+  if (role) {
+    const matching = actions.find(candidate => candidate.stat === role.stat);
+    if (matching) return matching;
+  }
+  const weakRole = (room.weakRoles || []).find(candidate => ROLES[candidate]);
+  if (weakRole) {
+    const matching = actions.find(candidate => candidate.stat === ROLES[weakRole].stat);
+    if (matching) return matching;
+  }
+  return actions[0] || null;
+}
+
+function threatStateFor(threat, threatMax = 5) {
+  if (!threat || threat <= 0) return null;
+  if (threat >= threatMax) return 'enraged';
+  if (threat >= 2) return 'guarded';
+  return 'uneasy';
 }
 
 function provisionStateFor(provisionId) {
@@ -255,12 +340,34 @@ function addPart(parts, source, amount, extra = {}) {
   parts.push({ source, amount, ...extra });
 }
 
+function mechanicChoiceOption(room = {}, mechanicChoice = null) {
+  if (!mechanicChoice) return null;
+  const options = room?.miniMechanic?.options || [];
+  const option = options.find(candidate => candidate.id === mechanicChoice);
+  if (!option) throw new RangeError(`Unknown mechanic choice: ${mechanicChoice}`);
+  return option;
+}
+
+function mechanicChoiceEffect(room = {}, mechanicChoice = null) {
+  const option = mechanicChoiceOption(room, mechanicChoice);
+  if (!option) return { rollBonus: 0, threatDelta: 0 };
+  const effects = {
+    safe_path: { rollBonus: 1, threatDelta: -1 },
+    listen: { rollBonus: 1, threatDelta: -1 },
+    fast_path: { rollBonus: 2, threatDelta: 0 },
+    bait: { rollBonus: 2, threatDelta: 0 },
+    greedy_path: { rollBonus: 3, threatDelta: 1 },
+  };
+  return effects[option.id] || { rollBonus: 1, threatDelta: 0 };
+}
+
 function buildRollModifiers({
   expedition = {},
   member,
   room,
   action,
   selectedSupport = 0,
+  mechanicChoice = null,
   dayKey = utcDayKey(),
   rng = () => 0,
 } = {}) {
@@ -283,6 +390,10 @@ function buildRollModifiers({
   const supportApplied = normalizeSupport(selectedSupport, workingRoom.support ?? MAX_SUPPORT);
   total += supportApplied;
   addPart(parts, 'support', supportApplied);
+
+  const mechanicEffect = mechanicChoiceEffect(workingRoom, mechanicChoice);
+  total += mechanicEffect.rollBonus;
+  addPart(parts, `mechanic:${mechanicChoice}`, mechanicEffect.rollBonus);
 
   const provision = workingMember.provisionState?.rollBonus;
   if ((provision?.uses ?? 0) > 0) {
@@ -366,6 +477,7 @@ function resolveAttempt({
   room,
   action,
   selectedSupport = 0,
+  mechanicChoice = null,
   roll,
   reroll,
   rng = () => 0,
@@ -374,7 +486,7 @@ function resolveAttempt({
   useSharedBuff = false,
 } = {}) {
   const dayKey = utcDayKey(now);
-  const regenerated = regenerateAp(member || {}, dayKey);
+  const regenerated = regenerateAp(member || {}, now);
   const nextMember = normalizeRoleDay({ ...(clone(member || {})), ...regenerated }, dayKey);
   if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
   if (['hidden', 'locked'].includes(room?.state)) throw new RangeError('room is not unlocked');
@@ -403,6 +515,7 @@ function resolveAttempt({
     room: nextRoom,
     action: nextAction,
     selectedSupport,
+    mechanicChoice,
     dayKey,
     rng,
   });
@@ -466,11 +579,29 @@ function resolveAttempt({
   }
 
   const shieldProtected = canUseRoleAbility && role.ability === 'shield_wall';
+  const combatRoom = (nextRoom.encounterType || nextRoom.type) === 'combat';
+  const combatRollValue = Math.max(1, Math.min(20, modifiedRoll));
+  const combatOutcome = combatRoom ? combatRollOutcome(combatRollValue) : null;
   let progressAwarded = progressForRoll({
     rawRoll,
     modifiedRoll,
     naturalOneProtected: shieldProtected && initialRawRoll === 1,
   });
+  if (combatOutcome) {
+    progressAwarded = combatOutcome.progress;
+    const heroDamage = shieldProtected ? 0 : combatOutcome.heroDamage;
+    if (heroDamage > 0) {
+      nextMember.heroHp = Math.max(0, Number(nextMember.heroHp ?? 3) - heroDamage);
+      events.push({ type: 'hero_damaged', amount: heroDamage, heroHp: nextMember.heroHp });
+    }
+    events.push({
+      type: 'combat_roll',
+      outcome: combatOutcome.label,
+      roll: combatRollValue,
+      progress: combatOutcome.progress,
+      heroDamage,
+    });
+  }
   if (shieldProtected && progressAwarded === 0) {
     progressAwarded = 1;
     events.push({ type: 'zero_progress_protected' });
@@ -536,6 +667,28 @@ function resolveAttempt({
     nextRoom.clearedAt = now;
   }
 
+  if (nextRoom.state === 'cleared') {
+    nextRoom.threat = 0;
+    nextRoom.threatState = null;
+  } else if (progressAwarded === 0) {
+    const threatMax = Math.max(1, Number(nextRoom.threatMax || 5));
+    const mechanicEffect = mechanicChoiceEffect(nextRoom, mechanicChoice);
+    const threatGain = Math.max(0, (rawRoll === 1 ? 2 : 1) + mechanicEffect.threatDelta);
+    nextRoom.threat = Math.min(threatMax, Math.max(0, Number(nextRoom.threat || 0)) + threatGain);
+    nextRoom.threatState = threatStateFor(nextRoom.threat, threatMax);
+    if (threatGain > 0) events.push({ type: 'threat_gained', amount: threatGain, threat: nextRoom.threat });
+  } else {
+    const currentThreat = Math.max(0, Number(nextRoom.threat || 0));
+    nextRoom.threat = currentThreat;
+    nextRoom.threatState = threatStateFor(currentThreat, nextRoom.threatMax || 5);
+  }
+
+  if (Number(nextMember.heroHp ?? 3) <= 0) {
+    nextMember.heroHp = 0;
+    nextMember.heroRecoverAt = now + HERO_RECOVERY_SECONDS;
+    events.push({ type: 'hero_recovering', recoverAt: nextMember.heroRecoverAt });
+  }
+
   if (progressAwarded === 0 && nextRoom.complication) {
     const prevented = nextMember.provisionState?.preventDebuff;
     if ((prevented?.uses ?? 0) > 0 || shieldProtected || beforeProgress.debuffPrevented) {
@@ -574,7 +727,20 @@ function resolveAttempt({
     restore.uses -= 1;
   }
 
-  const loot = rollAttemptLoot({ room: nextRoom, member: nextMember, rawRoll, rng });
+  const roomClearedByAttempt = (
+    nextRoom.state === 'cleared'
+    && nextRoom.type !== 'boss'
+    && previousProgress < (nextRoom.progressTarget || Infinity)
+  );
+  const lootRoom = roomClearedByAttempt
+    ? nextRoom
+    : {
+        ...nextRoom,
+        // Room treasure opens only when the room is cleared. Natural-20 and
+        // artifact-driven bonus loot can still apply through the normal hooks.
+        loot: { coins: { min: 0, max: 0 }, artifactRolls: 0 },
+      };
+  const loot = rollAttemptLoot({ room: lootRoom, member: nextMember, rawRoll, rng });
   const beforeLoot = applyArtifactEffects({
     phase: 'before_loot',
     actionType: 'attempt',
@@ -603,7 +769,7 @@ function resolveAttempt({
     const rolled = rollPersonalLoot({
       coinRange: { min: 0, max: 0 },
       artifactRolls: loot.artifactRolls,
-      table: LOOT_TABLES[loot.table] || lootTableForRoom(nextRoom).table,
+      table: LOOT_TABLES[loot.table] || lootTableForRoom(lootRoom).table,
       rng,
     });
     loot.artifacts = rolled.artifacts;
@@ -636,7 +802,7 @@ function resolveAssist({
   now = Date.now(),
 } = {}) {
   const dayKey = utcDayKey(now);
-  const regenerated = regenerateAp(member || {}, dayKey);
+  const regenerated = regenerateAp(member || {}, now);
   const nextMember = normalizeRoleDay({ ...(clone(member || {})), ...regenerated }, dayKey);
   const nextRoom = clone(room || {});
   if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
@@ -822,12 +988,16 @@ function rowToRoom(row) {
 
 function rowToMember(row) {
   const loadoutState = parseLoadoutState(row.loadout_json);
+  const heroRecoverAt = row.hero_recover_at ?? null;
   return {
     expeditionId: row.expedition_id,
     userId: row.user_id,
     role: row.role,
     ap: row.ap,
     apRegenDay: row.ap_regen_day,
+    apRegenAt: row.ap_regen_at,
+    heroHp: row.hero_hp ?? 3,
+    heroRecoverAt,
     roleAbilityDay: row.role_ability_day,
     roleAbilityUsed: Boolean(row.role_ability_used),
     provisionId: row.provision_id,
@@ -864,6 +1034,7 @@ function encodeLoadoutState(member) {
 }
 
 function rowToAction(row) {
+  const modifiers = parseJson(row.modifier_json, {});
   return {
     id: row.id,
     idempotencyKey: row.idempotency_key,
@@ -873,7 +1044,8 @@ function rowToAction(row) {
     actionType: row.action_type,
     stat: row.stat,
     rawRoll: row.raw_roll,
-    modifiers: parseJson(row.modifier_json, {}),
+    modifiers,
+    events: modifiers.events || [],
     modifiedRoll: row.modified_roll,
     progressAwarded: row.progress_awarded,
     loot: parseJson(row.loot_json, {}),
@@ -1005,6 +1177,9 @@ function updateMember(transaction, expeditionId, memberResult, contribution = {}
     UPDATE family_expedition_members SET
       ap = ?,
       ap_regen_day = ?,
+      ap_regen_at = ?,
+      hero_hp = ?,
+      hero_recover_at = ?,
       role_ability_day = ?,
       role_ability_used = ?,
       provision_state_json = ?,
@@ -1016,6 +1191,9 @@ function updateMember(transaction, expeditionId, memberResult, contribution = {}
   `).run(
     memberResult.ap,
     memberResult.apRegenDay,
+    memberResult.apRegenAt ?? memberResult.apRegenDay * 24 * 60 * 60,
+    Math.max(0, Math.min(3, Number(memberResult.heroHp ?? 3))),
+    memberResult.heroRecoverAt ?? null,
     memberResult.roleAbilityDay,
     memberResult.roleAbilityUsed ? 1 : 0,
     stringifyJson(memberResult.provisionState || {}),
@@ -1057,10 +1235,57 @@ function updateRoom(transaction, expeditionId, roomResult) {
   );
 }
 
+function updateRoomDefinition(transaction, expeditionId, roomResult) {
+  transaction.prepare(`
+    UPDATE family_expedition_rooms SET
+      room_type = ?,
+      state = ?,
+      progress = ?,
+      progress_target = ?,
+      support = ?,
+      payload_json = ?,
+      unlocked_at = ?,
+      cleared_at = ?
+    WHERE expedition_id = ? AND room_key = ?
+  `).run(
+    roomResult.type,
+    roomResult.state,
+    roomResult.progress || 0,
+    roomResult.progressTarget || 1,
+    roomResult.support || 0,
+    stringifyJson(roomPayload(roomResult)),
+    roomResult.unlockedAt ?? roomResult.unlocked_at ?? null,
+    roomResult.clearedAt ?? roomResult.cleared_at ?? null,
+    expeditionId,
+    roomResult.key,
+  );
+}
+
 function persistUnlocks(transaction, expeditionId, map, fromRoomKey, now) {
   const rooms = readSnapshot(transaction, expeditionId).rooms;
   const unlocked = unlockConnectedRooms({ map, rooms, fromRoomKey, now });
   for (const room of unlocked) updateRoom(transaction, expeditionId, room);
+}
+
+function applyScoutChoiceToTarget(source, target, choice, userId, now) {
+  const choiceRoom = clone(choice.room || {});
+  return {
+    ...target,
+    ...choiceRoom,
+    key: target.key,
+    depth: target.depth,
+    required: target.required,
+    optional: target.optional,
+    state: target.state,
+    progress: 0,
+    support: target.support || 0,
+    unlockedAt: target.unlockedAt,
+    clearedAt: target.clearedAt,
+    scoutChosenFrom: source.key,
+    scoutChosenBy: userId,
+    scoutChosenAt: now,
+    scoutChoiceId: choice.id,
+  };
 }
 
 function revealRoomByKey(transaction, expeditionId, roomKey, now) {
@@ -1168,6 +1393,9 @@ function prepareMember(options) {
       role,
       ap: DAILY_AP,
       apRegenDay: dayKey,
+      apRegenAt: now,
+      heroHp: 3,
+      heroRecoverAt: null,
       roleAbilityDay: dayKey,
       roleAbilityUsed: false,
       provisionId,
@@ -1180,13 +1408,16 @@ function prepareMember(options) {
   });
   transaction.prepare(`
     INSERT INTO family_expedition_members (
-      expedition_id, user_id, role, ap, ap_regen_day, role_ability_day, role_ability_used,
+      expedition_id, user_id, role, ap, ap_regen_day, ap_regen_at, hero_hp, hero_recover_at, role_ability_day, role_ability_used,
       provision_id, provision_state_json, loadout_json, debuff_json, prepared_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(expedition_id, user_id) DO UPDATE SET
       role = excluded.role,
       ap = excluded.ap,
       ap_regen_day = excluded.ap_regen_day,
+      ap_regen_at = excluded.ap_regen_at,
+      hero_hp = excluded.hero_hp,
+      hero_recover_at = excluded.hero_recover_at,
       role_ability_day = excluded.role_ability_day,
       role_ability_used = excluded.role_ability_used,
       provision_id = excluded.provision_id,
@@ -1199,6 +1430,9 @@ function prepareMember(options) {
     role,
     prepared.ap,
     prepared.apRegenDay,
+    prepared.apRegenAt,
+    prepared.heroHp ?? 3,
+    prepared.heroRecoverAt ?? null,
     prepared.roleAbilityDay,
     prepared.roleAbilityUsed ? 1 : 0,
     provisionId,
@@ -1228,6 +1462,7 @@ function attemptRoom(options) {
     userId,
     roomKey,
     actionId,
+    mechanicChoice = null,
     selectedSupport = 0,
     roll,
     reroll,
@@ -1238,11 +1473,21 @@ function attemptRoom(options) {
   } = options;
   let snapshot = readSnapshot(transaction, expeditionId);
   assertExpeditionNotFinished(snapshot);
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  const memberRow = getMemberRow(transaction, expeditionId, userId);
+  const memberState = recoverHeroIfReady(rowToMember(memberRow), now);
+  assertHeroCanAct(memberState, now);
+  const action = actionId
+    ? (room.actions || []).find(candidate => candidate.id === actionId)
+    : actionForMemberRole(room, memberState);
+  if (!action) throw new RangeError(`Unknown action: ${actionId}`);
+  const normalizedMechanicChoice = mechanicChoiceOption(room, mechanicChoice)?.id || null;
   const intent = {
     expeditionId,
     userId,
     roomKey,
-    actionId,
+    actionId: action.id,
+    mechanicChoice: normalizedMechanicChoice,
     selectedSupport,
     roll: roll ?? null,
     reroll: reroll ?? null,
@@ -1257,12 +1502,7 @@ function attemptRoom(options) {
     expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
-  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
   if (room.state === 'cleared') throw new RangeError('room is already cleared');
-  const memberRow = getMemberRow(transaction, expeditionId, userId);
-  const memberState = rowToMember(memberRow);
-  const action = (room.actions || []).find(candidate => candidate.id === actionId);
-  if (!action) throw new RangeError(`Unknown action: ${actionId}`);
   const result = resolveAttempt({
     expedition: {
       id: expeditionId,
@@ -1274,6 +1514,7 @@ function attemptRoom(options) {
     room,
     action,
     selectedSupport,
+    mechanicChoice: normalizedMechanicChoice,
     roll,
     reroll,
     rng,
@@ -1313,7 +1554,7 @@ function attemptRoom(options) {
     actionType: 'attempt',
     stat: action.stat,
     rawRoll: result.rawRoll,
-    modifiers: result.modifiers,
+    modifiers: { ...result.modifiers, events: result.events || [] },
     intent,
     modifiedRoll: result.modifiedRoll,
     progressAwarded: result.progressAwarded,
@@ -1347,7 +1588,8 @@ function assistRoom(options) {
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
-  const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
+  const memberState = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
+  assertHeroCanAct(memberState, now);
   const result = resolveAssist({
     expedition: { id: expeditionId, status: snapshot.expedition.status },
     member: memberState,
@@ -1395,7 +1637,8 @@ function revealRoom(options) {
   const connected = (snapshot.expedition.map.edges || [])
     .some(edge => edge.from === fromRoomKey && edge.to === roomKey);
   if (!connected) throw new RangeError('room is not connected');
-  const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
+  const memberState = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
+  assertHeroCanAct(memberState, now);
   const dayKey = utcDayKey(now);
   const revealMember = normalizeRoleDay(memberState, dayKey);
   if (revealMember.role !== 'scout') throw new RangeError('only scouts can reveal rooms');
@@ -1420,6 +1663,168 @@ function revealRoom(options) {
     actionType: 'reveal_room',
     modifiers: { revealedRoomKey: target.key },
     intent,
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
+}
+
+function chooseScoutRoom(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    fromRoomKey,
+    choiceId,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const snapshot = readSnapshot(transaction, expeditionId);
+  assertExpeditionNotFinished(snapshot);
+  const intent = { expeditionId, userId, fromRoomKey, choiceId };
+  const replay = findIdempotentAction(transaction, {
+    userId,
+    idempotencyKey,
+    expectedActionType: 'scout_choice',
+    expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
+  });
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+
+  const source = rowToRoom(getRoomRow(transaction, expeditionId, fromRoomKey));
+  if (!['unlocked', 'cleared'].includes(source.state)) {
+    throw new RangeError('source room is not available');
+  }
+  if (source.scoutChoice?.choiceId) {
+    throw new RangeError('next room is already chosen');
+  }
+  const choices = Array.isArray(source.scoutChoices) ? source.scoutChoices : [];
+  const choice = choices.find(candidate => candidate.id === choiceId);
+  if (!choice) throw new RangeError('unknown scout choice');
+
+  const memberState = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
+  assertHeroCanAct(memberState, now);
+  const dayKey = utcDayKey(now);
+  const scout = normalizeRoleDay(memberState, dayKey);
+  if (scout.role !== 'scout') throw new RangeError('only scouts can choose the next room');
+  if (scout.roleAbilityUsed) throw new RangeError('scout choice ability is already used');
+
+  const targetKey = choice.targetKey || choice.room?.key;
+  const connected = (snapshot.expedition.map.edges || [])
+    .some(edge => edge.from === fromRoomKey && edge.to === targetKey);
+  if (!connected) throw new RangeError('choice target is not connected');
+  const target = rowToRoom(getRoomRow(transaction, expeditionId, targetKey));
+  if (['unlocked', 'cleared'].includes(target.state)) {
+    throw new RangeError('target room is already open');
+  }
+
+  const nextSource = {
+    ...source,
+    scoutChoice: {
+      choiceId: choice.id,
+      targetKey,
+      label: choice.label || choice.room?.name || 'Chosen path',
+      chosenBy: userId,
+      chosenAt: now,
+    },
+  };
+  const nextTarget = applyScoutChoiceToTarget(source, target, choice, userId, now);
+  scout.roleAbilityUsed = true;
+
+  updateRoom(transaction, expeditionId, nextSource);
+  updateRoomDefinition(transaction, expeditionId, nextTarget);
+  updateMember(transaction, expeditionId, scout);
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: source.id,
+    userId,
+    actionType: 'scout_choice',
+    modifiers: { choiceId: choice.id, targetKey },
+    intent,
+    now,
+  });
+  return readSnapshot(transaction, expeditionId);
+}
+
+function completeEventRoom(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    roomKey,
+    score = 0,
+    rng = () => 0,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  let snapshot = readSnapshot(transaction, expeditionId);
+  assertExpeditionNotFinished(snapshot);
+  const normalizedScore = Math.max(0, Math.min(100, Math.floor(Number(score || 0))));
+  const intent = { expeditionId, userId, roomKey, score: normalizedScore };
+  const replay = findIdempotentAction(transaction, {
+    userId,
+    idempotencyKey,
+    expectedActionType: 'event_minigame',
+    expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
+  });
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  if (room.state === 'cleared') throw new RangeError('room is already cleared');
+  if (['hidden', 'locked'].includes(room.state)) throw new RangeError('room is not unlocked');
+  if ((room.encounterType || room.type) === 'combat' || ['boss', 'camp'].includes(room.type)) {
+    throw new RangeError('event minigame is not available in this room');
+  }
+
+  const memberState = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
+  assertHeroCanAct(memberState, now);
+  const dayKey = utcDayKey(now);
+  const nextMember = normalizeRoleDay({ ...memberState, ...regenerateAp(memberState, now) }, dayKey);
+  if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
+  nextMember.ap -= 1;
+
+  const previousProgress = room.progress || 0;
+  const rawProgress = normalizedScore >= 90 ? 2 : normalizedScore >= 60 ? 1 : 0;
+  const nextRoom = { ...room };
+  nextRoom.progress = Math.max(
+    previousProgress,
+    Math.min(nextRoom.progressTarget || Infinity, previousProgress + rawProgress),
+  );
+  const appliedProgress = Math.max(0, nextRoom.progress - previousProgress);
+  if (nextRoom.progress >= (nextRoom.progressTarget || Infinity)) {
+    nextRoom.state = 'cleared';
+    nextRoom.clearedAt = now;
+    nextRoom.threat = 0;
+    nextRoom.threatState = null;
+  }
+
+  updateMember(transaction, expeditionId, nextMember, { ap: 1, progress: appliedProgress });
+  updateRoom(transaction, expeditionId, nextRoom);
+  let grantedLoot = {};
+  if (nextRoom.state === 'cleared' && previousProgress < (nextRoom.progressTarget || Infinity)) {
+    grantedLoot = grantPersonalLoot({
+      transaction,
+      userId,
+      loot: rollAttemptLoot({ room: nextRoom, member: nextMember, rawRoll: 20, rng }),
+      rng,
+      now,
+    });
+    persistUnlocks(transaction, expeditionId, snapshot.expedition.map, nextRoom.key, now);
+    snapshot = readSnapshot(transaction, expeditionId);
+  }
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId,
+    actionType: 'event_minigame',
+    modifiers: { score: normalizedScore, events: [{ type: 'event_minigame', score: normalizedScore }] },
+    intent,
+    progressAwarded: appliedProgress,
+    loot: grantedLoot,
     now,
   });
   return readSnapshot(transaction, expeditionId);
@@ -1589,6 +1994,8 @@ function finishExpedition(options) {
 module.exports = {
   utcDayKey,
   regenerateAp,
+  recoverHeroIfReady,
+  combatRollOutcome,
   progressForRoll,
   buildRollModifiers,
   resolveAttempt,
@@ -1602,6 +2009,8 @@ module.exports = {
   attemptRoom,
   assistRoom,
   revealRoom,
+  chooseScoutRoom,
+  completeEventRoom,
   equipFoundArtifactForMember,
   claimBossReward,
   finishExpedition,

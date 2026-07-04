@@ -1,8 +1,9 @@
 'use strict';
 
 const THEME_ID = 'root_king';
-const DAILY_AP = 3;
-const MAX_AP = 6;
+const DAILY_AP = 5;
+const MAX_AP = 5;
+const AP_REGEN_SECONDS = 3 * 60 * 60;
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
@@ -61,6 +62,130 @@ const PROVISIONS = deepFreeze({
     effect: { type: 'raise_modified_roll', config: { uses: 1, below: 10, value: 10 } },
   },
 });
+
+const ROLE_BY_STAT = Object.freeze(Object.fromEntries(
+  Object.entries(ROLES).map(([role, config]) => [config.stat, role]),
+));
+
+const ENCOUNTER_TYPE_BY_ROOM_TYPE = Object.freeze({
+  combat: 'combat',
+  trap: 'trap',
+  arcane: 'puzzle',
+  exploration: 'puzzle',
+  treasure: 'treasure',
+  shrine: 'shrine',
+  camp: 'shrine',
+  mystery: 'puzzle',
+  boss: 'boss',
+});
+
+const DEFAULT_INTENT_BY_ENCOUNTER_TYPE = Object.freeze({
+  combat: 'strike',
+  trap: 'hide',
+  treasure: 'trick',
+  shrine: 'bless',
+  puzzle: 'solve',
+  boss: 'guard',
+});
+
+const ROOM_VISUALS = Object.freeze({
+  root_guardians: { enemyId: 'rootbound_guard', enemyIntent: 'guard' },
+  bone_sentinels: { enemyId: 'hollow_archer', enemyIntent: 'strike' },
+  thorn_snare: { objectId: 'thorn_snare', enemyIntent: 'hide' },
+  rune_darts: { objectId: 'rune_darts', enemyIntent: 'channel' },
+  root_seal: { objectId: 'root_seal', enemyIntent: 'channel' },
+  whispering_reliquary: { objectId: 'lantern_skull', enemyIntent: 'curse' },
+  collapsed_gallery: { objectId: 'collapsed_gallery', enemyIntent: 'solve' },
+  forgotten_crossroads: { objectId: 'forgotten_crossroads', enemyIntent: 'hide' },
+  rootbound_vault: { objectId: 'rootbound_vault', enemyIntent: 'guard' },
+  mimic_cache: { enemyId: 'vine_mimic', objectId: 'mimic_cache', enemyIntent: 'trick' },
+  lantern_shrine: { objectId: 'lantern_shrine', enemyIntent: 'bless' },
+  traveler_shrine: { objectId: 'traveler_shrine', enemyIntent: 'bless' },
+  entrance_camp: { objectId: 'expedition_camp', enemyIntent: 'bless' },
+  root_king_bargain: { enemyId: 'root_cultist', objectId: 'root_king_bargain', enemyIntent: 'curse' },
+  sleeping_knight: { enemyId: 'rootbound_champion', objectId: 'sleeping_knight', enemyIntent: 'guard' },
+  root_king_phase_1: { enemyId: 'rootbound_champion', enemyIntent: 'guard' },
+  root_king_phase_2: { enemyId: 'rootbound_champion', enemyIntent: 'strike' },
+  root_king_phase_3: { enemyId: 'rootbound_champion', enemyIntent: 'channel' },
+});
+
+function weakRolesForActions(actions = []) {
+  const ranked = [...actions]
+    .filter(candidate => ROLE_BY_STAT[candidate.stat])
+    .sort((left, right) => (left.modifier ?? 0) - (right.modifier ?? 0));
+  const roles = [];
+  for (const action of ranked) {
+    const role = ROLE_BY_STAT[action.stat];
+    if (!roles.includes(role)) roles.push(role);
+    if (roles.length >= 2) break;
+  }
+  return roles.length > 0 ? roles : ['knight'];
+}
+
+function miniMechanicForRoom(type, id) {
+  if (type === 'boss') return { type: 'boss_phase' };
+  if (type === 'trap') {
+    return {
+      type: 'route_choice',
+      options: [
+        { id: 'safe_path', label: 'Safe Path', effect: 'Less threat risk' },
+        { id: 'fast_path', label: 'Fast Path', effect: 'Swingy progress' },
+        { id: 'greedy_path', label: 'Greedy Path', effect: 'Better chest, riskier low roll' },
+      ],
+    };
+  }
+  if (type === 'treasure') {
+    return {
+      type: 'mimic_read',
+      options: [
+        { id: 'listen', label: 'Listen First', effect: 'Safer read' },
+        { id: 'bait', label: 'Bait It', effect: 'More reward on a good read' },
+      ],
+    };
+  }
+  if (type === 'shrine' || type === 'camp') return { type: 'combat' };
+  if (['arcane', 'exploration', 'mystery'].includes(type)) {
+    return { type: 'symbol_puzzle', clueCount: id === 'root_king_bargain' ? 3 : 2 };
+  }
+  return { type: 'combat' };
+}
+
+function miniGameForRoom(type, id) {
+  const games = {
+    trap: {
+      kind: 'timing_window',
+      label: 'Dodge the trap',
+      instruction: 'Stop the marker inside the gold window.',
+    },
+    arcane: {
+      kind: 'rune_sequence',
+      label: 'Repeat the runes',
+      instruction: 'Tap the glowing runes in the shown order.',
+      sequence: id === 'whispering_reliquary' ? ['moon', 'skull', 'rune'] : ['rune', 'root', 'moon'],
+    },
+    exploration: {
+      kind: 'path_pick',
+      label: 'Find the safe path',
+      instruction: 'Pick the path with the green torch.',
+    },
+    shrine: {
+      kind: 'focus_hold',
+      label: 'Hold the blessing',
+      instruction: 'Hold focus long enough, but release before it burns out.',
+    },
+    mystery: {
+      kind: 'shadow_match',
+      label: 'Read the shadow',
+      instruction: 'Choose the matching shadow before it fades.',
+    },
+    treasure: {
+      kind: 'timing_window',
+      label: 'Open the cache',
+      instruction: 'Stop the marker inside the gold window.',
+    },
+  };
+  return games[type] || null;
+}
 
 function artifact(id, name, rarity, displayEffect, effect, behavior = { type: 'permanent' }) {
   return { id, name, rarity, displayEffect, behavior, effect };
@@ -211,26 +336,40 @@ function action(id, label, stat, difficulty, modifier, tags, options = {}) {
 }
 
 function room(id, type, name, progressTarget, tags, actions, extra = {}) {
-  return {
+  const encounterType = extra.encounterType || ENCOUNTER_TYPE_BY_ROOM_TYPE[type] || 'combat';
+  const visual = ROOM_VISUALS[id] || {};
+  const authoredActions = actions.map(authoredAction => ({ ...authoredAction, progressTarget }));
+  const authoredRoom = {
     id,
     type,
     name,
     progressTarget,
     tags,
-    actions: actions.map(authoredAction => ({ ...authoredAction, progressTarget })),
+    encounterType,
+    weakRoles: extra.weakRoles || weakRolesForActions(authoredActions),
+    enemyIntent: extra.enemyIntent || visual.enemyIntent || DEFAULT_INTENT_BY_ENCOUNTER_TYPE[encounterType] || 'strike',
+    threatMax: extra.threatMax || (type === 'boss' ? 8 : type === 'camp' ? 3 : 5),
+    miniMechanic: extra.miniMechanic || miniMechanicForRoom(type, id),
+    miniGame: extra.miniGame || miniGameForRoom(type, id),
+    actions: authoredActions,
     ...extra,
   };
+  const enemyId = extra.enemyId || visual.enemyId;
+  const objectId = extra.objectId || visual.objectId || (!enemyId ? id : undefined);
+  if (enemyId) authoredRoom.enemyId = enemyId;
+  if (objectId) authoredRoom.objectId = objectId;
+  return authoredRoom;
 }
 
 const ROOM_TEMPLATES = deepFreeze({
   combat: [
-    room('root_guardians', 'combat', 'Root Guardians', 6, ['dark', 'root_creature'], [
+    room('root_guardians', 'combat', 'Root Guardians', 7, ['dark', 'root_creature'], [
       action('break_guard', 'Break their guard', 'might', 'risky', 2, ['weapon', 'root_creature']),
       action('flank_guard', 'Slip behind the roots', 'agility', 'risky', 2, ['root_creature']),
       action('burn_guard_runes', 'Unmake their binding runes', 'arcana', 'hard', 4, ['rune', 'root_creature']),
       action('banish_guard', 'Drive out the grave spirit', 'spirit', 'hard', 4, ['undead']),
     ]),
-    room('bone_sentinels', 'combat', 'Bone Sentinels', 5, ['dark', 'undead'], [
+    room('bone_sentinels', 'combat', 'Bone Sentinels', 6, ['dark', 'undead'], [
       action('scatter_bones', 'Scatter the sentinels', 'might', 'easy', 0, ['weapon', 'undead']),
       action('turn_sentinels', 'Turn the restless dead', 'spirit', 'risky', 2, ['undead']),
     ]),
@@ -310,19 +449,19 @@ const ROOM_TEMPLATES = deepFreeze({
     ], { choices: 2 }),
   ],
   boss: [
-    room('root_king_phase_1', 'boss', 'Break the Armor', 8, ['boss', 'root_creature', 'undead'], [
+    room('root_king_phase_1', 'boss', 'Break the Armor', 9, ['boss', 'root_creature', 'undead'], [
       action('break_king_armor', 'Break the bark armor', 'might', 'easy', 0, ['boss', 'root_creature']),
       action('find_king_weakpoint', 'Find a buried weak point', 'agility', 'risky', 2, ['boss', 'root_creature']),
       action('disrupt_king_runes', 'Disrupt the crown runes', 'arcana', 'risky', 2, ['boss', 'rune']),
       action('ward_king_retaliation', 'Ward the king\'s retaliation', 'spirit', 'hard', 4, ['boss', 'undead']),
     ], { phase: 1 }),
-    room('root_king_phase_2', 'boss', 'Survive the Roots', 8, ['boss', 'root_creature'], [
+    room('root_king_phase_2', 'boss', 'Survive the Roots', 9, ['boss', 'root_creature'], [
       action('hold_back_roots', 'Hold back the root tide', 'might', 'risky', 2, ['boss', 'root']),
       action('evade_king_roots', 'Dance through the roots', 'agility', 'easy', 0, ['boss', 'root']),
       action('sever_root_magic', 'Sever the root magic', 'arcana', 'risky', 2, ['boss', 'rune']),
       action('sanctify_root_ground', 'Sanctify the tangled ground', 'spirit', 'easy', 0, ['boss', 'root']),
     ], { phase: 2, complication: 'frightened' }),
-    room('root_king_phase_3', 'boss', 'Final Strike', 8, ['boss', 'root_creature', 'undead'], [
+    room('root_king_phase_3', 'boss', 'Final Strike', 9, ['boss', 'root_creature', 'undead'], [
       action('final_might', 'Land the final blow', 'might', 'risky', 2, ['boss']),
       action('final_agility', 'Strike the exposed heart', 'agility', 'risky', 2, ['boss']),
       action('final_arcana', 'Unmake the root crown', 'arcana', 'risky', 2, ['boss', 'rune']),
@@ -345,6 +484,7 @@ module.exports = {
   THEME_ID,
   DAILY_AP,
   MAX_AP,
+  AP_REGEN_SECONDS,
   ROLES,
   PROVISIONS,
   ARTIFACTS,
