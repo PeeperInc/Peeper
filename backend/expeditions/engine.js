@@ -91,9 +91,12 @@ function regenerateAp(member, now = unixSeconds()) {
   }
 
   const granted = Math.min(elapsedIntervals, MAX_AP - currentAp);
-  const apRegenAt = previousRegenAt + granted * AP_REGEN_SECONDS;
+  const nextAp = currentAp + granted;
+  const apRegenAt = nextAp >= MAX_AP
+    ? currentTime
+    : previousRegenAt + granted * AP_REGEN_SECONDS;
   return {
-    ap: currentAp + granted,
+    ap: nextAp,
     apRegenAt,
     apRegenDay: utcDayKey(apRegenAt),
   };
@@ -481,7 +484,7 @@ function resolveAttempt({
   roll,
   reroll,
   rng = () => 0,
-  now = Date.now(),
+  now = unixSeconds(),
   useRoleAbility = false,
   useSharedBuff = false,
 } = {}) {
@@ -579,7 +582,8 @@ function resolveAttempt({
   }
 
   const shieldProtected = canUseRoleAbility && role.ability === 'shield_wall';
-  const combatRoom = (nextRoom.encounterType || nextRoom.type) === 'combat';
+  const encounterType = nextRoom.encounterType || nextRoom.type;
+  const combatRoom = nextRoom.type === 'boss' || ['combat', 'boss'].includes(encounterType);
   const combatRollValue = Math.max(1, Math.min(20, modifiedRoll));
   const combatOutcome = combatRoom ? combatRollOutcome(combatRollValue) : null;
   let progressAwarded = progressForRoll({

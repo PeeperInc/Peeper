@@ -229,11 +229,16 @@ test('UTC day keys and AP regeneration add one AP every three hours and cap at f
   });
   assert.deepEqual(regenerateAp({ ap: 4, apRegenAt: startedAt }, startedAt + 9 * 60 * 60), {
     ap: 5,
-    apRegenAt: startedAt + 3 * 60 * 60,
-    apRegenDay: utcDayKey(startedAt + 3 * 60 * 60),
+    apRegenAt: startedAt + 9 * 60 * 60,
+    apRegenDay: utcDayKey(startedAt + 9 * 60 * 60),
   });
   assert.deepEqual(regenerateAp({ ap: 5, apRegenAt: startedAt }, startedAt + 9 * 60 * 60), {
     ap: 5,
+    apRegenAt: startedAt + 9 * 60 * 60,
+    apRegenDay: utcDayKey(startedAt + 9 * 60 * 60),
+  });
+  assert.deepEqual(regenerateAp({ ap: 1, apRegenAt: startedAt }, startedAt + 10 * 60 * 60), {
+    ap: 4,
     apRegenAt: startedAt + 9 * 60 * 60,
     apRegenDay: utcDayKey(startedAt + 9 * 60 * 60),
   });
@@ -335,6 +340,52 @@ test('knocked-out heroes recover to full HP only after six hours', () => {
     heroHp: 3,
     heroRecoverAt: null,
   });
+});
+
+test('default attempt time stores knockout recovery as unix seconds', () => {
+  const before = Math.floor(Date.now() / 1000);
+  const result = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 1 }),
+    room: { ...hall, type: 'combat', encounterType: 'combat', progress: 0, progressTarget: 6 },
+    action: { ...hall.actions[0], modifier: 0, stat: 'might' },
+    roll: 1,
+  });
+  const after = Math.floor(Date.now() / 1000);
+
+  assert.equal(result.member.heroHp, 0);
+  assert.ok(result.member.heroRecoverAt >= before + 6 * 60 * 60);
+  assert.ok(result.member.heroRecoverAt <= after + 6 * 60 * 60);
+});
+
+test('boss encounters use combat damage and progress bands', () => {
+  const bossRoom = {
+    ...boss,
+    state: 'unlocked',
+    encounterType: 'boss',
+    progress: 0,
+    progressTarget: 9,
+  };
+  const wounded = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 3 }),
+    room: bossRoom,
+    action: { ...boss.actions[0], modifier: 0 },
+    roll: 5,
+    now: 1000,
+  });
+  const critical = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 3 }),
+    room: bossRoom,
+    action: { ...boss.actions[0], modifier: 0 },
+    roll: 20,
+    now: 1000,
+  });
+
+  assert.equal(wounded.progressAwarded, 0);
+  assert.equal(wounded.member.heroHp, 2);
+  assert.equal(critical.progressAwarded, 3);
 });
 
 test('roll modifiers include action difficulty, matching role bonus, provision, debuff, artifacts, and capped selected support', () => {
@@ -571,7 +622,7 @@ test('natural 1 can be protected by daily knight shield and natural 20 grants bo
     roll: 20,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(critical.progressAwarded, 5);
+  assert.equal(critical.progressAwarded, 3);
   assert.equal(critical.loot.artifactRolls, 1);
 });
 
