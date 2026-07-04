@@ -77,6 +77,11 @@ function indexedColumns(db, indexName) {
     .map(({ name, desc }) => ({ name, desc }));
 }
 
+function indexSql(db, indexName) {
+  return db.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?')
+    .get('index', indexName)?.sql ?? null;
+}
+
 function normalizedForeignKeys(db, table) {
   return foreignKeys(db, table)
     .map(({ from, table: referencedTable, on_delete }) => ({
@@ -238,10 +243,16 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
         column('expedition_id', 'INTEGER', 1, null, 1),
         column('user_id', 'INTEGER', 1, null, 2),
         column('role', 'TEXT', 1),
-        column('ap', 'INTEGER', 1, '3'),
+        column('ap', 'INTEGER', 1, '5'),
         column('ap_regen_day', 'INTEGER', 1),
+        column('ap_regen_at', 'INTEGER', 1, '0'),
+        column('hero_hp', 'INTEGER', 1, '3'),
+        column('hero_recover_at', 'INTEGER', 0),
         column('role_ability_day', 'INTEGER', 1),
         column('role_ability_used', 'INTEGER', 1, '0'),
+        column('role_charge', 'INTEGER', 1, '1'),
+        column('role_charge_progress', 'INTEGER', 1, '0'),
+        column('room_coins_earned', 'INTEGER', 1, '0'),
         column('provision_id', 'TEXT', 0),
         column('provision_state_json', 'TEXT', 1, "'{}'"),
         column('loadout_json', 'TEXT', 1, "'[]'"),
@@ -250,6 +261,50 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
         column('contribution_progress', 'INTEGER', 1, '0'),
         column('prepared_at', 'INTEGER', 1),
         column('boss_reward_claimed_at', 'INTEGER', 0),
+      ],
+      family_expedition_room_effects: [
+        column('id', 'INTEGER', 0, null, 1),
+        column('expedition_id', 'INTEGER', 1),
+        column('room_id', 'INTEGER', 1),
+        column('effect_type', 'TEXT', 1),
+        column('placed_by', 'INTEGER', 1),
+        column('remaining_uses', 'INTEGER', 1, '1'),
+        column('payload_json', 'TEXT', 1, "'{}'"),
+        column('created_at', 'INTEGER', 1),
+        column('consumed_at', 'INTEGER', 0),
+      ],
+      family_expedition_minigame_attempts: [
+        column('id', 'INTEGER', 0, null, 1),
+        column('attempt_token', 'TEXT', 1),
+        column('expedition_id', 'INTEGER', 1),
+        column('room_id', 'INTEGER', 1),
+        column('user_id', 'INTEGER', 1),
+        column('game_type', 'TEXT', 1),
+        column('seed', 'TEXT', 1),
+        column('status', 'TEXT', 1),
+        column('ap_spent', 'INTEGER', 1, '0'),
+        column('retry_available', 'INTEGER', 1, '0'),
+        column('started_at', 'INTEGER', 1),
+        column('expires_at', 'INTEGER', 1),
+        column('finished_at', 'INTEGER', 0),
+        column('result_json', 'TEXT', 1, "'{}'"),
+      ],
+      family_expedition_pending_rewards: [
+        column('id', 'INTEGER', 0, null, 1),
+        column('expedition_id', 'INTEGER', 1),
+        column('user_id', 'INTEGER', 1),
+        column('payload_json', 'TEXT', 1, "'{}'"),
+        column('created_at', 'INTEGER', 1),
+        column('claimed_at', 'INTEGER', 0),
+      ],
+      family_expedition_member_events: [
+        column('id', 'INTEGER', 0, null, 1),
+        column('expedition_id', 'INTEGER', 1),
+        column('user_id', 'INTEGER', 1),
+        column('event_type', 'TEXT', 1),
+        column('payload_json', 'TEXT', 1, "'{}'"),
+        column('created_at', 'INTEGER', 1),
+        column('acknowledged_at', 'INTEGER', 0),
       ],
       expedition_artifact_inventory: [
         column('user_id', 'INTEGER', 1, null, 1),
@@ -312,6 +367,24 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
         { from: 'expedition_id', table: 'family_expeditions', on_delete: 'CASCADE' },
         { from: 'user_id', table: 'users', on_delete: 'CASCADE' },
       ],
+      family_expedition_room_effects: [
+        { from: 'expedition_id', table: 'family_expeditions', on_delete: 'CASCADE' },
+        { from: 'placed_by', table: 'users', on_delete: 'CASCADE' },
+        { from: 'room_id', table: 'family_expedition_rooms', on_delete: 'CASCADE' },
+      ],
+      family_expedition_minigame_attempts: [
+        { from: 'expedition_id', table: 'family_expeditions', on_delete: 'CASCADE' },
+        { from: 'room_id', table: 'family_expedition_rooms', on_delete: 'CASCADE' },
+        { from: 'user_id', table: 'users', on_delete: 'CASCADE' },
+      ],
+      family_expedition_pending_rewards: [
+        { from: 'expedition_id', table: 'family_expeditions', on_delete: 'CASCADE' },
+        { from: 'user_id', table: 'users', on_delete: 'CASCADE' },
+      ],
+      family_expedition_member_events: [
+        { from: 'expedition_id', table: 'family_expeditions', on_delete: 'CASCADE' },
+        { from: 'user_id', table: 'users', on_delete: 'CASCADE' },
+      ],
       expedition_artifact_inventory: [
         { from: 'user_id', table: 'users', on_delete: 'CASCADE' },
       ],
@@ -360,6 +433,45 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
           columns: [{ name: 'expedition_id', desc: 0 }, { name: 'user_id', desc: 0 }],
         },
       ],
+      family_expedition_room_effects: [
+        {
+          name: 'idx_expedition_room_effect_active',
+          origin: 'c',
+          unique: 1,
+          columns: [
+            { name: 'expedition_id', desc: 0 },
+            { name: 'room_id', desc: 0 },
+            { name: 'effect_type', desc: 0 },
+          ],
+        },
+      ],
+      family_expedition_minigame_attempts: [
+        {
+          name: 'idx_expedition_attempt_token',
+          origin: 'c',
+          unique: 1,
+          columns: [{ name: 'attempt_token', desc: 0 }],
+        },
+        {
+          name: 'idx_expedition_open_attempt',
+          origin: 'c',
+          unique: 1,
+          columns: [
+            { name: 'expedition_id', desc: 0 },
+            { name: 'room_id', desc: 0 },
+            { name: 'user_id', desc: 0 },
+          ],
+        },
+      ],
+      family_expedition_pending_rewards: [
+        {
+          name: 'idx_expedition_pending_reward',
+          origin: 'c',
+          unique: 1,
+          columns: [{ name: 'expedition_id', desc: 0 }, { name: 'user_id', desc: 0 }],
+        },
+      ],
+      family_expedition_member_events: [],
       expedition_artifact_inventory: [
         {
           name: 'auto',
@@ -394,6 +506,15 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
     for (const [table, expected] of Object.entries(expectedIndexes)) {
       assert.deepEqual(normalizedIndexes(db, table), expected, `${table} indexes`);
     }
+
+    assert.match(
+      indexSql(db, 'idx_expedition_room_effect_active'),
+      /WHERE\s+consumed_at\s+IS\s+NULL/i,
+    );
+    assert.match(
+      indexSql(db, 'idx_expedition_open_attempt'),
+      /WHERE\s+status\s+IN\s*\(\s*'ready'\s*,\s*'active'\s*,\s*'retry'\s*\)/i,
+    );
   });
 });
 

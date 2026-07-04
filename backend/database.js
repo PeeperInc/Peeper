@@ -403,10 +403,16 @@ db.exec(`
     expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role TEXT NOT NULL,
-    ap INTEGER NOT NULL DEFAULT 3,
+    ap INTEGER NOT NULL DEFAULT 5,
     ap_regen_day INTEGER NOT NULL,
+    ap_regen_at INTEGER NOT NULL DEFAULT 0,
+    hero_hp INTEGER NOT NULL DEFAULT 3,
+    hero_recover_at INTEGER,
     role_ability_day INTEGER NOT NULL,
     role_ability_used INTEGER NOT NULL DEFAULT 0,
+    role_charge INTEGER NOT NULL DEFAULT 1,
+    role_charge_progress INTEGER NOT NULL DEFAULT 0,
+    room_coins_earned INTEGER NOT NULL DEFAULT 0,
     provision_id TEXT,
     provision_state_json TEXT NOT NULL DEFAULT '{}',
     loadout_json TEXT NOT NULL DEFAULT '[]',
@@ -416,6 +422,54 @@ db.exec(`
     prepared_at INTEGER NOT NULL,
     boss_reward_claimed_at INTEGER,
     PRIMARY KEY(expedition_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_room_effects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    room_id INTEGER NOT NULL REFERENCES family_expedition_rooms(id) ON DELETE CASCADE,
+    effect_type TEXT NOT NULL,
+    placed_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    remaining_uses INTEGER NOT NULL DEFAULT 1,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    consumed_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_minigame_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    attempt_token TEXT NOT NULL,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    room_id INTEGER NOT NULL REFERENCES family_expedition_rooms(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_type TEXT NOT NULL,
+    seed TEXT NOT NULL,
+    status TEXT NOT NULL,
+    ap_spent INTEGER NOT NULL DEFAULT 0,
+    retry_available INTEGER NOT NULL DEFAULT 0,
+    started_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    finished_at INTEGER,
+    result_json TEXT NOT NULL DEFAULT '{}'
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_pending_rewards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    claimed_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_member_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    acknowledged_at INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS expedition_artifact_inventory (
@@ -462,8 +516,24 @@ db.exec(`
     ON family_expedition_actions(expedition_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_family_expedition_history_family
     ON family_expedition_history(family_id, finished_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_room_effect_active
+    ON family_expedition_room_effects(expedition_id, room_id, effect_type)
+    WHERE consumed_at IS NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_attempt_token
+    ON family_expedition_minigame_attempts(attempt_token);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_open_attempt
+    ON family_expedition_minigame_attempts(expedition_id, room_id, user_id)
+    WHERE status IN ('ready', 'active', 'retry');
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_pending_reward
+    ON family_expedition_pending_rewards(expedition_id, user_id);
 `);
 db.exec('DROP INDEX IF EXISTS idx_expedition_artifacts_user');
+addColumnIfMissing('family_expedition_members', 'ap_regen_at', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('family_expedition_members', 'hero_hp', 'INTEGER NOT NULL DEFAULT 3');
+addColumnIfMissing('family_expedition_members', 'hero_recover_at', 'INTEGER');
+addColumnIfMissing('family_expedition_members', 'role_charge', 'INTEGER NOT NULL DEFAULT 1');
+addColumnIfMissing('family_expedition_members', 'role_charge_progress', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('family_expedition_members', 'room_coins_earned', 'INTEGER NOT NULL DEFAULT 0');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS blackjack_lobbies (
