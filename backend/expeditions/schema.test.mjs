@@ -593,6 +593,12 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
           unique: 0,
           columns: [{ name: 'user_id', desc: 0 }, { name: 'created_at', desc: 0 }],
         },
+        {
+          name: 'idx_expedition_member_events_user',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'user_id', desc: 0 }, { name: 'created_at', desc: 0 }],
+        },
       ],
       expedition_artifact_inventory: [
         {

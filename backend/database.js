@@ -544,6 +544,8 @@ db.exec(`
     ON family_expedition_pending_rewards(user_id, claimed_at);
   CREATE INDEX IF NOT EXISTS idx_expedition_member_events_expedition_user
     ON family_expedition_member_events(expedition_id, user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_expedition_member_events_user
+    ON family_expedition_member_events(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_expedition_member_events_pending_user
     ON family_expedition_member_events(user_id, created_at)
     WHERE acknowledged_at IS NULL;
