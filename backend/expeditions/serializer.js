@@ -78,10 +78,26 @@ function visibleRoom(room) {
     ['startingRoom', room.startingRoom],
     ['phase', room.phase],
     ['complication', room.complication],
+    ['encounterType', room.encounterType],
+    ['weakRoles', clone(room.weakRoles)],
+    ['enemyIntent', room.enemyIntent],
+    ['threat', room.threat],
+    ['threatMax', room.threatMax],
+    ['miniMechanic', stripSensitive(room.miniMechanic)],
+    ['miniGame', stripSensitive(room.miniGame)],
+    ['scoutChoices', stripSensitive(room.scoutChoices)],
+    ['scoutChoice', stripSensitive(room.scoutChoice)],
+    ['scoutChoiceId', room.scoutChoiceId],
+    ['scoutChosenFrom', room.scoutChosenFrom],
+    ['enemyId', room.enemyId],
+    ['objectId', room.objectId],
+    ['opening', stripSensitive(room.opening)],
+    ['bossPhase', stripSensitive(room.bossPhase)],
     ['unlockedAt', room.unlockedAt],
     ['clearedAt', room.clearedAt],
     ['actions', Array.isArray(room.actions) ? room.actions.map(safeAction) : undefined],
     ['bossDefeated', room.bossDefeated],
+    ['activeEffects', stripSensitive(room.activeEffects || [])],
   ]);
 }
 
@@ -109,7 +125,16 @@ function serializeRooms(snapshot = {}) {
     if (!orderedKeys.has(room.key)) mergedRooms.push(room);
   }
 
-  return mergedRooms.map(room => room.state === 'hidden' ? hiddenRoom(room) : visibleRoom(room));
+  const effectsByRoom = new Map();
+  for (const effect of snapshot.roomEffects || []) {
+    const effects = effectsByRoom.get(effect.roomId) || [];
+    effects.push(effect);
+    effectsByRoom.set(effect.roomId, effects);
+  }
+  return mergedRooms.map(room => {
+    const withEffects = { ...room, activeEffects: effectsByRoom.get(room.id) || [] };
+    return ['hidden', 'locked'].includes(room.state) ? hiddenRoom(withEffects) : visibleRoom(withEffects);
+  });
 }
 
 function serializeMember(member) {
@@ -119,8 +144,13 @@ function serializeMember(member) {
     ['role', member.role],
     ['ap', member.ap],
     ['apRegenDay', member.apRegenDay],
+    ['apRegenAt', member.apRegenAt],
+    ['heroHp', member.heroHp],
+    ['heroRecoverAt', member.heroRecoverAt],
     ['roleAbilityDay', member.roleAbilityDay],
     ['roleAbilityUsed', member.roleAbilityUsed],
+    ['roleCharge', member.roleCharge],
+    ['roleChargeProgress', member.roleChargeProgress],
     ['provisionId', member.provisionId],
     ['provisionState', stripSensitive(member.provisionState || {})],
     ['loadout', stripSensitive(member.loadout || [])],
@@ -152,11 +182,14 @@ function serializeFamilyMembers(familyMembers = [], expeditionMembers = []) {
       ['ap', prepared?.ap],
       ['contributionAp', prepared?.contributionAp],
       ['contributionProgress', prepared?.contributionProgress],
+      ['roleCharge', prepared?.roleCharge],
+      ['roleChargeProgress', prepared?.roleChargeProgress],
     ]);
   });
 }
 
 function serializeAction(action) {
+  const events = action.events || action.modifiers?.events || [];
   return definedObject([
     ['id', action.id],
     ['expeditionId', action.expeditionId],
@@ -166,6 +199,7 @@ function serializeAction(action) {
     ['stat', action.stat],
     ['rawRoll', action.rawRoll],
     ['modifiers', stripSensitive(action.modifiers || {})],
+    ['events', events.length > 0 ? stripSensitive(events) : undefined],
     ['modifiedRoll', action.modifiedRoll],
     ['progressAwarded', action.progressAwarded],
     ['loot', stripSensitive(action.loot || {})],

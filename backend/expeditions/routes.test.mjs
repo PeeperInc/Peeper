@@ -207,6 +207,27 @@ test('GET /current returns empty expedition state when the user has no family', 
   assert.equal(response.body.permissions.canStart, false);
 });
 
+test('GET /current returns AP regenerated while the player was offline', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-ap-regen' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-ap-regen',
+    role: 'scout',
+  });
+  const oneWeekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+  db.prepare(`
+    UPDATE family_expedition_members
+    SET ap = 0, ap_regen_at = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(oneWeekAgo, expeditionId, userIds[0]);
+
+  const response = await request('GET', '/current', 'tg-owner');
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.member.ap, 5);
+});
+
 test('POST /start requires current family membership and enforces one unfinished expedition per family', async () => {
   createUser('tg-owner', 'Solo');
   assert.equal((await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-no-family' })).status, 403);
@@ -380,6 +401,233 @@ test('POST prepare consumes selected farm provision recipe', async () => {
     provisionId: 'carrot_rations',
   });
   assert.equal(replay.status, 200);
+});
+
+test('role ability endpoint places one shared room effect idempotently without burning duplicate charge', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-role-effects' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-role-owner',
+    role: 'knight',
+  });
+  const siblingPrepared = await request('POST', `/${expeditionId}/prepare`, 'tg-sibling', {
+    idempotencyKey: 'prepare-role-sibling',
+    role: 'knight',
+  });
+  const room = siblingPrepared.body.map.rooms.find(candidate => candidate.state === 'unlocked');
+
+  const placed = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.key}/role-ability`,
+    'tg-owner',
+    { idempotencyKey: 'place-knight-shield' },
+  );
+  assert.equal(placed.status, 200);
+  assert.equal(placed.body.member.roleCharge, 0);
+  assert.equal(placed.body.visualEvents[0].type, 'role_effect_placed');
+  const effect = placed.body.map.rooms.find(candidate => candidate.key === room.key).activeEffects[0];
+  assert.equal(effect.effectType, 'knight_shield');
+  assert.deepEqual(effect.placedBy, {
+    userId: userIds[0],
+    firstName: 'Member1',
+    username: 'Member1_user',
+  });
+
+  const replay = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.key}/role-ability`,
+    'tg-owner',
+    { idempotencyKey: 'place-knight-shield' },
+  );
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.map.rooms.find(candidate => candidate.key === room.key).activeEffects.length, 1);
+
+  const duplicate = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.key}/role-ability`,
+    'tg-sibling',
+    { idempotencyKey: 'duplicate-knight-shield' },
+  );
+  assert.equal(duplicate.status, 400);
+  assert.match(duplicate.body.error, /already active/i);
+  assert.equal(
+    db.prepare(`
+      SELECT role_charge FROM family_expedition_members
+      WHERE expedition_id = ? AND user_id = ?
+    `).pluck().get(expeditionId, userIds[1]),
+    1,
+  );
+});
+
+test('Cleric role ability heals the family and returns durable visual events', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-cleric-prayer' });
+  const expeditionId = started.body.expedition.id;
+  const prepared = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-cleric',
+    role: 'cleric',
+  });
+  await request('POST', `/${expeditionId}/prepare`, 'tg-sibling', {
+    idempotencyKey: 'prepare-wounded',
+    role: 'mage',
+  });
+  db.prepare(`
+    UPDATE family_expedition_members SET hero_hp = 2
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[1]);
+  const room = prepared.body.map.rooms.find(candidate => candidate.state === 'unlocked');
+
+  const response = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.key}/role-ability`,
+    'tg-owner',
+    { idempotencyKey: 'cleric-prayer' },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.body.member.roleCharge, 0);
+  assert.equal(response.body.visualEvents.some(event => event.type === 'cleric_heal'), true);
+  assert.equal(
+    db.prepare(`
+      SELECT hero_hp FROM family_expedition_members
+      WHERE expedition_id = ? AND user_id = ?
+    `).pluck().get(expeditionId, userIds[1]),
+    3,
+  );
+  assert.equal(
+    db.prepare(`
+      SELECT COUNT(*) FROM family_expedition_member_events
+      WHERE expedition_id = ? AND user_id = ? AND event_type = 'cleric_heal'
+    `).pluck().get(expeditionId, userIds[1]),
+    1,
+  );
+});
+
+test('shared Mage and Knight effects are consumed by combat and return direct visual events', async () => {
+  createFamilyWithMembers(['tg-owner', 'tg-mage', 'tg-actor']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-combat-effects' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-combat-knight',
+    role: 'knight',
+  });
+  await request('POST', `/${expeditionId}/prepare`, 'tg-mage', {
+    idempotencyKey: 'prepare-combat-mage',
+    role: 'mage',
+  });
+  await request('POST', `/${expeditionId}/prepare`, 'tg-actor', {
+    idempotencyKey: 'prepare-combat-actor',
+    role: 'scout',
+  });
+  const combatRow = db.prepare(`
+    SELECT id, room_key AS roomKey
+    FROM family_expedition_rooms
+    WHERE expedition_id = ?
+      AND (room_type = 'boss' OR json_extract(payload_json, '$.encounterType') = 'combat')
+    ORDER BY id
+    LIMIT 1
+  `).get(expeditionId);
+  assert.ok(combatRow);
+  const combatPayload = JSON.parse(db.prepare(`
+    SELECT payload_json FROM family_expedition_rooms WHERE id = ?
+  `).pluck().get(combatRow.id));
+  combatPayload.actions = [{ id: 'test_strike', stat: 'spirit', modifier: 0, tags: ['combat'] }];
+  combatPayload.weakRoles = [];
+  db.prepare(`
+    UPDATE family_expedition_rooms SET state = 'unlocked', payload_json = ?
+    WHERE expedition_id = ? AND id = ?
+  `).run(JSON.stringify(combatPayload), expeditionId, combatRow.id);
+
+  assert.equal((await request(
+    'POST', `/${expeditionId}/rooms/${combatRow.roomKey}/role-ability`, 'tg-owner',
+    { idempotencyKey: 'combat-shield' },
+  )).status, 200);
+  assert.equal((await request(
+    'POST', `/${expeditionId}/rooms/${combatRow.roomKey}/role-ability`, 'tg-mage',
+    { idempotencyKey: 'combat-fate' },
+  )).status, 200);
+
+  const originalRandomInt = crypto.randomInt;
+  try {
+    const mageSequence = [0, 15];
+    crypto.randomInt = max => mageSequence.length > 0 ? mageSequence.shift() : Math.min(1, max - 1);
+    const advantaged = await request(
+      'POST', `/${expeditionId}/rooms/${combatRow.roomKey}/attempt`, 'tg-actor',
+      { idempotencyKey: 'combat-mage-roll', actionId: 'test_strike' },
+    );
+    assert.equal(advantaged.status, 200);
+    const mageEvent = advantaged.body.visualEvents.find(event => event.type === 'mage_advantage');
+    assert.deepEqual(mageEvent.rolls, [1, 16]);
+    assert.equal(mageEvent.chosen, 16);
+
+    crypto.randomInt = () => 0;
+    const blocked = await request(
+      'POST', `/${expeditionId}/rooms/${combatRow.roomKey}/attempt`, 'tg-actor',
+      { idempotencyKey: 'combat-shield-block', actionId: 'test_strike' },
+    );
+    assert.equal(blocked.status, 200);
+    assert.equal(blocked.body.visualEvents.some(event => event.type === 'shield_blocked'), true);
+    assert.equal(blocked.body.member.heroHp, 3);
+    assert.deepEqual(
+      blocked.body.map.rooms.find(room => room.key === combatRow.roomKey).activeEffects,
+      [],
+    );
+  } finally {
+    crypto.randomInt = originalRandomInt;
+  }
+});
+
+test('Scout role ability chooses once per source room and AP spending recharges the role', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-scout-charge' });
+  const expeditionId = started.body.expedition.id;
+  const prepared = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-scout-charge',
+    role: 'scout',
+  });
+  const source = prepared.body.map.rooms.find(room => room.state === 'unlocked' && room.scoutChoices?.length);
+  assert.ok(source);
+  const choice = source.scoutChoices[0];
+
+  const chosen = await request(
+    'POST', `/${expeditionId}/rooms/${source.key}/role-ability`, 'tg-owner',
+    { idempotencyKey: 'choose-scout-path', choiceId: choice.id },
+  );
+  assert.equal(chosen.status, 200);
+  assert.equal(chosen.body.member.roleCharge, 0);
+  assert.equal(
+    chosen.body.map.rooms.find(room => room.key === source.key).scoutChoice.choiceId,
+    choice.id,
+  );
+
+  db.prepare(`
+    UPDATE family_expedition_members
+    SET role_charge = 1, role_charge_progress = 0
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
+  const duplicate = await request(
+    'POST', `/${expeditionId}/rooms/${source.key}/role-ability`, 'tg-owner',
+    { idempotencyKey: 'choose-scout-path-again', choiceId: source.scoutChoices[1].id },
+  );
+  assert.equal(duplicate.status, 400);
+  assert.match(duplicate.body.error, /already chosen/i);
+  assert.equal(db.prepare(`
+    SELECT role_charge FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = ?
+  `).pluck().get(expeditionId, userIds[0]), 1);
+
+  db.prepare(`
+    UPDATE family_expedition_members
+    SET role_charge = 0, role_charge_progress = 2
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
+  const attempted = await request(
+    'POST', `/${expeditionId}/rooms/${source.key}/attempt`, 'tg-owner',
+    { idempotencyKey: 'recharge-scout-with-ap', actionId: source.actions[0].id },
+  );
+  assert.equal(attempted.status, 200);
+  assert.equal(attempted.body.member.roleCharge, 1);
+  assert.equal(attempted.body.member.roleChargeProgress, 0);
 });
 
 test('POST claim-boss-reward enforces contribution threshold and claims once', async () => {

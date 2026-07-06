@@ -11,6 +11,16 @@ const {
 } = require('./catalog');
 const { applyArtifactEffects } = require('./artifactEffects');
 const {
+  ROLE_EFFECT_TYPES,
+  advanceRoleCharge,
+  consumeRoleCharge,
+  consumeRoomEffect,
+  listActiveRoomEffects,
+  placeRoleEffect,
+  resolveMageRoll,
+  useClericPrayer,
+} = require('./roleEffects');
+const {
   LOOT_TABLES,
   grantArtifact,
   rollCoins,
@@ -1005,6 +1015,8 @@ function rowToMember(row) {
     heroRecoverAt,
     roleAbilityDay: row.role_ability_day,
     roleAbilityUsed: Boolean(row.role_ability_used),
+    roleCharge: row.role_charge ?? 1,
+    roleChargeProgress: row.role_charge_progress ?? 0,
     provisionId: row.provision_id,
     provisionState: parseJson(row.provision_state_json, {}),
     loadout: loadoutState.slots,
@@ -1073,7 +1085,8 @@ function readSnapshot(transaction, expeditionId) {
   const actions = transaction.prepare(`
     SELECT * FROM family_expedition_actions WHERE expedition_id = ? ORDER BY id
   `).all(expeditionId).map(rowToAction);
-  return clone({ expedition, rooms, members, actions });
+  const roomEffects = listActiveRoomEffects(transaction, { expeditionId });
+  return clone({ expedition, rooms, members, actions, roomEffects });
 }
 
 function roomPayload(room) {
@@ -1158,6 +1171,12 @@ function getMemberRow(transaction, expeditionId, userId) {
   return row;
 }
 
+function memberTableHasColumn(transaction, columnName) {
+  return transaction.prepare('PRAGMA table_info(family_expedition_members)')
+    .all()
+    .some(column => column.name === columnName);
+}
+
 function readInventory(transaction, userId) {
   return transaction.prepare(`
     SELECT artifact_id AS artifactId, quantity, charges
@@ -1178,6 +1197,14 @@ function mapWithRoomStates(map, rooms) {
 }
 
 function updateMember(transaction, expeditionId, memberResult, contribution = {}) {
+  const apSpent = Math.max(0, Math.floor(Number(contribution.ap) || 0));
+  const rechargeThreshold = Math.max(1, Math.floor(Number(memberResult.roleRechargeThreshold) || 3));
+  const charge = apSpent > 0
+    ? advanceRoleCharge(memberResult, apSpent, rechargeThreshold)
+    : {
+        roleCharge: memberResult.roleCharge ?? 1,
+        roleChargeProgress: memberResult.roleChargeProgress ?? 0,
+      };
   transaction.prepare(`
     UPDATE family_expedition_members SET
       ap = ?,
@@ -1209,6 +1236,13 @@ function updateMember(transaction, expeditionId, memberResult, contribution = {}
     expeditionId,
     memberResult.userId,
   );
+  if (memberTableHasColumn(transaction, 'role_charge')) {
+    transaction.prepare(`
+      UPDATE family_expedition_members
+      SET role_charge = ?, role_charge_progress = ?
+      WHERE expedition_id = ? AND user_id = ?
+    `).run(charge.roleCharge, charge.roleChargeProgress, expeditionId, memberResult.userId);
+  }
 }
 
 function assertExpeditionNotFinished(snapshotOrExpedition) {
@@ -1508,7 +1542,17 @@ function attemptRoom(options) {
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   assertHeroCanAct(memberState, now);
   if (room.state === 'cleared') throw new RangeError('room is already cleared');
-  const result = resolveAttempt({
+  const encounterType = room.encounterType || room.type;
+  const combatRoom = room.type === 'boss' || ['combat', 'boss'].includes(encounterType);
+  const mageRoll = combatRoom && Number.isInteger(reroll)
+    ? resolveMageRoll(transaction, {
+        expeditionId,
+        roomId: room.id,
+        rolls: [roll, reroll],
+        now,
+      })
+    : null;
+  let result = clone(resolveAttempt({
     expedition: {
       id: expeditionId,
       status: snapshot.expedition.status,
@@ -1520,13 +1564,32 @@ function attemptRoom(options) {
     action,
     selectedSupport,
     mechanicChoice: normalizedMechanicChoice,
-    roll,
+    roll: mageRoll?.chosen ?? roll,
     reroll,
     rng,
     now,
     useRoleAbility,
     useSharedBuff,
-  });
+  }));
+  if (mageRoll) result.events.unshift(mageRoll.event);
+
+  const incomingDamage = Math.max(0, Number(memberState.heroHp ?? 3) - Number(result.member.heroHp ?? 3));
+  if (incomingDamage > 0) {
+    const shield = consumeRoomEffect(transaction, {
+      expeditionId,
+      roomId: room.id,
+      effectType: ROLE_EFFECT_TYPES.knight,
+      now,
+    });
+    if (shield) {
+      result.member.heroHp = memberState.heroHp;
+      result.member.heroRecoverAt = memberState.heroRecoverAt ?? null;
+      result.events = result.events.filter(event => !['hero_damaged', 'hero_recovering'].includes(event.type));
+      result.events.push(shield.event);
+      const combatEvent = result.events.find(event => event.type === 'combat_roll');
+      if (combatEvent) combatEvent.heroDamage = 0;
+    }
+  }
   updateMember(transaction, expeditionId, result.member, { ap: 1, progress: result.progressAwarded });
   updateRoom(transaction, expeditionId, result.room);
   const grantedLoot = grantPersonalLoot({
@@ -1712,7 +1775,11 @@ function chooseScoutRoom(options) {
   const dayKey = utcDayKey(now);
   const scout = normalizeRoleDay(memberState, dayKey);
   if (scout.role !== 'scout') throw new RangeError('only scouts can choose the next room');
-  if (scout.roleAbilityUsed) throw new RangeError('scout choice ability is already used');
+  if (memberTableHasColumn(transaction, 'role_charge')) {
+    consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout' });
+  } else if (scout.roleAbilityUsed) {
+    throw new RangeError('scout choice ability is already used');
+  }
 
   const targetKey = choice.targetKey || choice.room?.key;
   const connected = (snapshot.expedition.map.edges || [])
@@ -1735,6 +1802,8 @@ function chooseScoutRoom(options) {
   };
   const nextTarget = applyScoutChoiceToTarget(source, target, choice, userId, now);
   scout.roleAbilityUsed = true;
+  scout.roleCharge = 0;
+  scout.roleChargeProgress = 0;
 
   updateRoom(transaction, expeditionId, nextSource);
   updateRoomDefinition(transaction, expeditionId, nextTarget);
@@ -1750,6 +1819,86 @@ function chooseScoutRoom(options) {
     now,
   });
   return readSnapshot(transaction, expeditionId);
+}
+
+function useRoleAbility(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    roomKey,
+    choiceId = null,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const intent = { expeditionId, userId, roomKey, choiceId };
+  const member = rowToMember(getMemberRow(transaction, expeditionId, userId));
+
+  if (member.role === 'scout') {
+    const snapshot = chooseScoutRoom({
+      transaction,
+      idempotencyKey,
+      expeditionId,
+      userId,
+      fromRoomKey: roomKey,
+      choiceId,
+      now,
+    });
+    return {
+      snapshot,
+      visualEvents: [{ type: 'scout_path_chosen', choiceId, placedBy: userId }],
+    };
+  }
+
+  const replay = findIdempotentAction(transaction, {
+    userId,
+    idempotencyKey,
+    expectedActionType: 'role_ability',
+    expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
+  });
+  if (replay) {
+    const modifiers = parseJson(replay.modifierJson, {});
+    return {
+      snapshot: readSnapshot(transaction, replay.expeditionId),
+      visualEvents: modifiers.events || [],
+    };
+  }
+
+  const snapshot = readSnapshot(transaction, expeditionId);
+  assertExpeditionNotFinished(snapshot);
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  if (room.state !== 'unlocked') throw new RangeError('role ability requires the current unlocked room');
+  assertHeroCanAct(recoverHeroIfReady(member, now), now);
+
+  let visualEvents;
+  if (member.role === 'cleric') {
+    visualEvents = useClericPrayer(transaction, { expeditionId, userId, now }).events;
+  } else if (ROLE_EFFECT_TYPES[member.role]) {
+    const effect = placeRoleEffect(transaction, {
+      expeditionId,
+      roomId: room.id,
+      userId,
+      role: member.role,
+      now,
+    });
+    visualEvents = [{ type: 'role_effect_placed', effect }];
+  } else {
+    throw new RangeError('role does not have a supported ability');
+  }
+
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId,
+    actionType: 'role_ability',
+    modifiers: { events: visualEvents },
+    intent,
+    now,
+  });
+  return { snapshot: readSnapshot(transaction, expeditionId), visualEvents };
 }
 
 function completeEventRoom(options) {
@@ -2015,6 +2164,7 @@ module.exports = {
   assistRoom,
   revealRoom,
   chooseScoutRoom,
+  useRoleAbility,
   completeEventRoom,
   equipFoundArtifactForMember,
   claimBossReward,

@@ -10,13 +10,18 @@ const {
   attemptRoom,
   assistRoom,
   revealRoom,
+  chooseScoutRoom,
+  completeEventRoom,
+  useRoleAbility,
   equipFoundArtifactForMember,
   claimBossReward,
   finishExpedition,
+  regenerateAp,
 } = require('../expeditions/engine');
 const { THEME_ID } = require('../expeditions/catalog');
 const { generateExpeditionMap } = require('../expeditions/generator');
 const { serializeExpeditionState } = require('../expeditions/serializer');
+const { listActiveRoomEffects } = require('../expeditions/roleEffects');
 
 const router = express.Router();
 
@@ -83,14 +88,26 @@ function parseLoadoutState(text) {
 function rowToMember(row) {
   const loadoutState = parseLoadoutState(row.loadout_json);
   const debuff = parseJson(row.debuff_json, null);
+  const heroRecoverAt = row.hero_recover_at ?? null;
+  const recovered = heroRecoverAt && heroRecoverAt <= Math.floor(Date.now() / 1000);
+  const regeneratedAp = regenerateAp({
+    ap: row.ap,
+    apRegenDay: row.ap_regen_day,
+    apRegenAt: row.ap_regen_at,
+  });
   return {
     expeditionId: row.expedition_id,
     userId: row.user_id,
     role: row.role,
-    ap: row.ap,
-    apRegenDay: row.ap_regen_day,
+    ap: regeneratedAp.ap,
+    apRegenDay: regeneratedAp.apRegenDay,
+    apRegenAt: regeneratedAp.apRegenAt,
+    heroHp: recovered ? 3 : row.hero_hp ?? 3,
+    heroRecoverAt: recovered ? null : heroRecoverAt,
     roleAbilityDay: row.role_ability_day,
     roleAbilityUsed: Boolean(row.role_ability_used),
+    roleCharge: row.role_charge ?? 1,
+    roleChargeProgress: row.role_charge_progress ?? 0,
     provisionId: row.provision_id,
     provisionState: parseJson(row.provision_state_json, {}),
     loadout: loadoutState.slots,
@@ -104,6 +121,7 @@ function rowToMember(row) {
 }
 
 function rowToAction(row) {
+  const modifiers = parseJson(row.modifier_json, {});
   return {
     id: row.id,
     idempotencyKey: row.idempotency_key,
@@ -113,7 +131,8 @@ function rowToAction(row) {
     actionType: row.action_type,
     stat: row.stat,
     rawRoll: row.raw_roll,
-    modifiers: parseJson(row.modifier_json, {}),
+    modifiers,
+    events: modifiers.events || [],
     modifiedRoll: row.modified_roll,
     progressAwarded: row.progress_awarded,
     loot: parseJson(row.loot_json, {}),
@@ -136,7 +155,8 @@ function readSnapshot(expeditionId) {
   const actions = db.prepare(`
     SELECT * FROM family_expedition_actions WHERE expedition_id = ? ORDER BY id
   `).all(expeditionId).map(rowToAction);
-  return { expedition, rooms, members, actions };
+  const roomEffects = listActiveRoomEffects(db, { expeditionId });
+  return { expedition, rooms, members, actions, roomEffects };
 }
 
 function getUser(req) {
@@ -386,9 +406,7 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
   const useRoleAbility = Boolean(req.body?.useRoleAbility);
   const replayIntent = existingAttemptIntent(replay, access.expeditionId);
   const roll = Number.isInteger(replayIntent?.roll) ? replayIntent.roll : secureD20();
-  const reroll = useRoleAbility
-    ? (Number.isInteger(replayIntent?.reroll) ? replayIntent.reroll : secureD20())
-    : null;
+  const reroll = Number.isInteger(replayIntent?.reroll) ? replayIntent.reroll : secureD20();
 
   try {
     const snapshot = db.transaction(() => attemptRoom({
@@ -398,6 +416,7 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
       userId: req.currentUser.id,
       roomKey: req.params.roomKey,
       actionId: req.body?.actionId,
+      mechanicChoice: req.body?.mechanicChoice,
       selectedSupport: req.body?.selectedSupport ?? 0,
       roll,
       reroll,
@@ -405,7 +424,11 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
       useRoleAbility,
       useSharedBuff: Boolean(req.body?.useSharedBuff),
     }))();
-    return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
+    const action = existingIdempotentAction(req.currentUser.id, idempotencyKey);
+    return res.json({
+      ...serializeFor(req.currentUser, access.family, snapshot, false),
+      visualEvents: action?.modifiers?.events || [],
+    });
   } catch (error) {
     return handleRouteError(res, error);
   }
@@ -435,6 +458,30 @@ router.post('/:id/rooms/:roomKey/assist', (req, res) => {
   }
 });
 
+router.post('/:id/rooms/:roomKey/role-ability', (req, res) => {
+  const idempotencyKey = requireIdempotencyKey(req, res);
+  if (!idempotencyKey) return;
+  const access = requireExpeditionAccess(req, res);
+  if (!access) return;
+
+  try {
+    const result = db.transaction(() => useRoleAbility({
+      transaction: db,
+      idempotencyKey,
+      expeditionId: access.expeditionId,
+      userId: req.currentUser.id,
+      roomKey: req.params.roomKey,
+      choiceId: req.body?.choiceId || null,
+    }))();
+    return res.json({
+      ...serializeFor(req.currentUser, access.family, result.snapshot, false),
+      visualEvents: result.visualEvents,
+    });
+  } catch (error) {
+    return handleRouteError(res, error);
+  }
+});
+
 router.post('/:id/rooms/:roomKey/reveal', (req, res) => {
   const idempotencyKey = requireIdempotencyKey(req, res);
   if (!idempotencyKey) return;
@@ -449,6 +496,49 @@ router.post('/:id/rooms/:roomKey/reveal', (req, res) => {
       userId: req.currentUser.id,
       fromRoomKey: req.body?.fromRoomKey,
       roomKey: req.params.roomKey,
+    }))();
+    return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
+  } catch (error) {
+    return handleRouteError(res, error);
+  }
+});
+
+router.post('/:id/rooms/:roomKey/scout-choice', (req, res) => {
+  const idempotencyKey = requireIdempotencyKey(req, res);
+  if (!idempotencyKey) return;
+  const access = requireExpeditionAccess(req, res);
+  if (!access) return;
+
+  try {
+    const snapshot = db.transaction(() => chooseScoutRoom({
+      transaction: db,
+      idempotencyKey,
+      expeditionId: access.expeditionId,
+      userId: req.currentUser.id,
+      fromRoomKey: req.params.roomKey,
+      choiceId: req.body?.choiceId,
+    }))();
+    return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
+  } catch (error) {
+    return handleRouteError(res, error);
+  }
+});
+
+router.post('/:id/rooms/:roomKey/event-minigame', (req, res) => {
+  const idempotencyKey = requireIdempotencyKey(req, res);
+  if (!idempotencyKey) return;
+  const access = requireExpeditionAccess(req, res);
+  if (!access) return;
+
+  try {
+    const snapshot = db.transaction(() => completeEventRoom({
+      transaction: db,
+      idempotencyKey,
+      expeditionId: access.expeditionId,
+      userId: req.currentUser.id,
+      roomKey: req.params.roomKey,
+      score: req.body?.score,
+      rng: secureRng,
     }))();
     return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
   } catch (error) {
