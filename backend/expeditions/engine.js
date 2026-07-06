@@ -1481,7 +1481,6 @@ function attemptRoom(options) {
   const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
   const memberRow = getMemberRow(transaction, expeditionId, userId);
   const memberState = recoverHeroIfReady(rowToMember(memberRow), now);
-  assertHeroCanAct(memberState, now);
   const action = actionId
     ? (room.actions || []).find(candidate => candidate.id === actionId)
     : actionForMemberRole(room, memberState);
@@ -1507,6 +1506,7 @@ function attemptRoom(options) {
     expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
+  assertHeroCanAct(memberState, now);
   if (room.state === 'cleared') throw new RangeError('room is already cleared');
   const result = resolveAttempt({
     expedition: {

@@ -1886,3 +1886,75 @@ test('idempotency replay rejects same action type with different room or action 
   })), /idempotency conflict/);
   db.close();
 });
+
+test('transactional attempt replay succeeds while the hero is recovering from its knockout', () => {
+  const db = expeditionDb();
+  const combatHall = {
+    ...hall,
+    type: 'combat',
+    encounterType: 'combat',
+    progressTarget: 20,
+    actions: [{ ...hall.actions[0], stat: 'might', modifier: 0 }],
+  };
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-knockout-replay',
+    familyId: 84,
+    userId: 17,
+    seed: 'knockout-replay-seed',
+    map: {
+      rooms: [camp, combatHall],
+      edges: [{ from: 'camp_0', to: 'hall_1' }],
+    },
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-knockout-replay',
+    expeditionId,
+    userId: 17,
+    role: 'scout',
+    now: 1000,
+  }));
+  db.prepare(`
+    UPDATE family_expedition_rooms SET state = 'unlocked'
+    WHERE expedition_id = ? AND room_key = 'hall_1'
+  `).run(expeditionId);
+  db.prepare(`
+    UPDATE family_expedition_members SET hero_hp = 1
+    WHERE expedition_id = ? AND user_id = 17
+  `).run(expeditionId);
+
+  const attempt = {
+    transaction: db,
+    idempotencyKey: 'attempt-knockout-replay',
+    expeditionId,
+    userId: 17,
+    roomKey: 'hall_1',
+    actionId: 'thread_gap',
+    roll: 1,
+    now: 2000,
+  };
+  const first = inTx(db, () => attemptRoom(attempt));
+  const memberAfterKnockout = db.prepare(`
+    SELECT ap, hero_hp AS heroHp, hero_recover_at AS heroRecoverAt
+    FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = 17
+  `).get(expeditionId);
+  const replay = inTx(db, () => attemptRoom(attempt));
+
+  assert.deepEqual(memberAfterKnockout, {
+    ap: 4,
+    heroHp: 0,
+    heroRecoverAt: 2000 + 6 * 60 * 60,
+  });
+  assert.deepEqual(db.prepare(`
+    SELECT ap, hero_hp AS heroHp, hero_recover_at AS heroRecoverAt
+    FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = 17
+  `).get(expeditionId), memberAfterKnockout);
+  assert.equal(first.actions.filter(action => action.idempotencyKey === 'attempt-knockout-replay').length, 1);
+  assert.equal(replay.actions.filter(action => action.idempotencyKey === 'attempt-knockout-replay').length, 1);
+  db.close();
+});
