@@ -358,6 +358,20 @@ test('default attempt time stores knockout recovery as unix seconds', () => {
   assert.ok(result.member.heroRecoverAt <= after + 6 * 60 * 60);
 });
 
+test('millisecond attempt time stores knockout recovery as unix seconds', () => {
+  const now = Date.UTC(2026, 5, 23);
+  const result = resolveAttempt({
+    expedition: { id: 54, status: 'active' },
+    member: member({ role: 'scout', heroHp: 1 }),
+    room: { ...hall, type: 'combat', encounterType: 'combat', progress: 0, progressTarget: 6 },
+    action: { ...hall.actions[0], modifier: 0, stat: 'might' },
+    roll: 1,
+    now,
+  });
+
+  assert.equal(result.member.heroRecoverAt, Math.floor(now / 1000) + 6 * 60 * 60);
+});
+
 test('boss encounters use combat damage and progress bands', () => {
   const bossRoom = {
     ...boss,

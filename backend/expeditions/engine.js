@@ -488,8 +488,9 @@ function resolveAttempt({
   useRoleAbility = false,
   useSharedBuff = false,
 } = {}) {
-  const dayKey = utcDayKey(now);
-  const regenerated = regenerateAp(member || {}, now);
+  const currentTime = unixSeconds(now);
+  const dayKey = utcDayKey(currentTime);
+  const regenerated = regenerateAp(member || {}, currentTime);
   const nextMember = normalizeRoleDay({ ...(clone(member || {})), ...regenerated }, dayKey);
   if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
   if (['hidden', 'locked'].includes(room?.state)) throw new RangeError('room is not unlocked');
@@ -662,13 +663,13 @@ function resolveAttempt({
     } else {
       nextRoom.state = 'cleared';
       nextRoom.bossDefeated = true;
-      nextRoom.clearedAt = now;
+      nextRoom.clearedAt = currentTime;
       nextExpedition.status = 'boss_defeated';
-      nextExpedition.bossDefeatedAt = now;
+      nextExpedition.bossDefeatedAt = currentTime;
     }
   } else if (nextRoom.progress >= nextRoom.progressTarget) {
     nextRoom.state = 'cleared';
-    nextRoom.clearedAt = now;
+    nextRoom.clearedAt = currentTime;
   }
 
   if (nextRoom.state === 'cleared') {
@@ -689,7 +690,7 @@ function resolveAttempt({
 
   if (Number(nextMember.heroHp ?? 3) <= 0) {
     nextMember.heroHp = 0;
-    nextMember.heroRecoverAt = now + HERO_RECOVERY_SECONDS;
+    nextMember.heroRecoverAt = currentTime + HERO_RECOVERY_SECONDS;
     events.push({ type: 'hero_recovering', recoverAt: nextMember.heroRecoverAt });
   }
 
