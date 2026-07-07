@@ -9,7 +9,6 @@ const {
   prepareMember,
   attemptRoom,
   assistRoom,
-  revealRoom,
   chooseScoutRoom,
   completeEventRoom,
   useRoleAbility,
@@ -403,7 +402,6 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
   if (roomState(access.expeditionId, req.params.roomKey) === 'cleared') {
     if (!replay) return res.status(409).json({ error: 'Room already cleared' });
   }
-  const useRoleAbility = Boolean(req.body?.useRoleAbility);
   const replayIntent = existingAttemptIntent(replay, access.expeditionId);
   const roll = Number.isInteger(replayIntent?.roll) ? replayIntent.roll : secureD20();
   const reroll = Number.isInteger(replayIntent?.reroll) ? replayIntent.reroll : secureD20();
@@ -421,7 +419,6 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
       roll,
       reroll,
       rng: secureRng,
-      useRoleAbility,
       useSharedBuff: Boolean(req.body?.useSharedBuff),
     }))();
     const action = existingIdempotentAction(req.currentUser.id, idempotencyKey);
@@ -483,24 +480,9 @@ router.post('/:id/rooms/:roomKey/role-ability', (req, res) => {
 });
 
 router.post('/:id/rooms/:roomKey/reveal', (req, res) => {
-  const idempotencyKey = requireIdempotencyKey(req, res);
-  if (!idempotencyKey) return;
-  const access = requireExpeditionAccess(req, res);
-  if (!access) return;
-
-  try {
-    const snapshot = db.transaction(() => revealRoom({
-      transaction: db,
-      idempotencyKey,
-      expeditionId: access.expeditionId,
-      userId: req.currentUser.id,
-      fromRoomKey: req.body?.fromRoomKey,
-      roomKey: req.params.roomKey,
-    }))();
-    return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
-  } catch (error) {
-    return handleRouteError(res, error);
-  }
+  return res.status(410).json({
+    error: 'Scout reveal was removed. Update the client and use the role-ability endpoint.',
+  });
 });
 
 router.post('/:id/rooms/:roomKey/scout-choice', (req, res) => {

@@ -403,6 +403,57 @@ test('POST prepare consumes selected farm provision recipe', async () => {
   assert.equal(replay.status, 200);
 });
 
+test('legacy room attempts cannot activate daily role powers and legacy reveal is gone', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-no-legacy-role' });
+  const expeditionId = started.body.expedition.id;
+  const prepared = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-no-legacy-role',
+    role: 'scout',
+  });
+  const source = prepared.body.map.rooms.find(room => room.state === 'unlocked' && room.actions?.length);
+  assert.ok(source);
+
+  const attempted = await request(
+    'POST',
+    `/${expeditionId}/rooms/${source.key}/attempt`,
+    'tg-owner',
+    {
+      idempotencyKey: 'attempt-no-legacy-role',
+      actionId: source.actions[0].id,
+      useRoleAbility: true,
+    },
+  );
+  assert.equal(attempted.status, 200);
+  assert.equal(attempted.body.member.roleAbilityUsed, false);
+  assert.equal(
+    attempted.body.visualEvents.some(event => ['room_revealed', 'role_reroll', 'shared_blessing_added'].includes(event.type)),
+    false,
+  );
+  assert.equal(
+    db.prepare(`
+      SELECT role_ability_used FROM family_expedition_members
+      WHERE expedition_id = ? AND user_id = ?
+    `).pluck().get(expeditionId, userIds[0]),
+    0,
+  );
+  assert.equal(attempted.body.member.roleCharge, 1);
+  const storedIntent = JSON.parse(db.prepare(`
+    SELECT modifier_json FROM family_expedition_actions
+    WHERE idempotency_key = 'attempt-no-legacy-role'
+  `).pluck().get()).intent;
+  assert.equal(Object.hasOwn(storedIntent, 'useRoleAbility'), false);
+
+  const reveal = await request(
+    'POST',
+    `/${expeditionId}/rooms/${source.key}/reveal`,
+    'tg-owner',
+    { idempotencyKey: 'legacy-reveal-gone', fromRoomKey: source.key },
+  );
+  assert.equal(reveal.status, 410);
+  assert.match(reveal.body.error, /role-ability|update/i);
+});
+
 test('role ability endpoint places one shared room effect idempotently without burning duplicate charge', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-role-effects' });

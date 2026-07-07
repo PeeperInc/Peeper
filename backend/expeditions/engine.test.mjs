@@ -23,7 +23,6 @@ const {
   prepareMember,
   attemptRoom,
   assistRoom,
-  revealRoom,
   chooseScoutRoom,
   completeEventRoom,
   equipFoundArtifactForMember,
@@ -147,6 +146,8 @@ function expeditionDb() {
       hero_recover_at INTEGER,
       role_ability_day INTEGER NOT NULL,
       role_ability_used INTEGER NOT NULL DEFAULT 0,
+      role_charge INTEGER NOT NULL DEFAULT 1,
+      role_charge_progress INTEGER NOT NULL DEFAULT 0,
       provision_id TEXT,
       provision_state_json TEXT NOT NULL DEFAULT '{}',
       loadout_json TEXT NOT NULL DEFAULT '[]',
@@ -614,20 +615,7 @@ test('room mechanic choices can trade safety for higher threat risk', () => {
   assert.equal(greedy.room.threat, 3);
 });
 
-test('natural 1 can be protected by daily knight shield and natural 20 grants bonus loot roll', () => {
-  const protectedMiss = resolveAttempt({
-    expedition: { id: 56, status: 'active' },
-    member: member({ role: 'knight', roleAbilityUsed: false }),
-    room: { ...boss, state: 'unlocked' },
-    action: boss.actions[0],
-    roll: 1,
-    useRoleAbility: true,
-    now: Date.UTC(2026, 5, 23),
-  });
-  assert.equal(protectedMiss.progressAwarded, 1);
-  assert.equal(protectedMiss.member.roleAbilityUsed, true);
-  assert.equal(protectedMiss.events.some(event => event.type === 'natural_one_protected'), true);
-
+test('natural 20 grants a bonus loot roll', () => {
   const critical = resolveAttempt({
     expedition: { id: 56, status: 'active' },
     member: member({ role: 'knight' }),
@@ -640,71 +628,36 @@ test('natural 1 can be protected by daily knight shield and natural 20 grants bo
   assert.equal(critical.loot.artifactRolls, 1);
 });
 
-test('knight shield wall converts any zero-progress result into one progress', () => {
-  const protectedSetback = resolveAttempt({
-    expedition: { id: 56, status: 'active' },
-    member: member({ role: 'knight' }),
-    room: { ...hall, progress: 0 },
-    action: { ...hall.actions[0], modifier: 0 },
-    roll: 2,
-    useRoleAbility: true,
-    now: Date.UTC(2026, 5, 23),
-  });
+test('legacy useRoleAbility input cannot activate superseded daily role powers', () => {
+  const cases = [
+    { role: 'knight', roll: 1, reroll: 20 },
+    { role: 'mage', roll: 4, reroll: 20 },
+    { role: 'cleric', roll: 8, reroll: 20 },
+    { role: 'scout', roll: 8, reroll: 20 },
+  ];
 
-  assert.equal(protectedSetback.progressAwarded, 1);
-  assert.equal(protectedSetback.member.roleAbilityUsed, true);
-});
+  for (const candidate of cases) {
+    const result = resolveAttempt({
+      expedition: { id: 57, status: 'active', map },
+      member: member({ role: candidate.role, roleAbilityUsed: false }),
+      room: { ...hall, progress: 0 },
+      action: hall.actions[0],
+      roll: candidate.roll,
+      reroll: candidate.reroll,
+      useRoleAbility: true,
+      now: Date.UTC(2026, 5, 23),
+    });
 
-test('daily role abilities cover scout reveal, mage reroll, and cleric shared blessing', () => {
-  const scout = resolveAttempt({
-    expedition: { id: 57, status: 'active', map },
-    member: member({ role: 'scout' }),
-    room: hall,
-    action: hall.actions[0],
-    roll: 8,
-    useRoleAbility: true,
-    now: Date.UTC(2026, 5, 23),
-  });
-  assert.deepEqual(scout.revealedRoomKeys, ['vault_1']);
-
-  const mage = resolveAttempt({
-    expedition: { id: 57, status: 'active' },
-    member: member({ role: 'mage' }),
-    room: { ...hall, progress: 0 },
-    action: hall.actions[0],
-    roll: 4,
-    reroll: 16,
-    useRoleAbility: true,
-    now: Date.UTC(2026, 5, 23),
-  });
-  assert.equal(mage.rawRoll, 16);
-  assert.equal(mage.events.some(event => event.type === 'role_reroll'), true);
-
-  const cleric = resolveAttempt({
-    expedition: { id: 57, status: 'active' },
-    member: member({ role: 'cleric' }),
-    room: { ...hall, progress: 0 },
-    action: hall.actions[0],
-    roll: 8,
-    useRoleAbility: true,
-    now: Date.UTC(2026, 5, 23),
-  });
-  assert.equal(cleric.modifiedRoll, 10);
-  assert.deepEqual(cleric.expedition.sharedBuffs, {
-    rollBonus: { amount: 3, uses: 1, source: 'cleric_blessing' },
-  });
-
-  const blessed = resolveAttempt({
-    expedition: { id: 57, status: 'active', sharedBuffs: cleric.expedition.sharedBuffs },
-    member: member({ role: 'scout' }),
-    room: { ...hall, progress: 0 },
-    action: hall.actions[0],
-    roll: 7,
-    useSharedBuff: true,
-    now: Date.UTC(2026, 5, 23),
-  });
-  assert.equal(blessed.modifiedRoll, 15);
-  assert.equal(blessed.expedition.sharedBuffs.rollBonus.uses, 0);
+    assert.equal(result.rawRoll, candidate.roll, `${candidate.role} must keep the original roll`);
+    assert.equal(result.member.roleAbilityUsed, false, `${candidate.role} must not use legacy state`);
+    assert.deepEqual(result.revealedRoomKeys, [], `${candidate.role} must not reveal rooms`);
+    assert.deepEqual(result.expedition.sharedBuffs, {}, `${candidate.role} must not add legacy buffs`);
+    assert.equal(
+      result.events.some(event => ['role_reroll', 'shared_blessing_added', 'natural_one_protected'].includes(event.type)),
+      false,
+      `${candidate.role} must not emit legacy role events`,
+    );
+  }
 });
 
 test('cursed disables artifacts for one action and blinded clears without a generic roll penalty', () => {
@@ -742,7 +695,7 @@ test('cursed disables artifacts for one action and blinded clears without a gene
   assert.equal(blinded.member.debuff, null);
 });
 
-test('provisions grant AP, prevent debuffs, protect minimum progress, and restore abilities at camp', () => {
+test('provisions grant AP, prevent debuffs, and protect minimum progress', () => {
   assert.equal(prepareMemberLoadout({
     member: member({ ap: 2, provisionId: 'carrot_rations' }),
   }).ap, 3);
@@ -767,21 +720,6 @@ test('provisions grant AP, prevent debuffs, protect minimum progress, and restor
     now: Date.UTC(2026, 5, 23),
   });
   assert.equal(minimum.progressAwarded, 1);
-
-  const restored = resolveAttempt({
-    expedition: { id: 58, status: 'active' },
-    member: member({
-      role: 'cleric',
-      roleAbilityUsed: true,
-      provisionState: { restoreRoleAbility: { uses: 1, roomType: 'camp' } },
-    }),
-    room: camp,
-    action: camp.actions[0],
-    roll: 8,
-    now: Date.UTC(2026, 5, 23),
-  });
-  assert.equal(restored.member.roleAbilityUsed, false);
-  assert.equal(restored.member.provisionState.restoreRoleAbility.uses, 0);
 
   const raised = resolveAttempt({
     expedition: { id: 58, status: 'active' },
@@ -977,7 +915,6 @@ test('transactional orchestration helpers require active transactions and idempo
     prepareMember,
     attemptRoom,
     assistRoom,
-    revealRoom,
     equipFoundArtifactForMember,
     finishExpedition,
   ]) {
@@ -1052,7 +989,6 @@ test('transactional helpers persist attempts, unlocks, idempotent replay, and fi
     roomKey: 'hall_1',
     actionId: 'thread_gap',
     roll: 20,
-    useRoleAbility: true,
     now: Date.UTC(2026, 5, 23),
   }));
   assert.equal(attemptedHall.rooms.find(room => room.key === 'hall_1').state, 'cleared');
@@ -1072,7 +1008,6 @@ test('transactional helpers persist attempts, unlocks, idempotent replay, and fi
     roomKey: 'hall_1',
     actionId: 'thread_gap',
     roll: 20,
-    useRoleAbility: true,
     now: Date.UTC(2026, 5, 23),
   }));
   assert.deepEqual(db.prepare(`
@@ -1335,7 +1270,7 @@ test('boss reward claim requires three AP contribution and is idempotent', () =>
   db.close();
 });
 
-test('transactional reveal and found-artifact equip persist member and room state', () => {
+test('transactional found-artifact equip persists member state', () => {
   const db = expeditionDb();
   const created = inTx(db, () => createExpedition({
     transaction: db,
@@ -1363,22 +1298,6 @@ test('transactional reveal and found-artifact equip persist member and room stat
     artifactIds: ['bent_sword'],
     now: Date.UTC(2026, 5, 23),
   }));
-  db.prepare(`
-    UPDATE family_expedition_rooms SET state = 'unlocked', unlocked_at = ?
-    WHERE expedition_id = ? AND room_key = 'hall_1'
-  `).run(2999, expeditionId);
-
-  const revealed = inTx(db, () => revealRoom({
-    transaction: db,
-    idempotencyKey: 'reveal-vault',
-    expeditionId,
-    userId: 11,
-    fromRoomKey: 'hall_1',
-    roomKey: 'vault_1',
-    now: 3000,
-  }));
-  assert.equal(revealed.rooms.find(room => room.key === 'vault_1').state, 'unlocked');
-
   const equipped = inTx(db, () => equipFoundArtifactForMember({
     transaction: db,
     idempotencyKey: 'equip-found',
@@ -1446,14 +1365,6 @@ test('transactional mutations reject finished expeditions', () => {
     userId: 12,
     roomKey: 'hall_1',
   })), /expedition is finished/);
-  assert.throws(() => inTx(db, () => revealRoom({
-    transaction: db,
-    idempotencyKey: 'reveal-after-finish',
-    expeditionId,
-    userId: 12,
-    fromRoomKey: 'hall_1',
-    roomKey: 'vault_1',
-  })), /expedition is finished/);
   assert.throws(() => inTx(db, () => equipFoundArtifactForMember({
     transaction: db,
     idempotencyKey: 'equip-after-finish',
@@ -1462,70 +1373,6 @@ test('transactional mutations reject finished expeditions', () => {
     artifactId: 'chalk_rune',
     slotIndex: 1,
   })), /expedition is finished/);
-  db.close();
-});
-
-test('transactional scout reveal requires reachable source, connected hidden target, and unused ability', () => {
-  const db = expeditionDb();
-  const created = inTx(db, () => createExpedition({
-    transaction: db,
-    idempotencyKey: 'create-scout-reveal',
-    familyId: 80,
-    userId: 13,
-    seed: 'scout-reveal-seed',
-    map,
-    now: 1000,
-  }));
-  const expeditionId = created.expedition.id;
-  inTx(db, () => prepareMember({
-    transaction: db,
-    idempotencyKey: 'prepare-scout-reveal',
-    expeditionId,
-    userId: 13,
-    role: 'scout',
-    now: Date.UTC(2026, 5, 23),
-  }));
-  db.prepare(`
-    UPDATE family_expedition_rooms SET state = 'locked', unlocked_at = NULL
-    WHERE expedition_id = ? AND room_key = 'hall_1'
-  `).run(expeditionId);
-
-  assert.throws(() => inTx(db, () => revealRoom({
-    transaction: db,
-    idempotencyKey: 'reveal-from-locked',
-    expeditionId,
-    userId: 13,
-    fromRoomKey: 'hall_1',
-    roomKey: 'vault_1',
-    now: 3000,
-  })), /source room is not available/);
-
-  db.prepare(`
-    UPDATE family_expedition_rooms SET state = 'unlocked', unlocked_at = ?
-    WHERE expedition_id = ? AND room_key = 'hall_1'
-  `).run(2999, expeditionId);
-  const revealed = inTx(db, () => revealRoom({
-    transaction: db,
-    idempotencyKey: 'reveal-scout-vault',
-    expeditionId,
-    userId: 13,
-    fromRoomKey: 'hall_1',
-    roomKey: 'vault_1',
-    now: 3000,
-  }));
-  const scout = revealed.members.find(row => row.userId === 13);
-  assert.equal(revealed.rooms.find(room => room.key === 'vault_1').state, 'unlocked');
-  assert.equal(scout.roleAbilityUsed, true);
-
-  assert.throws(() => inTx(db, () => revealRoom({
-    transaction: db,
-    idempotencyKey: 'reveal-scout-boss',
-    expeditionId,
-    userId: 13,
-    fromRoomKey: 'hall_1',
-    roomKey: 'boss_1',
-    now: 3001,
-  })), /scout reveal ability is already used/);
   db.close();
 });
 
@@ -1616,13 +1463,11 @@ test('transactional scout choice locks one next room option per source room', ()
   }));
   const source = chosen.rooms.find(room => room.key === 'camp_0');
   const target = chosen.rooms.find(room => room.key === 'hall_1');
-  const memberAfterChoice = chosen.members.find(row => row.userId === 21);
-
   assert.equal(source.scoutChoice.choiceId, 'trap-path');
   assert.equal(target.type, 'trap');
   assert.equal(target.name, 'Needle Floor');
   assert.equal(target.progressTarget, 2);
-  assert.equal(memberAfterChoice.roleAbilityUsed, true);
+  assert.equal(chosen.members.find(row => row.userId === 21).roleCharge, 0);
   assert.throws(() => inTx(db, () => chooseScoutRoom({
     transaction: db,
     idempotencyKey: 'choose-again',

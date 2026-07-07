@@ -473,17 +473,6 @@ function rollD20(roll, rng) {
   return value;
 }
 
-function firstRevealableConnectedRoom(expedition, fromRoomKey) {
-  const rooms = expedition?.map?.rooms || [];
-  const edges = expedition?.map?.edges || [];
-  const roomByKey = new Map(rooms.map(room => [room.key, room]));
-  const edge = edges.find(candidate => {
-    const room = roomByKey.get(candidate.to);
-    return candidate.from === fromRoomKey && room?.state === 'hidden';
-  });
-  return edge?.to;
-}
-
 function resolveAttempt({
   expedition = {},
   member,
@@ -495,7 +484,6 @@ function resolveAttempt({
   reroll,
   rng = () => 0,
   now = unixSeconds(),
-  useRoleAbility = false,
   useSharedBuff = false,
 } = {}) {
   const currentTime = unixSeconds(now);
@@ -510,18 +498,8 @@ function resolveAttempt({
   nextExpedition.sharedBuffs = clone(nextExpedition.sharedBuffs || {});
   const nextAction = clone(action || {});
   const events = [];
-  const role = ROLES[nextMember.role];
-  const canUseRoleAbility = Boolean(useRoleAbility && role && !nextMember.roleAbilityUsed);
   const artifactsDisabledForAction = nextMember.debuff?.type === 'cursed';
   let rawRoll = rollD20(roll, rng);
-  const initialRawRoll = rawRoll;
-
-  if (canUseRoleAbility && role.ability === 'reroll') {
-    const replacement = rollD20(reroll, rng);
-    rawRoll = Math.max(rawRoll, replacement);
-    nextMember.roleAbilityUsed = true;
-    events.push({ type: 'role_reroll', roll: replacement });
-  }
 
   const modifiers = buildRollModifiers({
     expedition: nextExpedition,
@@ -542,24 +520,6 @@ function resolveAttempt({
     modifiers.parts.push({ source: `shared:${shared.source || 'roll_bonus'}`, amount: shared.amount });
     shared.uses -= 1;
   }
-  if (canUseRoleAbility && role.ability === 'blessing') {
-    nextExpedition.sharedBuffs.rollBonus = {
-      amount: 3,
-      uses: (nextExpedition.sharedBuffs.rollBonus?.uses || 0) + 1,
-      source: 'cleric_blessing',
-    };
-    nextMember.roleAbilityUsed = true;
-    events.push({ type: 'shared_blessing_added', amount: 3 });
-  }
-  if (canUseRoleAbility && role.ability === 'shield_wall') {
-    nextMember.roleAbilityUsed = true;
-  }
-  if (canUseRoleAbility && role.ability === 'reveal_room') {
-    const roomKey = firstRevealableConnectedRoom(nextExpedition, nextRoom.key);
-    if (roomKey) events.push({ type: 'room_revealed', roomKey });
-    nextMember.roleAbilityUsed = true;
-  }
-
   let modifiedRoll = rawRoll + modifiers.total;
   const afterRoll = applyArtifactEffects({
     phase: 'after_roll',
@@ -592,7 +552,6 @@ function resolveAttempt({
     modifiedRoll = raiseModifiedRoll.value;
   }
 
-  const shieldProtected = canUseRoleAbility && role.ability === 'shield_wall';
   const encounterType = nextRoom.encounterType || nextRoom.type;
   const combatRoom = nextRoom.type === 'boss' || ['combat', 'boss'].includes(encounterType);
   const combatRollValue = Math.max(1, Math.min(20, modifiedRoll));
@@ -600,11 +559,10 @@ function resolveAttempt({
   let progressAwarded = progressForRoll({
     rawRoll,
     modifiedRoll,
-    naturalOneProtected: shieldProtected && initialRawRoll === 1,
   });
   if (combatOutcome) {
     progressAwarded = combatOutcome.progress;
-    const heroDamage = shieldProtected ? 0 : combatOutcome.heroDamage;
+    const heroDamage = combatOutcome.heroDamage;
     if (heroDamage > 0) {
       nextMember.heroHp = Math.max(0, Number(nextMember.heroHp ?? 3) - heroDamage);
       events.push({ type: 'hero_damaged', amount: heroDamage, heroHp: nextMember.heroHp });
@@ -617,12 +575,6 @@ function resolveAttempt({
       heroDamage,
     });
   }
-  if (shieldProtected && progressAwarded === 0) {
-    progressAwarded = 1;
-    events.push({ type: 'zero_progress_protected' });
-    if (initialRawRoll === 1) events.push({ type: 'natural_one_protected' });
-  }
-
   const minimum = nextMember.provisionState?.minimumProgress;
   if ((minimum?.uses ?? 0) > 0 && progressAwarded === minimum.from) {
     progressAwarded = Math.max(progressAwarded, minimum.to);
@@ -706,7 +658,7 @@ function resolveAttempt({
 
   if (progressAwarded === 0 && nextRoom.complication) {
     const prevented = nextMember.provisionState?.preventDebuff;
-    if ((prevented?.uses ?? 0) > 0 || shieldProtected || beforeProgress.debuffPrevented) {
+    if ((prevented?.uses ?? 0) > 0 || beforeProgress.debuffPrevented) {
       if ((prevented?.uses ?? 0) > 0) prevented.uses -= 1;
     } else {
       nextMember.debuff = { type: nextRoom.complication };
@@ -734,14 +686,6 @@ function resolveAttempt({
   });
   nextMember.loadout = afterProgress.loadout;
   nextMember.triggerHistory = afterProgress.triggerHistory;
-  if (afterProgress.roleAbilityRestored) nextMember.roleAbilityUsed = false;
-
-  const restore = nextMember.provisionState?.restoreRoleAbility;
-  if ((restore?.uses ?? 0) > 0 && restore.roomType === nextRoom.type) {
-    nextMember.roleAbilityUsed = false;
-    restore.uses -= 1;
-  }
-
   const roomClearedByAttempt = (
     nextRoom.state === 'cleared'
     && nextRoom.type !== 'boss'
@@ -1507,7 +1451,6 @@ function attemptRoom(options) {
     reroll,
     rng = () => 0,
     now = Math.floor(Date.now() / 1000),
-    useRoleAbility = false,
     useSharedBuff = false,
   } = options;
   let snapshot = readSnapshot(transaction, expeditionId);
@@ -1529,7 +1472,6 @@ function attemptRoom(options) {
     selectedSupport,
     roll: roll ?? null,
     reroll: reroll ?? null,
-    useRoleAbility,
     useSharedBuff,
   };
   const replay = findIdempotentAction(transaction, {
@@ -1568,7 +1510,6 @@ function attemptRoom(options) {
     reroll,
     rng,
     now,
-    useRoleAbility,
     useSharedBuff,
   }));
   if (mageRoll) result.events.unshift(mageRoll.event);
@@ -1680,62 +1621,6 @@ function assistRoom(options) {
   return readSnapshot(transaction, expeditionId);
 }
 
-function revealRoom(options) {
-  assertMutationInput(options);
-  const {
-    transaction,
-    idempotencyKey,
-    expeditionId,
-    userId,
-    fromRoomKey,
-    roomKey,
-    now = Math.floor(Date.now() / 1000),
-  } = options;
-  const snapshot = readSnapshot(transaction, expeditionId);
-  assertExpeditionNotFinished(snapshot);
-  const intent = { expeditionId, userId, fromRoomKey, roomKey };
-  const replay = findIdempotentAction(transaction, {
-    userId,
-    idempotencyKey,
-    expectedActionType: 'reveal_room',
-    expectedExpeditionId: expeditionId,
-    expectedIntent: intent,
-  });
-  if (replay) return readSnapshot(transaction, replay.expeditionId);
-  const connected = (snapshot.expedition.map.edges || [])
-    .some(edge => edge.from === fromRoomKey && edge.to === roomKey);
-  if (!connected) throw new RangeError('room is not connected');
-  const memberState = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
-  assertHeroCanAct(memberState, now);
-  const dayKey = utcDayKey(now);
-  const revealMember = normalizeRoleDay(memberState, dayKey);
-  if (revealMember.role !== 'scout') throw new RangeError('only scouts can reveal rooms');
-  if (revealMember.roleAbilityUsed) throw new RangeError('scout reveal ability is already used');
-  const fromRoom = getRoomRow(transaction, expeditionId, fromRoomKey);
-  const source = rowToRoom(fromRoom);
-  if (!['unlocked', 'cleared'].includes(source.state)) {
-    throw new RangeError('source room is not available');
-  }
-  const targetBeforeReveal = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
-  if (!['hidden', 'locked'].includes(targetBeforeReveal.state)) {
-    throw new RangeError('target room is already revealed');
-  }
-  const target = revealRoomByKey(transaction, expeditionId, roomKey, now);
-  revealMember.roleAbilityUsed = true;
-  updateMember(transaction, expeditionId, revealMember);
-  insertAction(transaction, {
-    idempotencyKey,
-    expeditionId,
-    roomId: fromRoom.id,
-    userId,
-    actionType: 'reveal_room',
-    modifiers: { revealedRoomKey: target.key },
-    intent,
-    now,
-  });
-  return readSnapshot(transaction, expeditionId);
-}
-
 function chooseScoutRoom(options) {
   assertMutationInput(options);
   const {
@@ -1775,11 +1660,7 @@ function chooseScoutRoom(options) {
   const dayKey = utcDayKey(now);
   const scout = normalizeRoleDay(memberState, dayKey);
   if (scout.role !== 'scout') throw new RangeError('only scouts can choose the next room');
-  if (memberTableHasColumn(transaction, 'role_charge')) {
-    consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout' });
-  } else if (scout.roleAbilityUsed) {
-    throw new RangeError('scout choice ability is already used');
-  }
+  consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout' });
 
   const targetKey = choice.targetKey || choice.room?.key;
   const connected = (snapshot.expedition.map.edges || [])
@@ -1801,7 +1682,6 @@ function chooseScoutRoom(options) {
     },
   };
   const nextTarget = applyScoutChoiceToTarget(source, target, choice, userId, now);
-  scout.roleAbilityUsed = true;
   scout.roleCharge = 0;
   scout.roleChargeProgress = 0;
 
@@ -2162,7 +2042,6 @@ module.exports = {
   prepareMember,
   attemptRoom,
   assistRoom,
-  revealRoom,
   chooseScoutRoom,
   useRoleAbility,
   completeEventRoom,
