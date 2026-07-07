@@ -14,12 +14,17 @@ const {
   ROLE_EFFECT_TYPES,
   advanceRoleCharge,
   consumeRoleCharge,
+  consumeMageRetry,
   consumeRoomEffect,
   listActiveRoomEffects,
   placeRoleEffect,
   resolveMageRoll,
   useClericPrayer,
 } = require('./roleEffects');
+const {
+  finishAttempt,
+  startAttempt,
+} = require('./minigameAttempts');
 const {
   LOOT_TABLES,
   grantArtifact,
@@ -276,6 +281,10 @@ function rollAttemptLoot({ room = {}, member, rawRoll, rng }) {
     artifactRolls,
     table: table.name,
   };
+}
+
+function rollEventLoot({ room = {}, member, rng }) {
+  return rollAttemptLoot({ room, member, rawRoll: null, rng });
 }
 
 function grantPersonalLoot({ transaction, userId, loot = {}, rng = () => 0, now }) {
@@ -1867,7 +1876,7 @@ function completeEventRoom(options) {
     grantedLoot = grantPersonalLoot({
       transaction,
       userId,
-      loot: rollAttemptLoot({ room: nextRoom, member: nextMember, rawRoll: 20, rng }),
+      loot: rollEventLoot({ room: nextRoom, member: nextMember, rng }),
       rng,
       now,
     });
@@ -1887,6 +1896,230 @@ function completeEventRoom(options) {
     now,
   });
   return readSnapshot(transaction, expeditionId);
+}
+
+function minigameTypeForRoom(room) {
+  const gameType = room?.miniGame?.kind || room?.miniGame?.type;
+  if (!gameType) throw new RangeError('event room does not have a mini-game');
+  return gameType;
+}
+
+function assertMinigameRoom(room) {
+  if (room.state === 'cleared') throw new RangeError('room is already cleared');
+  if (room.state !== 'unlocked') throw new RangeError('room is not unlocked');
+  const encounterType = room.encounterType || room.type;
+  if (['combat', 'boss'].includes(encounterType) || ['boss', 'camp', 'combat'].includes(room.type)) {
+    throw new RangeError('event mini-game is not available in this room');
+  }
+}
+
+function startMinigameAttempt(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    roomKey,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const snapshot = readSnapshot(transaction, expeditionId);
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  const attempt = startAttempt(transaction, {
+    expeditionId,
+    roomId: room.id,
+    userId,
+    gameType: minigameTypeForRoom(room),
+    idempotencyKey,
+    now: unixSeconds(now),
+    expireOpenAttempt: openAttempt => finishAttempt(transaction, {
+      expeditionId,
+      roomId: room.id,
+      userId,
+      attemptToken: openAttempt.attemptToken,
+      idempotencyKey: `auto-expire:${openAttempt.attemptToken}`,
+      result: { success: false, reason: 'timeout' },
+      forceState: 'expired',
+      now: unixSeconds(now),
+      onFailure: () => applyMinigameFailure({
+        transaction,
+        expeditionId,
+        room,
+        userId,
+        idempotencyKey: `auto-expire:${openAttempt.attemptToken}`,
+        now: unixSeconds(now),
+      }),
+    }),
+    onStart: () => {
+      assertExpeditionNotFinished(snapshot);
+      if (snapshot.expedition.status !== 'active') throw new RangeError('expedition is not active');
+      assertMinigameRoom(room);
+      const memberState = recoverHeroIfReady(rowToMember(getMemberRow(
+        transaction,
+        expeditionId,
+        userId,
+      )), now);
+      assertHeroCanAct(memberState, now);
+      const nextMember = normalizeRoleDay({ ...memberState, ...regenerateAp(memberState, now) }, utcDayKey(now));
+      if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
+      nextMember.ap -= 1;
+      updateMember(transaction, expeditionId, nextMember, { ap: 1, progress: 0 });
+    },
+  });
+  return { attempt, snapshot: readSnapshot(transaction, expeditionId) };
+}
+
+function applyMinigameFailure({ transaction, expeditionId, room, userId, idempotencyKey, now }) {
+  const snapshot = readSnapshot(transaction, expeditionId);
+  assertExpeditionNotFinished(snapshot);
+  if (snapshot.expedition.status !== 'active') throw new RangeError('expedition is not active');
+  const memberState = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
+  const shield = consumeRoomEffect(transaction, {
+    expeditionId,
+    roomId: room.id,
+    effectType: ROLE_EFFECT_TYPES.knight,
+    now,
+  });
+  if (shield) {
+    insertAction(transaction, {
+      idempotencyKey,
+      expeditionId,
+      roomId: room.id,
+      userId,
+      actionType: 'event_minigame_failure',
+      modifiers: { events: [shield.event] },
+      intent: { roomKey: room.key, outcome: 'failure' },
+      now,
+    });
+    return { heroHp: memberState.heroHp, visualEvents: [shield.event] };
+  }
+
+  const heroHp = Math.max(0, Number(memberState.heroHp ?? 3) - 1);
+  const heroRecoverAt = heroHp === 0 ? now + HERO_RECOVERY_SECONDS : null;
+  const nextMember = { ...memberState, heroHp, heroRecoverAt };
+  updateMember(transaction, expeditionId, nextMember);
+  const visualEvents = [{ type: 'hero_damaged', amount: 1, heroHp }];
+  if (heroRecoverAt) visualEvents.push({ type: 'hero_recovering', heroRecoverAt });
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId,
+    actionType: 'event_minigame_failure',
+    modifiers: { events: visualEvents },
+    intent: { roomKey: room.key, outcome: 'failure' },
+    now,
+  });
+  return { heroHp, heroRecoverAt, visualEvents };
+}
+
+function applyMinigameSuccess({
+  transaction,
+  expeditionId,
+  room,
+  userId,
+  idempotencyKey,
+  outcome,
+  rng,
+  now,
+}) {
+  const snapshot = readSnapshot(transaction, expeditionId);
+  assertExpeditionNotFinished(snapshot);
+  if (snapshot.expedition.status !== 'active') throw new RangeError('expedition is not active');
+  const currentRoom = rowToRoom(getRoomRow(transaction, expeditionId, room.key));
+  assertMinigameRoom(currentRoom);
+  const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
+  const previousProgress = currentRoom.progress || 0;
+  const requestedProgress = Number(outcome.score ?? 0) >= 90 ? 2 : 1;
+  const nextRoom = {
+    ...currentRoom,
+    progress: Math.min(currentRoom.progressTarget || Infinity, previousProgress + requestedProgress),
+  };
+  const progressAwarded = Math.max(0, nextRoom.progress - previousProgress);
+  if (nextRoom.progress >= (nextRoom.progressTarget || Infinity)) {
+    nextRoom.state = 'cleared';
+    nextRoom.clearedAt = now;
+    nextRoom.threat = 0;
+    nextRoom.threatState = null;
+  }
+  updateMember(transaction, expeditionId, memberState, { progress: progressAwarded });
+  updateRoom(transaction, expeditionId, nextRoom);
+
+  let loot = {};
+  if (nextRoom.state === 'cleared') {
+    loot = grantPersonalLoot({
+      transaction,
+      userId,
+      loot: rollEventLoot({ room: nextRoom, member: memberState, rng }),
+      rng,
+      now,
+    });
+    persistUnlocks(transaction, expeditionId, snapshot.expedition.map, nextRoom.key, now);
+  }
+  const visualEvents = [{ type: 'event_minigame_success', progressAwarded }];
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId,
+    actionType: 'event_minigame',
+    modifiers: { score: outcome.score ?? null, events: visualEvents },
+    intent: { roomKey: room.key, outcome },
+    progressAwarded,
+    loot,
+    now,
+  });
+  return { progressAwarded, loot, visualEvents };
+}
+
+function finishMinigameAttempt(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    roomKey,
+    attemptToken,
+    result,
+    rng = () => 0,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  const currentTime = unixSeconds(now);
+  const attempt = finishAttempt(transaction, {
+    expeditionId,
+    roomId: room.id,
+    userId,
+    attemptToken,
+    idempotencyKey,
+    result,
+    now: currentTime,
+    consumeRetry: () => consumeMageRetry(transaction, {
+      expeditionId,
+      roomId: room.id,
+      now: currentTime,
+    }),
+    onSuccess: ({ outcome }) => applyMinigameSuccess({
+      transaction,
+      expeditionId,
+      room,
+      userId,
+      idempotencyKey,
+      outcome,
+      rng,
+      now: currentTime,
+    }),
+    onFailure: () => applyMinigameFailure({
+      transaction,
+      expeditionId,
+      room,
+      userId,
+      idempotencyKey,
+      now: currentTime,
+    }),
+  });
+  return { attempt, snapshot: readSnapshot(transaction, expeditionId) };
 }
 
 function equipFoundArtifactForMember(options) {
@@ -2070,6 +2303,8 @@ module.exports = {
   chooseScoutRoom,
   useRoleAbility,
   completeEventRoom,
+  startMinigameAttempt,
+  finishMinigameAttempt,
   equipFoundArtifactForMember,
   claimBossReward,
   finishExpedition,

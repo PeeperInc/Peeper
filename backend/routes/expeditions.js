@@ -10,7 +10,8 @@ const {
   attemptRoom,
   assistRoom,
   chooseScoutRoom,
-  completeEventRoom,
+  startMinigameAttempt,
+  finishMinigameAttempt,
   useRoleAbility,
   equipFoundArtifactForMember,
   claimBossReward,
@@ -520,22 +521,54 @@ router.post('/:id/rooms/:roomKey/scout-choice', (req, res) => {
 });
 
 router.post('/:id/rooms/:roomKey/event-minigame', (req, res) => {
+  return res.status(410).json({ error: 'Mini-game client update required' });
+});
+
+router.post('/:id/rooms/:roomKey/minigame/start', (req, res) => {
   const idempotencyKey = requireIdempotencyKey(req, res);
   if (!idempotencyKey) return;
   const access = requireExpeditionAccess(req, res);
   if (!access) return;
 
   try {
-    const snapshot = db.transaction(() => completeEventRoom({
+    const result = db.transaction(() => startMinigameAttempt({
       transaction: db,
       idempotencyKey,
       expeditionId: access.expeditionId,
       userId: req.currentUser.id,
       roomKey: req.params.roomKey,
-      score: req.body?.score,
+    }))();
+    return res.json({
+      ...serializeFor(req.currentUser, access.family, result.snapshot, false),
+      attempt: result.attempt,
+    });
+  } catch (error) {
+    return handleRouteError(res, error);
+  }
+});
+
+router.post('/:id/rooms/:roomKey/minigame/:attemptToken/finish', (req, res) => {
+  const idempotencyKey = requireIdempotencyKey(req, res);
+  if (!idempotencyKey) return;
+  const access = requireExpeditionAccess(req, res);
+  if (!access) return;
+
+  try {
+    const result = db.transaction(() => finishMinigameAttempt({
+      transaction: db,
+      idempotencyKey,
+      expeditionId: access.expeditionId,
+      userId: req.currentUser.id,
+      roomKey: req.params.roomKey,
+      attemptToken: req.params.attemptToken,
+      result: req.body?.result,
       rng: secureRng,
     }))();
-    return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
+    return res.json({
+      ...serializeFor(req.currentUser, access.family, result.snapshot, false),
+      attempt: result.attempt,
+      visualEvents: result.attempt.visualEvents || [],
+    });
   } catch (error) {
     return handleRouteError(res, error);
   }

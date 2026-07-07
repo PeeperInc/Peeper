@@ -653,6 +653,174 @@ test('shared Mage and Knight effects are consumed by combat and return direct vi
   }
 });
 
+test('persisted mini-game routes spend AP at start, isolate tokens, and retire the legacy endpoint', async () => {
+  createFamilyWithMembers(['tg-owner', 'tg-sibling']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-route-minigame' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-route-minigame-owner',
+    role: 'scout',
+  });
+  await request('POST', `/${expeditionId}/prepare`, 'tg-sibling', {
+    idempotencyKey: 'prepare-route-minigame-sibling',
+    role: 'mage',
+  });
+  const eventRow = db.prepare(`
+    SELECT id, room_key AS roomKey, payload_json AS payloadJson
+    FROM family_expedition_rooms
+    WHERE expedition_id = ?
+      AND room_type NOT IN ('camp', 'combat', 'boss')
+      AND json_extract(payload_json, '$.miniGame.kind') IS NOT NULL
+    ORDER BY id LIMIT 1
+  `).get(expeditionId);
+  assert.ok(eventRow);
+  const eventPayload = JSON.parse(eventRow.payloadJson);
+  eventPayload.miniGame = { kind: 'focus_hold' };
+  db.prepare("UPDATE family_expedition_rooms SET state = 'unlocked', payload_json = ? WHERE id = ?")
+    .run(JSON.stringify(eventPayload), eventRow.id);
+
+  const legacy = await request(
+    'POST',
+    `/${expeditionId}/rooms/${eventRow.roomKey}/event-minigame`,
+    'tg-owner',
+    { idempotencyKey: 'legacy-minigame', score: 100 },
+  );
+  assert.equal(legacy.status, 410);
+  assert.equal(legacy.body.error, 'Mini-game client update required');
+
+  const attemptStart = await request(
+    'POST',
+    `/${expeditionId}/rooms/${eventRow.roomKey}/minigame/start`,
+    'tg-owner',
+    { idempotencyKey: 'route-minigame-start' },
+  );
+  assert.equal(attemptStart.status, 200);
+  assert.equal(attemptStart.body.attempt.state, 'active');
+  assert.equal(attemptStart.body.member.ap, 4);
+
+  const stolen = await request(
+    'POST',
+    `/${expeditionId}/rooms/${eventRow.roomKey}/minigame/${attemptStart.body.attempt.attemptToken}/finish`,
+    'tg-sibling',
+    {
+      idempotencyKey: 'route-minigame-steal',
+      result: { success: true, score: 100, seed: attemptStart.body.attempt.seed },
+    },
+  );
+  assert.equal(stolen.status, 400);
+  assert.match(stolen.body.error, /attempt not found/i);
+
+  const finish = await request(
+    'POST',
+    `/${expeditionId}/rooms/${eventRow.roomKey}/minigame/${attemptStart.body.attempt.attemptToken}/finish`,
+    'tg-owner',
+    {
+      idempotencyKey: 'route-minigame-finish',
+      result: { success: true, score: 100, seed: attemptStart.body.attempt.seed },
+    },
+  );
+  assert.equal(finish.status, 200);
+  assert.equal(finish.body.attempt.state, 'succeeded');
+  assert.equal(finish.body.member.ap, 4);
+
+  const replay = await request(
+    'POST',
+    `/${expeditionId}/rooms/${eventRow.roomKey}/minigame/${attemptStart.body.attempt.attemptToken}/finish`,
+    'tg-owner',
+    {
+      idempotencyKey: 'route-minigame-finish',
+      result: { success: true, score: 100, seed: attemptStart.body.attempt.seed },
+    },
+  );
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.attempt.state, 'succeeded');
+  assert.equal(replay.body.member.ap, 4);
+});
+
+test('persisted mini-game routes apply Mage retry, knockout recovery, and Knight shield', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-helper']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-route-effects' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-route-effects-owner',
+    role: 'scout',
+  });
+  await request('POST', `/${expeditionId}/prepare`, 'tg-helper', {
+    idempotencyKey: 'prepare-route-effects-helper',
+    role: 'mage',
+  });
+  const room = db.prepare(`
+    SELECT id, room_key AS roomKey, payload_json AS payloadJson
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_type NOT IN ('camp', 'combat', 'boss')
+    ORDER BY id LIMIT 1
+  `).get(expeditionId);
+  assert.ok(room);
+  const payload = JSON.parse(room.payloadJson);
+  payload.miniGame = { kind: 'timing_window' };
+  db.prepare("UPDATE family_expedition_rooms SET state = 'unlocked', payload_json = ? WHERE id = ?")
+    .run(JSON.stringify(payload), room.id);
+  db.prepare(`
+    UPDATE family_expedition_members SET hero_hp = 1
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
+  db.prepare(`
+    INSERT INTO family_expedition_room_effects (
+      expedition_id, room_id, effect_type, placed_by, remaining_uses, created_at
+    ) VALUES (?, ?, 'bend_fate', ?, 1, ?)
+  `).run(expeditionId, room.id, userIds[1], Math.floor(Date.now() / 1000));
+
+  const attempt = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-route-mage-retry' },
+  );
+  const retry = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.roomKey}/minigame/${attempt.body.attempt.attemptToken}/finish`,
+    'tg-owner',
+    { idempotencyKey: 'finish-route-mage-retry', result: { success: false, score: 0 } },
+  );
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.attempt.state, 'retry');
+  assert.equal(retry.body.visualEvents[0].type, 'mage_retry');
+  assert.equal(retry.body.member.ap, 4);
+  assert.equal(retry.body.member.heroHp, 1);
+
+  const knockout = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.roomKey}/minigame/${attempt.body.attempt.attemptToken}/finish`,
+    'tg-owner',
+    { idempotencyKey: 'finish-route-knockout', result: { success: false, score: 0 } },
+  );
+  assert.equal(knockout.status, 200);
+  assert.equal(knockout.body.member.heroHp, 0);
+  assert.ok(knockout.body.member.heroRecoverAt > Math.floor(Date.now() / 1000));
+
+  db.prepare(`
+    UPDATE family_expedition_members SET hero_hp = 3, hero_recover_at = NULL
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
+  db.prepare(`
+    INSERT INTO family_expedition_room_effects (
+      expedition_id, room_id, effect_type, placed_by, remaining_uses, created_at
+    ) VALUES (?, ?, 'knight_shield', ?, 1, ?)
+  `).run(expeditionId, room.id, userIds[1], Math.floor(Date.now() / 1000));
+  const shieldedAttempt = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-route-shielded' },
+  );
+  const shielded = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.roomKey}/minigame/${shieldedAttempt.body.attempt.attemptToken}/finish`,
+    'tg-owner',
+    { idempotencyKey: 'finish-route-shielded', result: { success: false, score: 0 } },
+  );
+  assert.equal(shielded.status, 200);
+  assert.equal(shielded.body.member.heroHp, 3);
+  assert.equal(shielded.body.visualEvents[0].type, 'shield_blocked');
+  assert.deepEqual(shielded.body.map.rooms.find(item => item.key === room.roomKey).activeEffects, []);
+});
+
 test('Scout role ability chooses once per source room and AP spending recharges the role', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-scout-charge' });
