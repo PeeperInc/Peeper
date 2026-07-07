@@ -154,8 +154,21 @@ function readSnapshot(expeditionId) {
   const actions = db.prepare(`
     SELECT * FROM family_expedition_actions WHERE expedition_id = ? ORDER BY id
   `).all(expeditionId).map(rowToAction);
+  const memberEvents = db.prepare(`
+    SELECT id, expedition_id, user_id, event_type, payload_json, created_at
+    FROM family_expedition_member_events
+    WHERE expedition_id = ? AND acknowledged_at IS NULL
+    ORDER BY id
+  `).all(expeditionId).map(row => ({
+    id: row.id,
+    expeditionId: row.expedition_id,
+    userId: row.user_id,
+    eventType: row.event_type,
+    payload: parseJson(row.payload_json, {}),
+    createdAt: row.created_at,
+  }));
   const roomEffects = listActiveRoomEffects(db, { expeditionId });
-  return { expedition, rooms, members, actions, roomEffects };
+  return { expedition, rooms, members, actions, roomEffects, memberEvents };
 }
 
 function getUser(req) {

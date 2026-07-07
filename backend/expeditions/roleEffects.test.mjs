@@ -204,7 +204,7 @@ test('Cleric prayer heals active heroes, shortens recovery, and persists persona
     userId: 10,
     now: 1000,
   });
-  assert.equal(result.events.length, 2);
+  assert.equal(result.events.length, 1);
   assert.equal(db.prepare('SELECT hero_hp FROM family_expedition_members WHERE user_id = 11').pluck().get(), 3);
   assert.equal(db.prepare('SELECT hero_hp FROM family_expedition_members WHERE user_id = 12').pluck().get(), 0);
   assert.equal(db.prepare('SELECT hero_recover_at FROM family_expedition_members WHERE user_id = 12').pluck().get(), 2800);
@@ -213,6 +213,12 @@ test('Cleric prayer heals active heroes, shortens recovery, and persists persona
     ['cleric_heal', 'cleric_recovery_reduced'],
   );
   assert.equal(db.prepare('SELECT role_charge FROM family_expedition_members WHERE user_id = 10').pluck().get(), 0);
+  assert.deepEqual(result.events, [{
+    type: 'cleric_prayer',
+    placedBy: { userId: 10, firstName: 'Nora', username: 'nora' },
+    healedCount: 1,
+    recoveryReducedCount: 1,
+  }]);
   db.close();
 });
 

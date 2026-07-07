@@ -189,7 +189,11 @@ function serializeFamilyMembers(familyMembers = [], expeditionMembers = []) {
 }
 
 function serializeAction(action) {
-  const events = action.events || action.modifiers?.events || [];
+  const privateEventTypes = new Set(['cleric_heal', 'cleric_recovery_reduced']);
+  const events = (action.events || action.modifiers?.events || [])
+    .filter(event => !privateEventTypes.has(event?.type));
+  const modifiers = clone(action.modifiers || {});
+  if (Array.isArray(modifiers.events)) modifiers.events = events;
   return definedObject([
     ['id', action.id],
     ['expeditionId', action.expeditionId],
@@ -198,7 +202,7 @@ function serializeAction(action) {
     ['actionType', action.actionType],
     ['stat', action.stat],
     ['rawRoll', action.rawRoll],
-    ['modifiers', stripSensitive(action.modifiers || {})],
+    ['modifiers', stripSensitive(modifiers)],
     ['events', events.length > 0 ? stripSensitive(events) : undefined],
     ['modifiedRoll', action.modifiedRoll],
     ['progressAwarded', action.progressAwarded],
@@ -206,6 +210,18 @@ function serializeAction(action) {
     ['narrationKey', action.narrationKey],
     ['createdAt', action.createdAt],
   ]);
+}
+
+function serializePersonalEvents(memberEvents = [], userId = null) {
+  return memberEvents
+    .filter(event => event.userId === userId)
+    .map(event => definedObject([
+      ['id', event.id],
+      ['type', event.eventType],
+      ...Object.entries(stripSensitive(event.payload || {}))
+        .filter(([key]) => key !== 'userId' && key !== 'type'),
+      ['createdAt', event.createdAt],
+    ]));
 }
 
 function serializeInventory(inventory = []) {
@@ -255,6 +271,7 @@ function serializeExpeditionState({
     member: serializeMember(member),
     familyMembers: serializeFamilyMembers(familyMembers, members),
     recentActions: (snapshot?.actions || []).slice(-20).map(serializeAction),
+    personalEvents: serializePersonalEvents(snapshot?.memberEvents || [], userId),
     artifactInventory: serializeInventory(artifactInventory),
     catalog: {
       roles: clone(ROLES),

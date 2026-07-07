@@ -204,6 +204,17 @@ function provisionStateFor(provisionId) {
   return {};
 }
 
+function applyRoleChargeRestoration(member, room) {
+  const restoration = member.provisionState?.restoreRoleAbility;
+  if ((restoration?.uses ?? 0) <= 0) return;
+  if (restoration.roomType && restoration.roomType !== room.type) return;
+  if (Number(member.roleCharge ?? 1) >= 1) return;
+
+  member.roleCharge = 1;
+  member.roleChargeProgress = 0;
+  restoration.uses -= 1;
+}
+
 function consumeProvisionRecipe(transaction, userId, provisionId, now) {
   if (!provisionId) return null;
   const provision = PROVISIONS[provisionId];
@@ -494,6 +505,7 @@ function resolveAttempt({
   if (['hidden', 'locked'].includes(room?.state)) throw new RangeError('room is not unlocked');
 
   const nextRoom = clone(room || {});
+  applyRoleChargeRestoration(nextMember, nextRoom);
   const nextExpedition = clone(expedition || {});
   nextExpedition.sharedBuffs = clone(nextExpedition.sharedBuffs || {});
   const nextAction = clone(action || {});
@@ -1029,8 +1041,21 @@ function readSnapshot(transaction, expeditionId) {
   const actions = transaction.prepare(`
     SELECT * FROM family_expedition_actions WHERE expedition_id = ? ORDER BY id
   `).all(expeditionId).map(rowToAction);
+  const memberEvents = transaction.prepare(`
+    SELECT id, expedition_id, user_id, event_type, payload_json, created_at
+    FROM family_expedition_member_events
+    WHERE expedition_id = ? AND acknowledged_at IS NULL
+    ORDER BY id
+  `).all(expeditionId).map(row => ({
+    id: row.id,
+    expeditionId: row.expedition_id,
+    userId: row.user_id,
+    eventType: row.event_type,
+    payload: parseJson(row.payload_json, {}),
+    createdAt: row.created_at,
+  }));
   const roomEffects = listActiveRoomEffects(transaction, { expeditionId });
-  return clone({ expedition, rooms, members, actions, roomEffects });
+  return clone({ expedition, rooms, members, actions, roomEffects, memberEvents });
 }
 
 function roomPayload(room) {

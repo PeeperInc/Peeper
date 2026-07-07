@@ -263,7 +263,8 @@ function useClericPrayer(transaction, {
     WHERE expedition_id = ?
     ORDER BY user_id
   `).all(expeditionId);
-  const events = [];
+  let healedCount = 0;
+  let recoveryReducedCount = 0;
 
   for (const member of members) {
     if (member.heroRecoverAt) {
@@ -289,7 +290,7 @@ function useClericPrayer(transaction, {
         payload: event,
         now,
       });
-      events.push({ userId: member.userId, ...event });
+      recoveryReducedCount += 1;
       continue;
     }
     if (member.heroHp <= 0 || member.heroHp >= 3) continue;
@@ -306,9 +307,16 @@ function useClericPrayer(transaction, {
       payload: event,
       now,
     });
-    events.push({ userId: member.userId, ...event });
+    healedCount += 1;
   }
-  return { events };
+  return {
+    events: [{
+      type: 'cleric_prayer',
+      placedBy: owner,
+      healedCount,
+      recoveryReducedCount,
+    }],
+  };
 }
 
 module.exports = {

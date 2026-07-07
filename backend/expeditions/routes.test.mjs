@@ -169,6 +169,7 @@ test('serializer returns stable camelCase state and redacts hidden/private field
     'member',
     'familyMembers',
     'recentActions',
+    'personalEvents',
     'artifactInventory',
     'catalog',
     'permissions',
@@ -511,7 +512,7 @@ test('role ability endpoint places one shared room effect idempotently without b
   );
 });
 
-test('Cleric role ability heals the family and returns durable visual events', async () => {
+test('Cleric role ability exposes only a family-safe summary and each viewer own pending event', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-cleric-prayer' });
   const expeditionId = started.body.expedition.id;
@@ -537,7 +538,19 @@ test('Cleric role ability heals the family and returns durable visual events', a
   );
   assert.equal(response.status, 200);
   assert.equal(response.body.member.roleCharge, 0);
-  assert.equal(response.body.visualEvents.some(event => event.type === 'cleric_heal'), true);
+  assert.deepEqual(response.body.visualEvents, [{
+    type: 'cleric_prayer',
+    placedBy: {
+      userId: userIds[0],
+      firstName: 'Member1',
+      username: 'Member1_user',
+    },
+    healedCount: 1,
+    recoveryReducedCount: 0,
+  }]);
+  assert.equal(JSON.stringify(response.body.recentActions).includes('heroHp'), false);
+  assert.equal(JSON.stringify(response.body.visualEvents).includes('heroHp'), false);
+  assert.deepEqual(response.body.personalEvents, []);
   assert.equal(
     db.prepare(`
       SELECT hero_hp FROM family_expedition_members
@@ -552,6 +565,18 @@ test('Cleric role ability heals the family and returns durable visual events', a
     `).pluck().get(expeditionId, userIds[1]),
     1,
   );
+
+  const siblingState = await request('GET', '/current', 'tg-sibling');
+  assert.equal(siblingState.status, 200);
+  assert.equal(siblingState.body.personalEvents.length, 1);
+  assert.equal(siblingState.body.personalEvents[0].type, 'cleric_heal');
+  assert.equal(siblingState.body.personalEvents[0].heroHp, 3);
+  assert.equal(siblingState.body.personalEvents[0].userId, undefined);
+
+  const clericState = await request('GET', '/current', 'tg-owner');
+  assert.equal(clericState.status, 200);
+  assert.deepEqual(clericState.body.personalEvents, []);
+  assert.equal(JSON.stringify(clericState.body.recentActions).includes('heroHp'), false);
 });
 
 test('shared Mage and Knight effects are consumed by combat and return direct visual events', async () => {

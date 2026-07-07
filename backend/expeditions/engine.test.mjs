@@ -195,6 +195,16 @@ function expeditionDb() {
       finished_at INTEGER NOT NULL
     );
 
+    CREATE TABLE family_expedition_member_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      expedition_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL,
+      acknowledged_at INTEGER
+    );
+
     CREATE TABLE users (
       id INTEGER PRIMARY KEY,
       coins INTEGER NOT NULL DEFAULT 0
@@ -732,6 +742,25 @@ test('provisions grant AP, prevent debuffs, and protect minimum progress', () =>
   assert.equal(raised.modifiedRoll, 10);
   assert.equal(raised.progressAwarded, 1);
   assert.equal(raised.member.provisionState.raiseModifiedRoll.uses, 0);
+});
+
+test('role restoration provisions recharge the new role charge once in the matching room', () => {
+  const restored = resolveAttempt({
+    expedition: { id: 58, status: 'active' },
+    member: member({
+      roleCharge: 0,
+      roleChargeProgress: 2,
+      provisionState: { restoreRoleAbility: { uses: 1, roomType: 'camp' } },
+    }),
+    room: { ...hall, type: 'camp', progress: 0 },
+    action: hall.actions[0],
+    roll: 8,
+    now: Date.UTC(2026, 5, 23),
+  });
+
+  assert.equal(restored.member.roleCharge, 1);
+  assert.equal(restored.member.roleChargeProgress, 0);
+  assert.equal(restored.member.provisionState.restoreRoleAbility.uses, 0);
 });
 
 test('assist costs one AP and adds capped support, with exhausted debuff reducing the grant for one action', () => {
