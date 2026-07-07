@@ -22,7 +22,9 @@ const {
   useClericPrayer,
 } = require('./roleEffects');
 const {
+  assertGlobalIdempotencyKeyUnused,
   finishAttempt,
+  readOpenAttempt,
   startAttempt,
 } = require('./minigameAttempts');
 const {
@@ -917,7 +919,10 @@ function findIdempotentAction(transaction, {
     FROM family_expedition_actions
     WHERE user_id = ? AND idempotency_key = ?
   `).get(userId, idempotencyKey);
-  if (!action) return null;
+  if (!action) {
+    assertGlobalIdempotencyKeyUnused(transaction, { userId, idempotencyKey });
+    return null;
+  }
   if (
     action.actionType !== expectedActionType
     || (expectedExpeditionId !== null && action.expeditionId !== expectedExpeditionId)
@@ -1932,24 +1937,6 @@ function startMinigameAttempt(options) {
     gameType: minigameTypeForRoom(room),
     idempotencyKey,
     now: unixSeconds(now),
-    expireOpenAttempt: openAttempt => finishAttempt(transaction, {
-      expeditionId,
-      roomId: room.id,
-      userId,
-      attemptToken: openAttempt.attemptToken,
-      idempotencyKey: `auto-expire:${openAttempt.attemptToken}`,
-      result: { success: false, reason: 'timeout' },
-      forceState: 'expired',
-      now: unixSeconds(now),
-      onFailure: () => applyMinigameFailure({
-        transaction,
-        expeditionId,
-        room,
-        userId,
-        idempotencyKey: `auto-expire:${openAttempt.attemptToken}`,
-        now: unixSeconds(now),
-      }),
-    }),
     onStart: () => {
       assertExpeditionNotFinished(snapshot);
       if (snapshot.expedition.status !== 'active') throw new RangeError('expedition is not active');
@@ -1967,6 +1954,52 @@ function startMinigameAttempt(options) {
     },
   });
   return { attempt, snapshot: readSnapshot(transaction, expeditionId) };
+}
+
+function expireStaleMinigameAttempt(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    expeditionId,
+    userId,
+    roomKey,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  const currentTime = unixSeconds(now);
+  const openAttempt = readOpenAttempt(transaction, {
+    expeditionId,
+    roomId: room.id,
+    userId,
+  });
+  if (!openAttempt || currentTime < openAttempt.expiresAt) {
+    return { attempt: openAttempt, resolved: false, snapshot: readSnapshot(transaction, expeditionId) };
+  }
+  const timeoutKey = `auto-expire:${openAttempt.attemptToken}`;
+  const attempt = finishAttempt(transaction, {
+    expeditionId,
+    roomId: room.id,
+    userId,
+    attemptToken: openAttempt.attemptToken,
+    idempotencyKey: timeoutKey,
+    result: { success: false, reason: 'timeout' },
+    forceState: 'expired',
+    now: currentTime,
+    consumeRetry: () => consumeMageRetry(transaction, {
+      expeditionId,
+      roomId: room.id,
+      now: currentTime,
+    }),
+    onFailure: () => applyMinigameFailure({
+      transaction,
+      expeditionId,
+      room,
+      userId,
+      idempotencyKey: timeoutKey,
+      now: currentTime,
+    }),
+  });
+  return { attempt, resolved: true, snapshot: readSnapshot(transaction, expeditionId) };
 }
 
 function applyMinigameFailure({ transaction, expeditionId, room, userId, idempotencyKey, now }) {
@@ -2303,6 +2336,7 @@ module.exports = {
   chooseScoutRoom,
   useRoleAbility,
   completeEventRoom,
+  expireStaleMinigameAttempt,
   startMinigameAttempt,
   finishMinigameAttempt,
   equipFoundArtifactForMember,

@@ -83,9 +83,35 @@ function publicAttempt(row, extra = {}) {
     startedAt: row.started_at,
     expiresAt: row.expires_at,
     retry: row.status === 'retry',
-    state: row.status,
     ...clone(extra),
   };
+}
+
+function globalKeyUsage(transaction, { userId, idempotencyKey }) {
+  const rows = transaction.prepare(`
+    SELECT * FROM family_expedition_minigame_attempts
+    WHERE user_id = ?
+    ORDER BY id
+  `).all(userId);
+  for (const row of rows) {
+    const metadata = attemptMetadata(row);
+    if (metadata.startIdempotencyKey === idempotencyKey) {
+      return { kind: 'start', row, intent: metadata.startIntent };
+    }
+    const finish = (metadata.finishes || []).find(item => item.idempotencyKey === idempotencyKey);
+    if (finish) return { kind: 'finish', row, intent: finish.intent, response: finish.response };
+  }
+  const action = transaction.prepare(`
+    SELECT id FROM family_expedition_actions
+    WHERE user_id = ? AND idempotency_key = ?
+  `).get(userId, idempotencyKey);
+  return action ? { kind: 'action' } : null;
+}
+
+function assertGlobalIdempotencyKeyUnused(transaction, options) {
+  if (globalKeyUsage(transaction, options)) {
+    throw new Error('idempotency conflict: key was already used for another mutation');
+  }
 }
 
 function findScopedAttempt(transaction, { expeditionId, roomId, userId, attemptToken }) {
@@ -105,14 +131,6 @@ function readOpenAttempt(transaction, { expeditionId, roomId, userId }) {
   return row ? publicAttempt(row) : null;
 }
 
-function rowsForOwner(transaction, { expeditionId, roomId, userId }) {
-  return transaction.prepare(`
-    SELECT * FROM family_expedition_minigame_attempts
-    WHERE expedition_id = ? AND room_id = ? AND user_id = ?
-    ORDER BY id DESC
-  `).all(expeditionId, roomId, userId);
-}
-
 function startAttempt(transaction, options) {
   const {
     expeditionId,
@@ -127,17 +145,16 @@ function startAttempt(transaction, options) {
   const startedAt = Math.floor(Number(now));
   if (!Number.isInteger(startedAt) || startedAt < 0) throw new TypeError('valid now is required');
 
-  for (const row of rowsForOwner(transaction, { expeditionId, roomId, userId })) {
-    const metadata = attemptMetadata(row);
-    if (metadata.startIdempotencyKey !== idempotencyKey) continue;
-    if (stableStringify(metadata.startIntent) !== stableStringify(startIntent)) {
+  const keyUsage = globalKeyUsage(transaction, { userId, idempotencyKey });
+  if (keyUsage) {
+    if (keyUsage.kind !== 'start' || stableStringify(keyUsage.intent) !== stableStringify(startIntent)) {
       throw new Error('idempotency conflict: start key was used with different intent');
     }
-    return publicAttempt(row);
+    return publicAttempt(keyUsage.row);
   }
 
   let openAttempt = readOpenAttempt(transaction, { expeditionId, roomId, userId });
-  if (openAttempt && openAttempt.expiresAt < startedAt && typeof options.expireOpenAttempt === 'function') {
+  if (openAttempt && openAttempt.expiresAt <= startedAt && typeof options.expireOpenAttempt === 'function') {
     options.expireOpenAttempt(openAttempt);
     openAttempt = readOpenAttempt(transaction, { expeditionId, roomId, userId });
   }
@@ -257,15 +274,6 @@ function normalizeResult(row, value, { forceTimeout = false } = {}) {
   return normalized;
 }
 
-function replayFinish(metadata, idempotencyKey, intent) {
-  const existing = (metadata.finishes || []).find(finish => finish.idempotencyKey === idempotencyKey);
-  if (!existing) return null;
-  if (stableStringify(existing.intent) !== stableStringify(intent)) {
-    throw new Error('idempotency conflict: finish key was used with different intent');
-  }
-  return clone(existing.response);
-}
-
 function storeResolution(transaction, row, metadata, record, updates) {
   metadata.finishes = [...(metadata.finishes || []), record];
   transaction.prepare(`
@@ -303,11 +311,20 @@ function finishAttempt(transaction, options) {
   const metadata = attemptMetadata(row);
   const normalizedNow = Math.floor(Number(now));
   if (!Number.isInteger(normalizedNow) || normalizedNow < 0) throw new TypeError('valid now is required');
-  const timedOut = forceState === 'expired' || normalizedNow > row.expires_at;
+  const timedOut = forceState === 'expired' || normalizedNow >= row.expires_at;
   const outcome = normalizeResult(row, options.result, { forceTimeout: timedOut });
   const intent = { attemptToken, outcome, forceState: forceState || null };
-  const replay = replayFinish(metadata, idempotencyKey, intent);
-  if (replay) return replay;
+  const keyUsage = globalKeyUsage(transaction, { userId, idempotencyKey });
+  if (keyUsage) {
+    if (
+      keyUsage.kind === 'finish'
+      && keyUsage.row.id === row.id
+      && stableStringify(keyUsage.intent) === stableStringify(intent)
+    ) {
+      return clone(keyUsage.response);
+    }
+    throw new Error('idempotency conflict: finish key was used with different intent');
+  }
   if (FINAL_STATUSES.has(row.status)) throw new RangeError('mini-game attempt is already resolved');
   if (!OPEN_STATUSES.has(row.status)) throw new RangeError('mini-game attempt is not active');
 
@@ -331,7 +348,7 @@ function finishAttempt(transaction, options) {
       success: true,
       ...awarded,
     };
-  } else if (row.status !== 'retry' && !timedOut) {
+  } else if (row.status !== 'retry') {
     const retry = consumeRetry({ row: clone(row), outcome: clone(outcome) });
     if (retry) {
       nextStatus = 'retry';
@@ -390,6 +407,7 @@ function expireAttempt(transaction, options) {
 
 module.exports = {
   GAME_RULES,
+  assertGlobalIdempotencyKeyUnused,
   expireAttempt,
   finishAttempt,
   readOpenAttempt,

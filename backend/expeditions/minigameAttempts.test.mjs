@@ -35,6 +35,12 @@ function attemptDb() {
     CREATE UNIQUE INDEX idx_open_attempt
       ON family_expedition_minigame_attempts(expedition_id, room_id, user_id)
       WHERE status IN ('ready', 'active', 'retry');
+    CREATE TABLE family_expedition_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      idempotency_key TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      UNIQUE(user_id, idempotency_key)
+    );
   `);
   return db;
 }
@@ -60,7 +66,14 @@ test('start creates an active opaque attempt with deterministic seed and exact p
   assert.equal(first.startedAt, 1_000);
   assert.equal(first.expiresAt, 1_015);
   assert.equal(first.retry, false);
-  assert.equal(first.state, 'active');
+  assert.deepEqual(Object.keys(first).sort(), [
+    'attemptToken',
+    'expiresAt',
+    'gameType',
+    'retry',
+    'seed',
+    'startedAt',
+  ]);
   assert.equal(db.prepare('SELECT ap_spent FROM family_expedition_minigame_attempts').get().ap_spent, 1);
 });
 
@@ -84,7 +97,65 @@ test('only one unresolved attempt can exist per expedition room and user', () =>
     () => startAttempt(db, { ...baseStart, idempotencyKey: 'start-2' }),
     /attempt is already active/i,
   );
-  assert.equal(readOpenAttempt(db, baseStart)?.state, 'active');
+  assert.equal(readOpenAttempt(db, baseStart)?.attemptToken.length > 0, true);
+});
+
+test('start idempotency key is global per user across rooms and action mutations', () => {
+  const db = attemptDb();
+  startAttempt(db, baseStart);
+
+  assert.throws(() => startAttempt(db, {
+    ...baseStart,
+    roomId: 21,
+  }), /idempotency conflict/i);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_minigame_attempts').get().count, 1);
+
+  db.prepare('INSERT INTO family_expedition_actions (idempotency_key, user_id) VALUES (?, ?)')
+    .run('action-key', baseStart.userId);
+  assert.throws(() => startAttempt(db, {
+    ...baseStart,
+    roomId: 21,
+    idempotencyKey: 'action-key',
+  }), /idempotency conflict/i);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_minigame_attempts').get().count, 1);
+});
+
+test('finish idempotency key is global per user across attempts and action mutations', () => {
+  const db = attemptDb();
+  const first = startAttempt(db, baseStart);
+  finishAttempt(db, {
+    ...baseStart,
+    attemptToken: first.attemptToken,
+    idempotencyKey: 'global-finish',
+    now: 1_001,
+    result: { success: false, rowsCrossed: 0 },
+  });
+  const second = startAttempt(db, {
+    ...baseStart,
+    roomId: 21,
+    idempotencyKey: 'second-start',
+    now: 1_002,
+  });
+
+  assert.throws(() => finishAttempt(db, {
+    ...baseStart,
+    roomId: 21,
+    attemptToken: second.attemptToken,
+    idempotencyKey: 'global-finish',
+    now: 1_003,
+    result: { success: false, rowsCrossed: 0 },
+  }), /idempotency conflict/i);
+
+  db.prepare('INSERT INTO family_expedition_actions (idempotency_key, user_id) VALUES (?, ?)')
+    .run('finish-action-key', baseStart.userId);
+  assert.throws(() => finishAttempt(db, {
+    ...baseStart,
+    roomId: 21,
+    attemptToken: second.attemptToken,
+    idempotencyKey: 'finish-action-key',
+    now: 1_003,
+    result: { success: false, rowsCrossed: 0 },
+  }), /idempotency conflict/i);
 });
 
 test('finish validates bounded game proof and resolves success once', () => {
@@ -199,6 +270,33 @@ test('timeout expires as one failed attempt and replay does not duplicate damage
   assert.equal(damageCalls, 1);
 });
 
+test('deadline is exclusive and timeout consumes Mage retry with a fresh deadline', () => {
+  const db = attemptDb();
+  const attempt = startAttempt(db, baseStart);
+  let damageCalls = 0;
+  let retryCalls = 0;
+  const result = finishAttempt(db, {
+    ...baseStart,
+    attemptToken: attempt.attemptToken,
+    idempotencyKey: 'deadline-retry',
+    now: attempt.expiresAt,
+    result: { success: true, rowsCrossed: 5 },
+    consumeRetry: () => {
+      retryCalls += 1;
+      return { event: { type: 'mage_retry' } };
+    },
+    onFailure: () => { damageCalls += 1; },
+  });
+
+  assert.equal(result.state, 'retry');
+  assert.equal(result.success, false);
+  assert.equal(result.retry, true);
+  assert.equal(result.startedAt, attempt.expiresAt);
+  assert.equal(result.expiresAt, attempt.expiresAt + 15);
+  assert.equal(retryCalls, 1);
+  assert.equal(damageCalls, 0);
+});
+
 test('attempt tokens are owner and room scoped', () => {
   const db = attemptDb();
   const attempt = startAttempt(db, baseStart);
@@ -244,7 +342,7 @@ test('new start expires a stale open attempt before spending another AP', () => 
   const fresh = startAttempt(db, {
     ...baseStart,
     idempotencyKey: 'start-after-timeout',
-    now: 1_016,
+    now: 1_015,
     expireOpenAttempt: open => {
       expiredToken = open.attemptToken;
       expireAttempt(db, {
@@ -253,7 +351,7 @@ test('new start expires a stale open attempt before spending another AP', () => 
         userId: 30,
         attemptToken: open.attemptToken,
         idempotencyKey: `expire:${open.attemptToken}`,
-        now: 1_016,
+        now: 1_015,
       });
     },
   });

@@ -10,6 +10,7 @@ const {
   attemptRoom,
   assistRoom,
   chooseScoutRoom,
+  expireStaleMinigameAttempt,
   startMinigameAttempt,
   finishMinigameAttempt,
   useRoleAbility,
@@ -531,6 +532,20 @@ router.post('/:id/rooms/:roomKey/minigame/start', (req, res) => {
   if (!access) return;
 
   try {
+    const expiration = db.transaction(() => expireStaleMinigameAttempt({
+      transaction: db,
+      idempotencyKey: `stale-check:${idempotencyKey}`,
+      expeditionId: access.expeditionId,
+      userId: req.currentUser.id,
+      roomKey: req.params.roomKey,
+    }))();
+    if (expiration.resolved && expiration.attempt?.retry) {
+      return res.json({
+        ...serializeFor(req.currentUser, access.family, expiration.snapshot, false),
+        attempt: expiration.attempt,
+        visualEvents: expiration.attempt.visualEvents || [],
+      });
+    }
     const result = db.transaction(() => startMinigameAttempt({
       transaction: db,
       idempotencyKey,

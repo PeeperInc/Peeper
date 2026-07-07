@@ -187,6 +187,23 @@ function expeditionDb() {
       UNIQUE(user_id, idempotency_key)
     );
 
+    CREATE TABLE family_expedition_minigame_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      attempt_token TEXT NOT NULL UNIQUE,
+      expedition_id INTEGER NOT NULL,
+      room_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      game_type TEXT NOT NULL,
+      seed TEXT NOT NULL,
+      status TEXT NOT NULL,
+      ap_spent INTEGER NOT NULL DEFAULT 0,
+      retry_available INTEGER NOT NULL DEFAULT 0,
+      started_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      finished_at INTEGER,
+      result_json TEXT NOT NULL DEFAULT '{}'
+    );
+
     CREATE TABLE family_expedition_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       expedition_id INTEGER NOT NULL,

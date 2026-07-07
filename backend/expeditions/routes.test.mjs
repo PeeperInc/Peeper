@@ -654,7 +654,7 @@ test('shared Mage and Knight effects are consumed by combat and return direct vi
 });
 
 test('persisted mini-game routes spend AP at start, isolate tokens, and retire the legacy endpoint', async () => {
-  createFamilyWithMembers(['tg-owner', 'tg-sibling']);
+  const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-route-minigame' });
   const expeditionId = started.body.expedition.id;
   await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
@@ -695,8 +695,34 @@ test('persisted mini-game routes spend AP at start, isolate tokens, and retire t
     { idempotencyKey: 'route-minigame-start' },
   );
   assert.equal(attemptStart.status, 200);
-  assert.equal(attemptStart.body.attempt.state, 'active');
+  assert.deepEqual(Object.keys(attemptStart.body.attempt).sort(), [
+    'attemptToken',
+    'expiresAt',
+    'gameType',
+    'retry',
+    'seed',
+    'startedAt',
+  ]);
   assert.equal(attemptStart.body.member.ap, 4);
+
+  const combatRoom = db.prepare(`
+    SELECT room_key AS roomKey, payload_json AS payloadJson
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_type = 'combat'
+    ORDER BY id LIMIT 1
+  `).get(expeditionId);
+  db.prepare("UPDATE family_expedition_rooms SET state = 'unlocked' WHERE expedition_id = ? AND room_key = ?")
+    .run(expeditionId, combatRoom.roomKey);
+  const combatAction = JSON.parse(combatRoom.payloadJson).actions[0].id;
+  const crossActionReuse = await request(
+    'POST', `/${expeditionId}/rooms/${combatRoom.roomKey}/attempt`, 'tg-owner',
+    { idempotencyKey: 'route-minigame-start', actionId: combatAction },
+  );
+  assert.equal(crossActionReuse.status, 409);
+  assert.match(crossActionReuse.body.error, /idempotency conflict/i);
+  assert.equal(db.prepare(`
+    SELECT ap FROM family_expedition_members WHERE expedition_id = ? AND user_id = ?
+  `).pluck().get(expeditionId, userIds[0]), 4);
 
   const stolen = await request(
     'POST',
@@ -735,6 +761,100 @@ test('persisted mini-game routes spend AP at start, isolate tokens, and retire t
   assert.equal(replay.status, 200);
   assert.equal(replay.body.attempt.state, 'succeeded');
   assert.equal(replay.body.member.ap, 4);
+});
+
+test('stale mini-game timeout commits even when replacement start is rejected', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-timeout-commit' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-timeout-commit',
+    role: 'scout',
+  });
+  const room = db.prepare(`
+    SELECT id, room_key AS roomKey, payload_json AS payloadJson
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_type NOT IN ('camp', 'combat', 'boss')
+    ORDER BY id LIMIT 1
+  `).get(expeditionId);
+  const payload = JSON.parse(room.payloadJson);
+  payload.miniGame = { kind: 'focus_hold' };
+  db.prepare("UPDATE family_expedition_rooms SET state = 'unlocked', payload_json = ? WHERE id = ?")
+    .run(JSON.stringify(payload), room.id);
+
+  const first = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-expiring-attempt' },
+  );
+  assert.equal(first.status, 200);
+  db.prepare(`
+    UPDATE family_expedition_minigame_attempts SET expires_at = ?
+    WHERE attempt_token = ?
+  `).run(Math.floor(Date.now() / 1000) - 1, first.body.attempt.attemptToken);
+  db.prepare(`
+    UPDATE family_expedition_members SET ap = 0, hero_hp = 2, hero_recover_at = NULL
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
+
+  const replacement = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-after-expired-attempt' },
+  );
+  assert.equal(replacement.status, 400);
+  assert.match(replacement.body.error, /enough AP/i);
+  assert.equal(db.prepare(`
+    SELECT status FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+  `).pluck().get(first.body.attempt.attemptToken), 'expired');
+  const member = db.prepare(`
+    SELECT hero_hp AS heroHp, hero_recover_at AS heroRecoverAt
+    FROM family_expedition_members WHERE expedition_id = ? AND user_id = ?
+  `).get(expeditionId, userIds[0]);
+  assert.equal(member.heroHp, 1);
+  assert.equal(member.heroRecoverAt, null);
+});
+
+test('stale mini-game timeout returns a free Mage retry instead of starting again', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-timeout-mage' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-timeout-mage',
+    role: 'mage',
+  });
+  const room = db.prepare(`
+    SELECT id, room_key AS roomKey, payload_json AS payloadJson
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_type NOT IN ('camp', 'combat', 'boss')
+    ORDER BY id LIMIT 1
+  `).get(expeditionId);
+  const payload = JSON.parse(room.payloadJson);
+  payload.miniGame = { kind: 'focus_hold' };
+  db.prepare("UPDATE family_expedition_rooms SET state = 'unlocked', payload_json = ? WHERE id = ?")
+    .run(JSON.stringify(payload), room.id);
+  db.prepare(`
+    INSERT INTO family_expedition_room_effects (
+      expedition_id, room_id, effect_type, placed_by, remaining_uses, created_at
+    ) VALUES (?, ?, 'bend_fate', ?, 1, ?)
+  `).run(expeditionId, room.id, userIds[0], Math.floor(Date.now() / 1000));
+
+  const first = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-expiring-mage-attempt' },
+  );
+  db.prepare(`
+    UPDATE family_expedition_minigame_attempts SET expires_at = ? WHERE attempt_token = ?
+  `).run(Math.floor(Date.now() / 1000) - 1, first.body.attempt.attemptToken);
+
+  const retry = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-after-mage-timeout' },
+  );
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.attempt.state, 'retry');
+  assert.equal(retry.body.attempt.attemptToken, first.body.attempt.attemptToken);
+  assert.equal(retry.body.member.ap, 4);
+  assert.equal(retry.body.member.heroHp, 3);
+  assert.equal(retry.body.visualEvents[0].type, 'mage_retry');
 });
 
 test('persisted mini-game routes apply Mage retry, knockout recovery, and Knight shield', async () => {
