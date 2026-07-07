@@ -22,7 +22,9 @@ const {
   useClericPrayer,
 } = require('./roleEffects');
 const {
+  INTERNAL_IDEMPOTENCY_PREFIX,
   assertGlobalIdempotencyKeyUnused,
+  bindStartReplay,
   finishAttempt,
   readOpenAttempt,
   startAttempt,
@@ -1960,6 +1962,7 @@ function expireStaleMinigameAttempt(options) {
   assertMutationInput(options);
   const {
     transaction,
+    idempotencyKey,
     expeditionId,
     userId,
     roomKey,
@@ -1975,8 +1978,8 @@ function expireStaleMinigameAttempt(options) {
   if (!openAttempt || currentTime < openAttempt.expiresAt) {
     return { attempt: openAttempt, resolved: false, snapshot: readSnapshot(transaction, expeditionId) };
   }
-  const timeoutKey = `auto-expire:${openAttempt.attemptToken}`;
-  const attempt = finishAttempt(transaction, {
+  const timeoutKey = `${INTERNAL_IDEMPOTENCY_PREFIX}minigame-expire:${openAttempt.attemptToken}`;
+  const resolution = finishAttempt(transaction, {
     expeditionId,
     roomId: room.id,
     userId,
@@ -1999,7 +2002,23 @@ function expireStaleMinigameAttempt(options) {
       now: currentTime,
     }),
   });
-  return { attempt, resolved: true, snapshot: readSnapshot(transaction, expeditionId) };
+  const visualEvents = clone(resolution.visualEvents || []);
+  const attempt = resolution.retry
+    ? bindStartReplay(transaction, {
+      expeditionId,
+      roomId: room.id,
+      userId,
+      attemptToken: openAttempt.attemptToken,
+      idempotencyKey,
+      gameType: minigameTypeForRoom(room),
+    })
+    : resolution;
+  return {
+    attempt,
+    resolved: true,
+    visualEvents,
+    snapshot: readSnapshot(transaction, expeditionId),
+  };
 }
 
 function applyMinigameFailure({ transaction, expeditionId, room, userId, idempotencyKey, now }) {

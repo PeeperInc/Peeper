@@ -850,11 +850,89 @@ test('stale mini-game timeout returns a free Mage retry instead of starting agai
     { idempotencyKey: 'start-after-mage-timeout' },
   );
   assert.equal(retry.status, 200);
-  assert.equal(retry.body.attempt.state, 'retry');
+  assert.deepEqual(Object.keys(retry.body.attempt).sort(), [
+    'attemptToken',
+    'expiresAt',
+    'gameType',
+    'retry',
+    'seed',
+    'startedAt',
+  ]);
+  assert.equal(retry.body.attempt.retry, true);
   assert.equal(retry.body.attempt.attemptToken, first.body.attempt.attemptToken);
   assert.equal(retry.body.member.ap, 4);
   assert.equal(retry.body.member.heroHp, 3);
   assert.equal(retry.body.visualEvents[0].type, 'mage_retry');
+
+  const exactReplay = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-after-mage-timeout' },
+  );
+  assert.equal(exactReplay.status, 200);
+  assert.deepEqual(exactReplay.body.attempt, retry.body.attempt);
+  assert.equal(exactReplay.body.member.ap, 4);
+
+  payload.miniGame = { kind: 'root_crossing' };
+  db.prepare('UPDATE family_expedition_rooms SET payload_json = ? WHERE id = ?')
+    .run(JSON.stringify(payload), room.id);
+  const mismatchedReplay = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-after-mage-timeout' },
+  );
+  assert.equal(mismatchedReplay.status, 409);
+  assert.match(mismatchedReplay.body.error, /idempotency conflict/i);
+});
+
+test('client cannot reserve the internal timeout key or block stale resolution', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-internal-key-guard' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-internal-key-guard',
+    role: 'scout',
+  });
+  const room = db.prepare(`
+    SELECT id, room_key AS roomKey, payload_json AS payloadJson
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_type NOT IN ('camp', 'combat', 'boss')
+    ORDER BY id LIMIT 1
+  `).get(expeditionId);
+  const payload = JSON.parse(room.payloadJson);
+  payload.miniGame = { kind: 'focus_hold' };
+  db.prepare("UPDATE family_expedition_rooms SET state = 'unlocked', payload_json = ? WHERE id = ?")
+    .run(JSON.stringify(payload), room.id);
+
+  const first = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-before-guessed-timeout' },
+  );
+  assert.equal(first.status, 200);
+  const guessedInternalKey = `$internal$:minigame-expire:${first.body.attempt.attemptToken}`;
+  const guessed = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.roomKey}/minigame/${first.body.attempt.attemptToken}/finish`,
+    'tg-owner',
+    { idempotencyKey: guessedInternalKey, result: { success: false, score: 0 } },
+  );
+  assert.equal(guessed.status, 400);
+  assert.match(guessed.body.error, /reserved/i);
+
+  db.prepare(`
+    UPDATE family_expedition_minigame_attempts SET expires_at = ? WHERE attempt_token = ?
+  `).run(Math.floor(Date.now() / 1000) - 1, first.body.attempt.attemptToken);
+  db.prepare(`
+    UPDATE family_expedition_members SET ap = 0
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
+  const replacement = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-after-guarded-timeout' },
+  );
+  assert.equal(replacement.status, 400);
+  assert.match(replacement.body.error, /enough AP/i);
+  assert.equal(db.prepare(`
+    SELECT status FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+  `).pluck().get(first.body.attempt.attemptToken), 'expired');
 });
 
 test('persisted mini-game routes apply Mage retry, knockout recovery, and Knight shield', async () => {

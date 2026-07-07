@@ -23,6 +23,7 @@ const { THEME_ID } = require('../expeditions/catalog');
 const { generateExpeditionMap } = require('../expeditions/generator');
 const { serializeExpeditionState } = require('../expeditions/serializer');
 const { listActiveRoomEffects } = require('../expeditions/roleEffects');
+const { isReservedIdempotencyKey } = require('../expeditions/minigameAttempts');
 
 const router = express.Router();
 
@@ -258,7 +259,12 @@ function requireIdempotencyKey(req, res) {
     res.status(400).json({ error: 'idempotencyKey is required' });
     return null;
   }
-  return String(idempotencyKey);
+  const normalized = String(idempotencyKey);
+  if (isReservedIdempotencyKey(normalized)) {
+    res.status(400).json({ error: 'This idempotencyKey namespace is reserved' });
+    return null;
+  }
+  return normalized;
 }
 
 function secureD20() {
@@ -534,7 +540,7 @@ router.post('/:id/rooms/:roomKey/minigame/start', (req, res) => {
   try {
     const expiration = db.transaction(() => expireStaleMinigameAttempt({
       transaction: db,
-      idempotencyKey: `stale-check:${idempotencyKey}`,
+      idempotencyKey,
       expeditionId: access.expeditionId,
       userId: req.currentUser.id,
       roomKey: req.params.roomKey,
@@ -543,7 +549,7 @@ router.post('/:id/rooms/:roomKey/minigame/start', (req, res) => {
       return res.json({
         ...serializeFor(req.currentUser, access.family, expiration.snapshot, false),
         attempt: expiration.attempt,
-        visualEvents: expiration.attempt.visualEvents || [],
+        visualEvents: expiration.visualEvents || [],
       });
     }
     const result = db.transaction(() => startMinigameAttempt({

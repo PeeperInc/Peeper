@@ -17,6 +17,7 @@ const GAME_ALIASES = Object.freeze({
 
 const OPEN_STATUSES = new Set(['ready', 'active', 'retry']);
 const FINAL_STATUSES = new Set(['succeeded', 'failed', 'expired']);
+const INTERNAL_IDEMPOTENCY_PREFIX = '$internal$:';
 const ALLOWED_RESULT_FIELDS = new Set([
   'success',
   'score',
@@ -72,7 +73,7 @@ function opaqueToken() {
 }
 
 function attemptMetadata(row) {
-  return parseJson(row.result_json, { startIntent: null, finishes: [] });
+  return parseJson(row.result_json, { startIntent: null, startReplays: [], finishes: [] });
 }
 
 function publicAttempt(row, extra = {}) {
@@ -98,6 +99,9 @@ function globalKeyUsage(transaction, { userId, idempotencyKey }) {
     if (metadata.startIdempotencyKey === idempotencyKey) {
       return { kind: 'start', row, intent: metadata.startIntent };
     }
+    const startReplay = (metadata.startReplays || [])
+      .find(item => item.idempotencyKey === idempotencyKey);
+    if (startReplay) return { kind: 'start', row, intent: startReplay.intent };
     const finish = (metadata.finishes || []).find(item => item.idempotencyKey === idempotencyKey);
     if (finish) return { kind: 'finish', row, intent: finish.intent, response: finish.response };
   }
@@ -106,6 +110,47 @@ function globalKeyUsage(transaction, { userId, idempotencyKey }) {
     WHERE user_id = ? AND idempotency_key = ?
   `).get(userId, idempotencyKey);
   return action ? { kind: 'action' } : null;
+}
+
+function isReservedIdempotencyKey(value) {
+  return String(value || '').startsWith(INTERNAL_IDEMPOTENCY_PREFIX);
+}
+
+function bindStartReplay(transaction, options) {
+  const {
+    expeditionId,
+    roomId,
+    userId,
+    attemptToken,
+    idempotencyKey,
+  } = options;
+  if (!idempotencyKey) throw new TypeError('idempotencyKey is required');
+  const gameType = normalizeGameType(options.gameType);
+  const intent = { expeditionId, roomId, userId, gameType };
+  const row = findScopedAttempt(transaction, { expeditionId, roomId, userId, attemptToken });
+  if (!row || row.status !== 'retry') throw new RangeError('mini-game retry attempt not found');
+
+  const keyUsage = globalKeyUsage(transaction, { userId, idempotencyKey });
+  if (keyUsage) {
+    if (
+      keyUsage.kind === 'start'
+      && keyUsage.row.id === row.id
+      && stableStringify(keyUsage.intent) === stableStringify(intent)
+    ) {
+      return publicAttempt(row);
+    }
+    throw new Error('idempotency conflict: start key was used with different intent');
+  }
+
+  const metadata = attemptMetadata(row);
+  metadata.startReplays = [
+    ...(metadata.startReplays || []),
+    { idempotencyKey, intent },
+  ];
+  transaction.prepare(`
+    UPDATE family_expedition_minigame_attempts SET result_json = ? WHERE id = ?
+  `).run(JSON.stringify(metadata), row.id);
+  return publicAttempt(row);
 }
 
 function assertGlobalIdempotencyKeyUnused(transaction, options) {
@@ -407,9 +452,12 @@ function expireAttempt(transaction, options) {
 
 module.exports = {
   GAME_RULES,
+  INTERNAL_IDEMPOTENCY_PREFIX,
   assertGlobalIdempotencyKeyUnused,
+  bindStartReplay,
   expireAttempt,
   finishAttempt,
+  isReservedIdempotencyKey,
   readOpenAttempt,
   startAttempt,
 };
