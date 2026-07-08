@@ -16,8 +16,9 @@ const GAME_ALIASES = Object.freeze({
 });
 
 const OPEN_STATUSES = new Set(['ready', 'active', 'retry']);
-const FINAL_STATUSES = new Set(['succeeded', 'failed', 'expired']);
+const FINAL_STATUSES = new Set(['succeeded', 'superseded', 'failed', 'expired']);
 const INTERNAL_IDEMPOTENCY_PREFIX = '$internal$:';
+const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 const ALLOWED_RESULT_FIELDS = new Set([
   'success',
   'score',
@@ -55,6 +56,18 @@ function stableStringify(value) {
   return JSON.stringify(stableValue(value));
 }
 
+function normalizeIdempotencyKey(value) {
+  if (value === undefined || value === null || value === '') {
+    throw new TypeError('idempotencyKey is required');
+  }
+  if (typeof value !== 'string') throw new TypeError('idempotencyKey must be a string');
+  if (value.trim().length === 0) throw new TypeError('idempotencyKey is required');
+  if (value.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+    throw new RangeError(`idempotencyKey must be at most ${MAX_IDEMPOTENCY_KEY_LENGTH} characters`);
+  }
+  return value;
+}
+
 function normalizeGameType(value) {
   const gameType = GAME_ALIASES[value] || value;
   if (!GAME_RULES[gameType]) throw new RangeError(`Unsupported mini-game: ${value}`);
@@ -88,50 +101,69 @@ function publicAttempt(row, extra = {}) {
   };
 }
 
+function readIdempotencyRecord(transaction, { userId, idempotencyKey }) {
+  const key = normalizeIdempotencyKey(idempotencyKey);
+  const record = transaction.prepare(`
+    SELECT operation, attempt_id, intent_json, response_json, http_response_json
+    FROM family_expedition_minigame_idempotency
+    WHERE user_id = ? AND idempotency_key = ?
+  `).get(userId, key);
+  if (!record) return null;
+  return {
+    operation: record.operation,
+    attemptId: record.attempt_id,
+    intent: parseJson(record.intent_json, null),
+    response: parseJson(record.response_json, null),
+    httpResponse: parseJson(record.http_response_json, null),
+  };
+}
+
 function globalKeyUsage(transaction, { userId, idempotencyKey }) {
-  const rows = transaction.prepare(`
-    SELECT * FROM family_expedition_minigame_attempts
-    WHERE user_id = ?
-    ORDER BY id
-  `).all(userId);
-  for (const row of rows) {
-    const metadata = attemptMetadata(row);
-    if (metadata.startIdempotencyKey === idempotencyKey) {
-      return {
-        kind: 'start',
-        row,
-        intent: metadata.startIntent,
-        response: metadata.startResponse,
-        httpResponse: metadata.startHttpResponse,
-      };
-    }
-    const startReplay = (metadata.startReplays || [])
-      .find(item => item.idempotencyKey === idempotencyKey);
-    if (startReplay) {
-      return {
-        kind: 'start',
-        row,
-        intent: startReplay.intent,
-        response: startReplay.response,
-        httpResponse: startReplay.httpResponse,
-      };
-    }
-    const finish = (metadata.finishes || []).find(item => item.idempotencyKey === idempotencyKey);
-    if (finish) {
-      return {
-        kind: 'finish',
-        row,
-        intent: finish.intent,
-        response: finish.response,
-        httpResponse: finish.httpResponse,
-      };
-    }
+  const record = readIdempotencyRecord(transaction, { userId, idempotencyKey });
+  if (record) {
+    const row = transaction.prepare(`
+      SELECT * FROM family_expedition_minigame_attempts WHERE id = ?
+    `).get(record.attemptId);
+    return {
+      kind: record.operation,
+      row,
+      intent: record.intent,
+      response: record.response,
+      httpResponse: record.httpResponse,
+    };
   }
   const action = transaction.prepare(`
     SELECT id FROM family_expedition_actions
     WHERE user_id = ? AND idempotency_key = ?
   `).get(userId, idempotencyKey);
   return action ? { kind: 'action' } : null;
+}
+
+function createIdempotencyRecord(transaction, {
+  userId,
+  idempotencyKey,
+  operation,
+  attemptId,
+  intent,
+  response = null,
+  now,
+}) {
+  const key = normalizeIdempotencyKey(idempotencyKey);
+  transaction.prepare(`
+    INSERT INTO family_expedition_minigame_idempotency (
+      user_id, idempotency_key, operation, attempt_id, intent_json,
+      response_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    userId,
+    key,
+    operation,
+    attemptId,
+    JSON.stringify(intent),
+    response === null ? null : JSON.stringify(response),
+    now,
+    now,
+  );
 }
 
 function isReservedIdempotencyKey(value) {
@@ -146,7 +178,7 @@ function bindStartReplay(transaction, options) {
     attemptToken,
     idempotencyKey,
   } = options;
-  if (!idempotencyKey) throw new TypeError('idempotencyKey is required');
+  normalizeIdempotencyKey(idempotencyKey);
   const gameType = normalizeGameType(options.gameType);
   const intent = { expeditionId, roomId, userId, gameType };
   const row = findScopedAttempt(transaction, { expeditionId, roomId, userId, attemptToken });
@@ -166,18 +198,19 @@ function bindStartReplay(transaction, options) {
     throw new Error('idempotency conflict: start key was used with different intent');
   }
 
-  const metadata = attemptMetadata(row);
   const response = {
     attempt: publicAttempt(row),
     visualEvents: clone(options.visualEvents || []),
   };
-  metadata.startReplays = [
-    ...(metadata.startReplays || []),
-    { idempotencyKey, intent, response },
-  ];
-  transaction.prepare(`
-    UPDATE family_expedition_minigame_attempts SET result_json = ? WHERE id = ?
-  `).run(JSON.stringify(metadata), row.id);
+  createIdempotencyRecord(transaction, {
+    userId,
+    idempotencyKey,
+    operation: 'start',
+    attemptId: row.id,
+    intent,
+    response,
+    now: row.started_at,
+  });
   return clone(response);
 }
 
@@ -205,27 +238,17 @@ function bindHttpReplay(transaction, { userId, idempotencyKey, kind, response })
   if (!keyUsage || keyUsage.kind !== kind) {
     throw new Error('idempotency conflict: response key was used for another mutation');
   }
-  const metadata = attemptMetadata(keyUsage.row);
-  if (kind === 'start') {
-    if (metadata.startIdempotencyKey === idempotencyKey) {
-      metadata.startHttpResponse = clone(response);
-    } else {
-      const replay = (metadata.startReplays || [])
-        .find(item => item.idempotencyKey === idempotencyKey);
-      if (!replay) throw new Error('idempotency conflict: start replay not found');
-      replay.httpResponse = clone(response);
-    }
-  } else if (kind === 'finish') {
-    const finish = (metadata.finishes || [])
-      .find(item => item.idempotencyKey === idempotencyKey);
-    if (!finish) throw new Error('idempotency conflict: finish replay not found');
-    finish.httpResponse = clone(response);
-  } else {
-    throw new RangeError(`Unsupported replay kind: ${kind}`);
-  }
+  if (!['start', 'finish'].includes(kind)) throw new RangeError(`Unsupported replay kind: ${kind}`);
   transaction.prepare(`
-    UPDATE family_expedition_minigame_attempts SET result_json = ? WHERE id = ?
-  `).run(JSON.stringify(metadata), keyUsage.row.id);
+    UPDATE family_expedition_minigame_idempotency
+    SET http_response_json = ?, updated_at = ?
+    WHERE user_id = ? AND idempotency_key = ?
+  `).run(
+    JSON.stringify(response),
+    Math.floor(Date.now() / 1000),
+    userId,
+    normalizeIdempotencyKey(idempotencyKey),
+  );
   return clone(response);
 }
 
@@ -260,7 +283,7 @@ function startAttempt(transaction, options) {
     idempotencyKey,
     now,
   } = options;
-  if (!idempotencyKey) throw new TypeError('idempotencyKey is required');
+  normalizeIdempotencyKey(idempotencyKey);
   const gameType = normalizeGameType(options.gameType);
   const startIntent = { expeditionId, roomId, userId, gameType };
   const startedAt = Math.floor(Number(now));
@@ -298,7 +321,7 @@ function startAttempt(transaction, options) {
     started_at: startedAt,
     expires_at: startedAt + rule.durationSeconds,
   });
-  transaction.prepare(`
+  const insert = transaction.prepare(`
     INSERT INTO family_expedition_minigame_attempts (
       attempt_token, expedition_id, room_id, user_id, game_type, seed, status,
       ap_spent, retry_available, started_at, expires_at, result_json
@@ -319,6 +342,15 @@ function startAttempt(transaction, options) {
       finishes: [],
     }),
   );
+  createIdempotencyRecord(transaction, {
+    userId,
+    idempotencyKey,
+    operation: 'start',
+    attemptId: Number(insert.lastInsertRowid),
+    intent: startIntent,
+    response: { attempt: initialAttempt },
+    now: startedAt,
+  });
   return clone(initialAttempt);
 }
 
@@ -405,8 +437,7 @@ function normalizeResult(row, value, { forceTimeout = false } = {}) {
   return normalized;
 }
 
-function storeResolution(transaction, row, metadata, record, updates) {
-  metadata.finishes = [...(metadata.finishes || []), record];
+function storeResolution(transaction, row, metadata, updates) {
   transaction.prepare(`
     UPDATE family_expedition_minigame_attempts
     SET status = ?, retry_available = ?, started_at = ?, expires_at = ?,
@@ -436,7 +467,7 @@ function finishAttempt(transaction, options) {
     onFailure = () => ({}),
     forceState = null,
   } = options;
-  if (!idempotencyKey) throw new TypeError('idempotencyKey is required');
+  normalizeIdempotencyKey(idempotencyKey);
   const row = findScopedAttempt(transaction, { expeditionId, roomId, userId, attemptToken });
   if (!row) throw new RangeError('mini-game attempt not found');
   const metadata = attemptMetadata(row);
@@ -475,12 +506,16 @@ function finishAttempt(transaction, options) {
   let finishedAt = normalizedNow;
   if (outcome.success) {
     const awarded = clone(onSuccess({ row: clone(row), outcome: clone(outcome) }) || {});
-    nextStatus = 'succeeded';
+    const { terminalState = 'succeeded', ...awardPayload } = awarded;
+    if (!['succeeded', 'superseded'].includes(terminalState)) {
+      throw new RangeError(`Unsupported mini-game terminal state: ${terminalState}`);
+    }
+    nextStatus = terminalState;
     response = {
       attempt: publicAttempt({ ...row, status: nextStatus }),
       state: nextStatus,
       success: true,
-      ...awarded,
+      ...awardPayload,
     };
   } else if (row.status !== 'retry') {
     const retry = consumeRetry({ row: clone(row), outcome: clone(outcome) });
@@ -516,15 +551,20 @@ function finishAttempt(transaction, options) {
   }
 
   storeResolution(transaction, row, metadata, {
-    idempotencyKey,
-    intent,
-    response,
-  }, {
     status: nextStatus,
     retryAvailable: nextStatus === 'retry',
     startedAt,
     expiresAt,
     finishedAt,
+  });
+  createIdempotencyRecord(transaction, {
+    userId,
+    idempotencyKey,
+    operation: 'finish',
+    attemptId: row.id,
+    intent,
+    response,
+    now: normalizedNow,
   });
   return clone(response);
 }
@@ -564,12 +604,15 @@ function expireAttempt(transaction, options) {
 module.exports = {
   GAME_RULES,
   INTERNAL_IDEMPOTENCY_PREFIX,
+  MAX_IDEMPOTENCY_KEY_LENGTH,
   assertGlobalIdempotencyKeyUnused,
   bindHttpReplay,
   bindStartReplay,
   expireAttempt,
   finishAttempt,
   isReservedIdempotencyKey,
+  normalizeIdempotencyKey,
+  readIdempotencyRecord,
   readOpenAttempt,
   readFinishReplay,
   readStartReplay,

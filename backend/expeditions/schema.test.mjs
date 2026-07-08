@@ -272,6 +272,71 @@ test('legacy expedition members migrate idempotently without losing rows', () =>
   }
 });
 
+test('legacy minigame idempotency metadata backfills into indexed records idempotently', () => {
+  const { directory, databasePath } = createTempDatabasePath();
+  let db;
+  try {
+    db = initializeDatabaseAt(databasePath);
+    db.prepare("INSERT INTO users (id, telegram_id) VALUES (1, 'owner')").run();
+    db.prepare("INSERT INTO families (id, name, founder_id, invite_code) VALUES (1, 'Family', 1, 'LEDGER')").run();
+    db.prepare(`
+      INSERT INTO family_expeditions (
+        id, family_id, theme_id, seed, status, map_json, started_by, started_at
+      ) VALUES (1, 1, 'root_king', 'seed', 'active', '{}', 1, 1000)
+    `).run();
+    db.prepare(`
+      INSERT INTO family_expedition_rooms (
+        id, expedition_id, room_key, room_type, state, progress_target
+      ) VALUES (1, 1, 'room', 'event', 'unlocked', 1)
+    `).run();
+    db.prepare(`
+      INSERT INTO family_expedition_minigame_attempts (
+        id, attempt_token, expedition_id, room_id, user_id, game_type, seed,
+        status, started_at, expires_at, result_json
+      ) VALUES (1, 'legacy-attempt', 1, 1, 1, 'focus_hold', 'seed',
+                'succeeded', 1000, 1012, ?)
+    `).run(JSON.stringify({
+      startIdempotencyKey: 'legacy-start',
+      startIntent: { expeditionId: 1, roomId: 1, userId: 1, gameType: 'focus_hold' },
+      startResponse: { attempt: { attemptToken: 'legacy-attempt' } },
+      finishes: [{
+        idempotencyKey: 'legacy-finish',
+        intent: { attemptToken: 'legacy-attempt', outcome: { success: true, score: 90 }, forceState: null },
+        response: { state: 'succeeded', success: true },
+      }],
+    }));
+    db.prepare(`
+      DELETE FROM app_settings WHERE key = 'expedition_minigame_idempotency_backfilled_v1'
+    `).run();
+    db.exec('DROP TABLE family_expedition_minigame_idempotency');
+    db.close();
+    db = null;
+
+    for (let initialization = 0; initialization < 2; initialization += 1) {
+      db = initializeDatabaseAt(databasePath);
+      assert.deepEqual(db.prepare(`
+        SELECT idempotency_key AS key, operation
+        FROM family_expedition_minigame_idempotency
+        WHERE user_id = 1 ORDER BY idempotency_key
+      `).all(), [
+        { key: 'legacy-finish', operation: 'finish' },
+        { key: 'legacy-start', operation: 'start' },
+      ]);
+      assert.equal(db.prepare(`
+        SELECT value FROM app_settings
+        WHERE key = 'expedition_minigame_idempotency_backfilled_v1'
+      `).pluck().get(), '1');
+      db.close();
+      db = null;
+    }
+  } finally {
+    db?.close();
+    delete require.cache[databaseModulePath];
+    delete require.cache[notificationModulePath];
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('expedition schema exposes required columns, foreign keys, and indexes', () => {
   withTempDatabase((db) => {
     const column = (name, type, notnull, dflt_value = null, pk = 0) => ({
@@ -357,6 +422,17 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
         column('expires_at', 'INTEGER', 1),
         column('finished_at', 'INTEGER', 0),
         column('result_json', 'TEXT', 1, "'{}'"),
+      ],
+      family_expedition_minigame_idempotency: [
+        column('user_id', 'INTEGER', 1, null, 1),
+        column('idempotency_key', 'TEXT', 1, null, 2),
+        column('operation', 'TEXT', 1),
+        column('attempt_id', 'INTEGER', 1),
+        column('intent_json', 'TEXT', 1),
+        column('response_json', 'TEXT', 0),
+        column('http_response_json', 'TEXT', 0),
+        column('created_at', 'INTEGER', 1),
+        column('updated_at', 'INTEGER', 1),
       ],
       family_expedition_pending_rewards: [
         column('id', 'INTEGER', 0, null, 1),
@@ -444,6 +520,10 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
       family_expedition_minigame_attempts: [
         { from: 'expedition_id', table: 'family_expedition_rooms', on_delete: 'CASCADE' },
         { from: 'room_id', table: 'family_expedition_rooms', on_delete: 'CASCADE' },
+        { from: 'user_id', table: 'users', on_delete: 'CASCADE' },
+      ],
+      family_expedition_minigame_idempotency: [
+        { from: 'attempt_id', table: 'family_expedition_minigame_attempts', on_delete: 'CASCADE' },
         { from: 'user_id', table: 'users', on_delete: 'CASCADE' },
       ],
       family_expedition_pending_rewards: [
@@ -560,6 +640,20 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
             { name: 'room_id', desc: 0 },
             { name: 'user_id', desc: 0 },
           ],
+        },
+      ],
+      family_expedition_minigame_idempotency: [
+        {
+          name: 'idx_expedition_minigame_idempotency_attempt',
+          origin: 'c',
+          unique: 0,
+          columns: [{ name: 'attempt_id', desc: 0 }],
+        },
+        {
+          name: 'auto',
+          origin: 'pk',
+          unique: 1,
+          columns: [{ name: 'user_id', desc: 0 }, { name: 'idempotency_key', desc: 0 }],
         },
       ],
       family_expedition_pending_rewards: [
@@ -686,6 +780,23 @@ test('expedition schema enforces status, uniqueness, foreign keys, and cascades'
       ) VALUES ('cross-expedition', 100, 201, 2, 'roots', 'seed',
                 'active', 1000, 1100)
     `).run(), /FOREIGN KEY constraint failed/);
+
+    db.prepare(`
+      INSERT INTO family_expedition_minigame_attempts (
+        id, attempt_token, expedition_id, room_id, user_id, game_type, seed,
+        status, started_at, expires_at
+      ) VALUES (300, 'valid-attempt', 100, 200, 2, 'roots', 'seed',
+                'succeeded', 1000, 1100)
+    `).run();
+    const insertMinigameReplay = db.prepare(`
+      INSERT INTO family_expedition_minigame_idempotency (
+        user_id, idempotency_key, operation, attempt_id, intent_json,
+        response_json, created_at, updated_at
+      ) VALUES (2, ?, ?, 300, '{}', '{}', 1000, 1000)
+    `);
+    assert.throws(() => insertMinigameReplay.run('   ', 'finish'), /CHECK constraint failed/);
+    assert.throws(() => insertMinigameReplay.run('x'.repeat(129), 'finish'), /CHECK constraint failed/);
+    assert.throws(() => insertMinigameReplay.run('invalid-operation', 'retry'), /CHECK constraint failed/);
 
     db.prepare(`
       INSERT INTO family_expedition_members (

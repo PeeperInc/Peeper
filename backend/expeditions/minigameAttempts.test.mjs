@@ -7,6 +7,7 @@ const Database = require('better-sqlite3');
 const {
   expireAttempt,
   finishAttempt,
+  readIdempotencyRecord,
   readOpenAttempt,
   startAttempt,
 } = require('./minigameAttempts.js');
@@ -40,6 +41,18 @@ function attemptDb() {
       idempotency_key TEXT NOT NULL,
       user_id INTEGER NOT NULL,
       UNIQUE(user_id, idempotency_key)
+    );
+    CREATE TABLE family_expedition_minigame_idempotency (
+      user_id INTEGER NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      attempt_id INTEGER NOT NULL,
+      intent_json TEXT NOT NULL,
+      response_json TEXT,
+      http_response_json TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id, idempotency_key)
     );
   `);
   return db;
@@ -77,6 +90,43 @@ test('start creates an active opaque attempt with deterministic seed and exact p
   assert.equal(first.retry, false);
   assert.deepEqual(Object.keys(first).sort(), PUBLIC_ATTEMPT_KEYS);
   assert.equal(db.prepare('SELECT ap_spent FROM family_expedition_minigame_attempts').get().ap_spent, 1);
+});
+
+test('idempotency keys must be non-empty strings no longer than 128 characters', () => {
+  for (const idempotencyKey of [123, {}, '', '   ', 'x'.repeat(129)]) {
+    const db = attemptDb();
+    assert.throws(
+      () => startAttempt(db, { ...baseStart, idempotencyKey }),
+      /idempotencyKey.*string|idempotencyKey.*128|idempotencyKey.*required/i,
+    );
+    db.close();
+  }
+});
+
+test('indexed idempotency lookup ignores malformed historical attempt JSON', () => {
+  const db = attemptDb();
+  const attempt = startAttempt(db, baseStart);
+  const record = readIdempotencyRecord(db, {
+    userId: baseStart.userId,
+    idempotencyKey: baseStart.idempotencyKey,
+  });
+  assert.equal(record.operation, 'start');
+  assert.deepEqual(record.response.attempt, attempt);
+
+  const insertHistory = db.prepare(`
+    INSERT INTO family_expedition_minigame_attempts (
+      attempt_token, expedition_id, room_id, user_id, game_type, seed, status,
+      started_at, expires_at, result_json
+    ) VALUES (?, 10, 99, 30, 'focus_hold', 'seed', 'succeeded', 1, 2, ?)
+  `);
+  for (let index = 0; index < 500; index += 1) {
+    insertHistory.run(`history-${index}`, '{malformed');
+  }
+  assert.deepEqual(readIdempotencyRecord(db, {
+    userId: baseStart.userId,
+    idempotencyKey: baseStart.idempotencyKey,
+  }), record);
+  db.close();
 });
 
 test('duplicate start replays the same attempt and rejects mismatched intent', () => {

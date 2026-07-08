@@ -284,6 +284,15 @@ test('mutations require idempotencyKey and prepare delegates role and artifact o
   assert.equal(prepared.body.member.loadout[0].artifactId, 'bent_sword');
 });
 
+test('mutation routes reject non-string, blank, and oversized idempotency keys', async () => {
+  createFamilyWithMembers(['tg-owner']);
+  for (const idempotencyKey of [123, {}, '   ', 'x'.repeat(129)]) {
+    const response = await request('POST', '/start', 'tg-owner', { idempotencyKey });
+    assert.equal(response.status, 400);
+    assert.match(response.body.error, /idempotencyKey.*string|idempotencyKey.*128|idempotencyKey.*required/i);
+  }
+});
+
 test('duplicate room attempt returns the same state without spending AP twice', async () => {
   createFamilyWithMembers(['tg-owner']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-attempt' });
@@ -792,6 +801,91 @@ test('persisted mini-game routes spend AP at start, isolate tokens, and retire t
   );
   assert.equal(delayedStartReplay.status, 200);
   assert.deepEqual(delayedStartReplay.body, attemptStart.body);
+});
+
+test('paid concurrent mini-game finish after another member clears resolves without duplicate rewards or damage', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-concurrent-event' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-concurrent-owner',
+    role: 'scout',
+  });
+  await request('POST', `/${expeditionId}/prepare`, 'tg-sibling', {
+    idempotencyKey: 'prepare-concurrent-sibling',
+    role: 'mage',
+  });
+  const room = db.prepare(`
+    SELECT id, room_key AS roomKey, payload_json AS payloadJson
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_type NOT IN ('camp', 'combat', 'boss')
+    ORDER BY id LIMIT 1
+  `).get(expeditionId);
+  const payload = JSON.parse(room.payloadJson);
+  payload.miniGame = { kind: 'focus_hold' };
+  payload.loot = { coins: { min: 12, max: 12 }, artifactRolls: 0 };
+  db.prepare(`
+    UPDATE family_expedition_rooms
+    SET state = 'unlocked', progress = 0, progress_target = 1, payload_json = ?
+    WHERE id = ?
+  `).run(JSON.stringify(payload), room.id);
+
+  const ownerStart = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'concurrent-owner-start' },
+  );
+  const siblingStart = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-sibling',
+    { idempotencyKey: 'concurrent-sibling-start' },
+  );
+  assert.equal(ownerStart.status, 200);
+  assert.equal(siblingStart.status, 200);
+
+  const ownerFinish = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.roomKey}/minigame/${ownerStart.body.attempt.attemptToken}/finish`,
+    'tg-owner',
+    { idempotencyKey: 'concurrent-owner-finish', result: { success: true, score: 100 } },
+  );
+  assert.equal(ownerFinish.status, 200);
+  assert.equal(ownerFinish.body.state, 'succeeded');
+  const ownerCoins = db.prepare('SELECT coins FROM users WHERE id = ?').pluck().get(userIds[0]);
+  const siblingCoinsBefore = db.prepare('SELECT coins FROM users WHERE id = ?').pluck().get(userIds[1]);
+
+  const siblingFinish = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.roomKey}/minigame/${siblingStart.body.attempt.attemptToken}/finish`,
+    'tg-sibling',
+    { idempotencyKey: 'concurrent-sibling-finish', result: { success: true, score: 100 } },
+  );
+  assert.equal(siblingFinish.status, 200);
+  assert.equal(siblingFinish.body.state, 'superseded');
+  assert.equal(siblingFinish.body.success, true);
+  assert.equal(siblingFinish.body.progressAwarded, 0);
+  assert.deepEqual(siblingFinish.body.loot, {});
+  assert.equal(siblingFinish.body.visualEvents[0].type, 'event_minigame_already_cleared');
+  assert.equal(db.prepare(`
+    SELECT status FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+  `).pluck().get(siblingStart.body.attempt.attemptToken), 'superseded');
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').pluck().get(userIds[0]), ownerCoins);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').pluck().get(userIds[1]), siblingCoinsBefore);
+  assert.equal(db.prepare('SELECT progress FROM family_expedition_rooms WHERE id = ?').pluck().get(room.id), 1);
+
+  const replay = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.roomKey}/minigame/${siblingStart.body.attempt.attemptToken}/finish`,
+    'tg-sibling',
+    { idempotencyKey: 'concurrent-sibling-finish', result: { success: true, score: 100 } },
+  );
+  assert.equal(replay.status, 200);
+  assert.deepEqual(replay.body, siblingFinish.body);
+  assert.equal(db.prepare(`
+    SELECT COUNT(*) FROM family_expedition_minigame_attempts
+    WHERE user_id = ? AND status IN ('ready', 'active', 'retry')
+  `).pluck().get(userIds[1]), 0);
+  assert.equal(db.prepare(`
+    SELECT hero_hp FROM family_expedition_members WHERE expedition_id = ? AND user_id = ?
+  `).pluck().get(expeditionId, userIds[1]), 3);
 });
 
 test('stale mini-game timeout commits even when replacement start is rejected', async () => {

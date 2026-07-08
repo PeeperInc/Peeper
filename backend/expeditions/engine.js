@@ -27,6 +27,7 @@ const {
   bindHttpReplay,
   bindStartReplay,
   finishAttempt,
+  normalizeIdempotencyKey,
   readOpenAttempt,
   readFinishReplay,
   readStartReplay,
@@ -868,7 +869,7 @@ function canFinishExpedition({ expedition, userId, rooms = [] } = {}) {
 }
 
 function assertMutationInput({ transaction, idempotencyKey } = {}) {
-  if (!idempotencyKey) throw new TypeError('idempotencyKey is required');
+  normalizeIdempotencyKey(idempotencyKey);
   if (!transaction || transaction.inTransaction !== true || typeof transaction.prepare !== 'function') {
     throw new TypeError('mutation requires an active caller transaction');
   }
@@ -2128,6 +2129,14 @@ function applyMinigameSuccess({
   assertExpeditionNotFinished(snapshot);
   if (snapshot.expedition.status !== 'active') throw new RangeError('expedition is not active');
   const currentRoom = rowToRoom(getRoomRow(transaction, expeditionId, room.key));
+  if (currentRoom.state === 'cleared') {
+    return {
+      terminalState: 'superseded',
+      progressAwarded: 0,
+      loot: {},
+      visualEvents: [{ type: 'event_minigame_already_cleared', progressAwarded: 0 }],
+    };
+  }
   assertMinigameRoom(currentRoom);
   const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
   const previousProgress = currentRoom.progress || 0;

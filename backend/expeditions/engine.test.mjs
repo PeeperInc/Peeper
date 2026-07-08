@@ -204,6 +204,19 @@ function expeditionDb() {
       result_json TEXT NOT NULL DEFAULT '{}'
     );
 
+    CREATE TABLE family_expedition_minigame_idempotency (
+      user_id INTEGER NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      attempt_id INTEGER NOT NULL,
+      intent_json TEXT NOT NULL,
+      response_json TEXT,
+      http_response_json TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id, idempotency_key)
+    );
+
     CREATE TABLE family_expedition_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       expedition_id INTEGER NOT NULL,

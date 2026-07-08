@@ -457,6 +457,21 @@ db.exec(`
       REFERENCES family_expedition_rooms(id, expedition_id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS family_expedition_minigame_idempotency (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    idempotency_key TEXT NOT NULL CHECK(
+      length(idempotency_key) BETWEEN 1 AND 128 AND length(trim(idempotency_key)) > 0
+    ),
+    operation TEXT NOT NULL CHECK(operation IN ('start', 'finish')),
+    attempt_id INTEGER NOT NULL REFERENCES family_expedition_minigame_attempts(id) ON DELETE CASCADE,
+    intent_json TEXT NOT NULL,
+    response_json TEXT,
+    http_response_json TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(user_id, idempotency_key)
+  );
+
   CREATE TABLE IF NOT EXISTS family_expedition_pending_rewards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
@@ -538,6 +553,8 @@ db.exec(`
     ON family_expedition_minigame_attempts(room_id);
   CREATE INDEX IF NOT EXISTS idx_expedition_attempt_user
     ON family_expedition_minigame_attempts(user_id);
+  CREATE INDEX IF NOT EXISTS idx_expedition_minigame_idempotency_attempt
+    ON family_expedition_minigame_idempotency(attempt_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_pending_reward
     ON family_expedition_pending_rewards(expedition_id, user_id);
   CREATE INDEX IF NOT EXISTS idx_expedition_pending_reward_user
@@ -557,6 +574,71 @@ addColumnIfMissing('family_expedition_members', 'hero_recover_at', 'INTEGER');
 addColumnIfMissing('family_expedition_members', 'role_charge', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('family_expedition_members', 'role_charge_progress', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('family_expedition_members', 'room_coins_earned', 'INTEGER NOT NULL DEFAULT 0');
+
+const migrateExpeditionMinigameIdempotency = db.transaction(() => {
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO family_expedition_minigame_idempotency (
+      user_id, idempotency_key, operation, attempt_id, intent_json,
+      response_json, http_response_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const addRecord = (row, operation, key, intent, response, httpResponse) => {
+    if (typeof key !== 'string' || key.trim().length === 0 || key.length > 128 || !intent) return;
+    insert.run(
+      row.user_id,
+      key,
+      operation,
+      row.id,
+      JSON.stringify(intent),
+      response === undefined ? null : JSON.stringify(response),
+      httpResponse === undefined ? null : JSON.stringify(httpResponse),
+      row.started_at,
+      row.finished_at || row.started_at,
+    );
+  };
+
+  for (const row of db.prepare(`
+    SELECT * FROM family_expedition_minigame_attempts ORDER BY id
+  `).all()) {
+    let metadata;
+    try {
+      metadata = JSON.parse(row.result_json || '{}');
+    } catch {
+      continue;
+    }
+    const fallbackAttempt = {
+      attemptToken: row.attempt_token,
+      gameType: row.game_type,
+      seed: row.seed,
+      startedAt: row.started_at,
+      expiresAt: row.expires_at,
+      retry: row.status === 'retry',
+    };
+    addRecord(
+      row,
+      'start',
+      metadata.startIdempotencyKey,
+      metadata.startIntent,
+      metadata.startResponse || { attempt: fallbackAttempt },
+      metadata.startHttpResponse,
+    );
+    for (const replay of metadata.startReplays || []) {
+      addRecord(row, 'start', replay.idempotencyKey, replay.intent, replay.response, replay.httpResponse);
+    }
+    for (const finish of metadata.finishes || []) {
+      addRecord(row, 'finish', finish.idempotencyKey, finish.intent, finish.response, finish.httpResponse);
+    }
+  }
+  db.prepare(`
+    INSERT OR REPLACE INTO app_settings (key, value, updated_at)
+    VALUES ('expedition_minigame_idempotency_backfilled_v1', '1', strftime('%s','now'))
+  `).run();
+});
+const expeditionIdempotencyBackfilled = db.prepare(`
+  SELECT 1 FROM app_settings
+  WHERE key = 'expedition_minigame_idempotency_backfilled_v1'
+`).get();
+if (!expeditionIdempotencyBackfilled) migrateExpeditionMinigameIdempotency();
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS blackjack_lobbies (

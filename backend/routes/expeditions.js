@@ -25,7 +25,10 @@ const { THEME_ID } = require('../expeditions/catalog');
 const { generateExpeditionMap } = require('../expeditions/generator');
 const { serializeExpeditionState } = require('../expeditions/serializer');
 const { listActiveRoomEffects } = require('../expeditions/roleEffects');
-const { isReservedIdempotencyKey } = require('../expeditions/minigameAttempts');
+const {
+  isReservedIdempotencyKey,
+  normalizeIdempotencyKey,
+} = require('../expeditions/minigameAttempts');
 
 const router = express.Router();
 
@@ -257,11 +260,13 @@ function serializeFor(user, family, snapshot, canStart = false) {
 
 function requireIdempotencyKey(req, res) {
   const idempotencyKey = req.body?.idempotencyKey;
-  if (!idempotencyKey) {
-    res.status(400).json({ error: 'idempotencyKey is required' });
+  let normalized;
+  try {
+    normalized = normalizeIdempotencyKey(idempotencyKey);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
     return null;
   }
-  const normalized = String(idempotencyKey);
   if (isReservedIdempotencyKey(normalized)) {
     res.status(400).json({ error: 'This idempotencyKey namespace is reserved' });
     return null;
