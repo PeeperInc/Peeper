@@ -357,6 +357,35 @@ function consumeArmedEffect(member, effect) {
   }
 }
 
+function applyWearerDamageProtection({ member, expeditionId, roomKey, damage, damageSource, events }) {
+  let remainingDamage = damage;
+  const personalShield = armedEffect(member, 'prevent_personal_damage', roomKey);
+  if (remainingDamage > 0 && personalShield) {
+    remainingDamage = 0;
+    consumeArmedEffect(member, personalShield);
+    events.push({ type: 'artifact_damage_prevented', artifactId: personalShield.artifactId });
+  } else if (remainingDamage > 0) {
+    const protection = applyPassiveArtifactEffects({
+      phase: 'personal_damage',
+      expeditionId,
+      loadout: member.loadout,
+      triggerHistory: member.triggerHistory,
+      damage: remainingDamage,
+      damageSource,
+      heroHp: member.heroHp,
+    });
+    remainingDamage = protection.damage;
+    member.triggerHistory = protection.triggerHistory || member.triggerHistory;
+    if (protection.preventedByArtifactId) {
+      events.push({
+        type: 'artifact_damage_prevented',
+        artifactId: protection.preventedByArtifactId,
+      });
+    }
+  }
+  return remainingDamage;
+}
+
 function equipFoundArtifact({ loadout = [], inventory = [], artifactId, slotIndex, maxSlots = 3 } = {}) {
   if (!ARTIFACTS[artifactId]) throw new RangeError(`Unknown artifact: ${artifactId}`);
   const owned = inventoryItemFor(inventory, artifactId);
@@ -663,24 +692,14 @@ function resolveAttempt({
     });
     progressAwarded = passiveCombat.progress;
     nextMember.heroHp = passiveCombat.heroHp;
-    let heroDamage = combatOutcome.heroDamage;
-    const personalShield = armedEffect(nextMember, 'prevent_personal_damage', nextRoom.key);
-    if (heroDamage > 0 && personalShield) {
-      heroDamage = 0;
-      consumeArmedEffect(nextMember, personalShield);
-      events.push({ type: 'artifact_damage_prevented', artifactId: personalShield.artifactId });
-    } else if (heroDamage > 0) {
-      const protection = applyPassiveArtifactEffects({
-        phase: 'personal_damage',
-        expeditionId: nextExpedition.id,
-        loadout: nextMember.loadout,
-        triggerHistory: nextMember.triggerHistory,
-        damage: heroDamage,
-        heroHp: nextMember.heroHp,
-      });
-      heroDamage = protection.damage;
-      nextMember.triggerHistory = protection.triggerHistory || nextMember.triggerHistory;
-    }
+    const heroDamage = applyWearerDamageProtection({
+      member: nextMember,
+      expeditionId: nextExpedition.id,
+      roomKey: nextRoom.key,
+      damage: combatOutcome.heroDamage,
+      damageSource: 'combat',
+      events,
+    });
     if (heroDamage > 0) {
       nextMember.heroHp = Math.max(0, Number(nextMember.heroHp ?? 3) - heroDamage);
       events.push({ type: 'hero_damaged', amount: heroDamage, heroHp: nextMember.heroHp });
@@ -2106,16 +2125,20 @@ function startMinigameAttempt(options) {
       applyArtifactRechargeThreshold(nextMember);
       startedMember = nextMember;
       updateMember(transaction, expeditionId, nextMember, { ap: 1, progress: 0 });
+      const passive = applyPassiveArtifactEffects({
+        phase: 'minigame_setup',
+        loadout: startedMember.loadout,
+        timeLimitMs: 1_000,
+        successWindowMultiplier: 1,
+      });
+      return {
+        timeLimitMultiplier: passive.timeLimitMs / 1_000,
+        successWindowMultiplier: passive.successWindowMultiplier,
+      };
     },
   });
   const visualEvents = [];
   if (startedMember) {
-    const baseDurationMs = (attempt.expiresAt - attempt.startedAt) * 1000;
-    const passive = applyPassiveArtifactEffects({
-      phase: 'minigame_setup',
-      loadout: startedMember.loadout,
-      timeLimitMs: baseDurationMs,
-    });
     const timeEffect = armedEffect(startedMember, 'minigame_time_once', room.key);
     const bonusSeconds = timeEffect ? ARTIFACTS.chalk_rune.effect.seconds : 0;
     if (timeEffect) {
@@ -2127,7 +2150,7 @@ function startMinigameAttempt(options) {
       consumeArmedEffect(startedMember, autoSuccessEffect);
       visualEvents.push({ type: 'artifact_minigame_auto_success', artifactId: autoSuccessEffect.artifactId });
     }
-    const expiresAt = attempt.startedAt + Math.round(passive.timeLimitMs / 1000) + bonusSeconds;
+    const expiresAt = attempt.expiresAt + bonusSeconds;
     if (expiresAt !== attempt.expiresAt || autoSuccessEffect) {
       attempt.expiresAt = expiresAt;
       transaction.prepare(`
@@ -2288,11 +2311,20 @@ function applyMinigameFailure({ transaction, expeditionId, room, userId, idempot
     return { heroHp: memberState.heroHp, visualEvents: [shield.event] };
   }
 
-  const heroHp = Math.max(0, Number(memberState.heroHp ?? 3) - 1);
+  const visualEvents = [];
+  const damage = applyWearerDamageProtection({
+    member: memberState,
+    expeditionId,
+    roomKey: room.key,
+    damage: 1,
+    damageSource: 'minigame',
+    events: visualEvents,
+  });
+  const heroHp = Math.max(0, Number(memberState.heroHp ?? 3) - damage);
   const heroRecoverAt = heroHp === 0 ? now + HERO_RECOVERY_SECONDS : null;
   const nextMember = { ...memberState, heroHp, heroRecoverAt };
   updateMember(transaction, expeditionId, nextMember);
-  const visualEvents = [{ type: 'hero_damaged', amount: 1, heroHp }];
+  if (damage > 0) visualEvents.push({ type: 'hero_damaged', amount: damage, heroHp });
   if (heroRecoverAt) visualEvents.push({ type: 'hero_recovering', heroRecoverAt });
   insertAction(transaction, {
     idempotencyKey,

@@ -271,6 +271,55 @@ test('finish validates bounded game proof and resolves success once', () => {
   }), /idempotency conflict/i);
 });
 
+test('persisted success-window multiplier controls timing score boundaries and cannot be forged', () => {
+  const passingDb = attemptDb();
+  const passingAttempt = startAttempt(passingDb, {
+    ...baseStart,
+    gameType: 'timing_window',
+    onStart: () => ({ successWindowMultiplier: 1.1 }),
+  });
+  const persisted = JSON.parse(passingDb.prepare(`
+    SELECT result_json FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+  `).pluck().get(passingAttempt.attemptToken));
+  assert.equal(persisted.successWindowMultiplier, 1.1);
+  const passing = finishAttempt(passingDb, {
+    ...baseStart,
+    gameType: undefined,
+    attemptToken: passingAttempt.attemptToken,
+    idempotencyKey: 'finish-expanded-window-pass',
+    now: 1_003,
+    result: { success: true, score: 55 },
+  });
+  assert.equal(passing.success, true);
+
+  const failingDb = attemptDb();
+  const failingAttempt = startAttempt(failingDb, {
+    ...baseStart,
+    gameType: 'timing_window',
+    onStart: () => ({ successWindowMultiplier: 1.1 }),
+  });
+  const failing = finishAttempt(failingDb, {
+    ...baseStart,
+    gameType: undefined,
+    attemptToken: failingAttempt.attemptToken,
+    idempotencyKey: 'finish-expanded-window-fail',
+    now: 1_003,
+    result: { success: true, score: 54 },
+  });
+  assert.equal(failing.success, false);
+
+  const forgedDb = attemptDb();
+  const ordinaryAttempt = startAttempt(forgedDb, { ...baseStart, gameType: 'timing_window' });
+  assert.throws(() => finishAttempt(forgedDb, {
+    ...baseStart,
+    gameType: undefined,
+    attemptToken: ordinaryAttempt.attemptToken,
+    idempotencyKey: 'finish-forged-window',
+    now: 1_003,
+    result: { success: true, score: 55, successWindowMultiplier: 10 },
+  }), /disallowed fields/i);
+});
+
 test('finish replay after its deadline returns the immutable response before timeout normalization', () => {
   const db = attemptDb();
   const attempt = startAttempt(db, { ...baseStart, gameType: 'focus_hold' });

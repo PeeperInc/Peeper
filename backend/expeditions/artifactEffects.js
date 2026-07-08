@@ -147,6 +147,8 @@ function applyPassiveArtifactEffects(context = {}) {
 
   if (state.phase === 'minigame_setup' && equipped.has('old_torch')) {
     state.timeLimitMs = Math.round(state.timeLimitMs * ARTIFACTS.old_torch.effect.multiplier);
+    state.successWindowMultiplier = (state.successWindowMultiplier || 1)
+      * ARTIFACTS.old_torch.effect.multiplier;
   }
   if (state.phase === 'role_recharge' && equipped.has('family_banner')) {
     state.roleRechargeThreshold = ARTIFACTS.family_banner.effect.threshold;
@@ -169,18 +171,21 @@ function applyPassiveArtifactEffects(context = {}) {
         state.progress = (state.progress || 0) + effect.amount;
       }
     }
-    if (equipped.has('emerald_heart') && state.critical && state.heroHp > 0) {
+    if (equipped.has('emerald_heart') && state.rawRoll === 20 && state.heroHp > 0) {
       state.heroHp = Math.min(state.maxHeroHp || 3, state.heroHp + ARTIFACTS.emerald_heart.effect.amount);
     }
   }
   if (state.phase === 'personal_damage' && state.damage > 0) {
-    if (equipped.has('rabbit_foot') && !triggerUsed(state.triggerHistory, 'rabbit_foot')) {
+    if (state.damageSource === 'combat' && equipped.has('rabbit_foot')
+      && !triggerUsed(state.triggerHistory, 'rabbit_foot')) {
       state.damage = 0;
+      state.preventedByArtifactId = 'rabbit_foot';
       recordTrigger(state, 'rabbit_foot');
     } else if (equipped.has('last_stand_banner')
       && !triggerUsed(state.triggerHistory, 'last_stand_banner')
       && state.damage >= state.heroHp) {
       state.damage = Math.max(0, state.heroHp - 1);
+      state.preventedByArtifactId = 'last_stand_banner';
       recordTrigger(state, 'last_stand_banner');
     }
   }

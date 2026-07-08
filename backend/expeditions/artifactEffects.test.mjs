@@ -126,11 +126,17 @@ test('passives apply for the whole expedition and preserve equipped slots', () =
     { artifactId: 'family_banner' },
     { artifactId: 'mimic_tooth' },
   ];
-  const minigame = applyPassiveArtifactEffects({ phase: 'minigame_setup', loadout, timeLimitMs: 10000 });
+  const minigame = applyPassiveArtifactEffects({
+    phase: 'minigame_setup',
+    loadout,
+    timeLimitMs: 10000,
+    successWindowMultiplier: 1,
+  });
   const recharge = applyPassiveArtifactEffects({ phase: 'role_recharge', loadout, roleRechargeThreshold: 3 });
   const reward = applyPassiveArtifactEffects({ phase: 'room_reward', loadout, coins: 7 });
 
   assert.equal(minigame.timeLimitMs, 11000);
+  assert.equal(minigame.successWindowMultiplier, 1.1);
   assert.equal(recharge.roleRechargeThreshold, 2);
   assert.equal(reward.coins, 10);
   assert.deepEqual(minigame.loadout, loadout);
@@ -138,9 +144,8 @@ test('passives apply for the whole expedition and preserve equipped slots', () =
   assert.deepEqual(reward.loadout, loadout);
 });
 
-test('combat passives implement damage, critical, healing, and one-time protection rules', () => {
+test('Crown upgrades a natural 19 combat outcome without triggering Emerald Heart healing', () => {
   const loadout = [
-    { artifactId: 'bent_sword' },
     { artifactId: 'crown_of_twenty' },
     { artifactId: 'emerald_heart' },
   ];
@@ -155,12 +160,28 @@ test('combat passives implement damage, critical, healing, and one-time protecti
     maxHeroHp: 3,
   });
   assert.equal(combat.critical, true);
-  assert.equal(combat.progress, 4);
-  assert.equal(combat.heroHp, 3);
+  assert.equal(combat.progress, 3);
+  assert.equal(combat.heroHp, 2);
 
+  const naturalTwenty = applyPassiveArtifactEffects({
+    phase: 'combat_roll',
+    loadout,
+    roomType: 'combat',
+    rawRoll: 20,
+    combatRoll: 20,
+    critical: true,
+    progress: 3,
+    heroHp: 2,
+    maxHeroHp: 3,
+  });
+  assert.equal(naturalTwenty.heroHp, 3);
+});
+
+test('combat passives implement one-time protection rules', () => {
   const protectedOnce = applyPassiveArtifactEffects({
     phase: 'personal_damage',
     loadout: [{ artifactId: 'rabbit_foot' }, { artifactId: 'last_stand_banner' }],
+    damageSource: 'combat',
     damage: 1,
     heroHp: 3,
     triggerHistory: [],
@@ -171,6 +192,7 @@ test('combat passives implement damage, critical, healing, and one-time protecti
   const lethal = applyPassiveArtifactEffects({
     phase: 'personal_damage',
     loadout: [{ artifactId: 'rabbit_foot' }, { artifactId: 'last_stand_banner' }],
+    damageSource: 'combat',
     damage: 3,
     heroHp: 3,
     triggerHistory: protectedOnce.triggerHistory,

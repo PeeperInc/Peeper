@@ -308,9 +308,18 @@ function startAttempt(transaction, options) {
     throw new RangeError('mini-game attempt is already active');
   }
 
-  if (typeof options.onStart === 'function') options.onStart({ gameType });
+  const attemptModifiers = typeof options.onStart === 'function'
+    ? (options.onStart({ gameType }) || {})
+    : {};
+  const timeLimitMultiplier = Number(attemptModifiers.timeLimitMultiplier ?? 1);
+  const successWindowMultiplier = Number(attemptModifiers.successWindowMultiplier ?? 1);
+  if (!Number.isFinite(timeLimitMultiplier) || timeLimitMultiplier < 1
+    || !Number.isFinite(successWindowMultiplier) || successWindowMultiplier < 1) {
+    throw new RangeError('mini-game attempt modifiers must be finite multipliers of at least one');
+  }
 
   const rule = GAME_RULES[gameType];
+  const durationSeconds = Math.round(rule.durationSeconds * timeLimitMultiplier);
   const seed = publicSeed({ expeditionId, roomId, userId, idempotencyKey });
   const token = opaqueToken();
   const initialAttempt = publicAttempt({
@@ -319,7 +328,7 @@ function startAttempt(transaction, options) {
     seed,
     status: 'active',
     started_at: startedAt,
-    expires_at: startedAt + rule.durationSeconds,
+    expires_at: startedAt + durationSeconds,
   });
   const insert = transaction.prepare(`
     INSERT INTO family_expedition_minigame_attempts (
@@ -334,11 +343,13 @@ function startAttempt(transaction, options) {
     gameType,
     seed,
     startedAt,
-    startedAt + rule.durationSeconds,
+    startedAt + durationSeconds,
     JSON.stringify({
       startIdempotencyKey: idempotencyKey,
       startIntent,
       startResponse: { attempt: initialAttempt },
+      timeLimitMultiplier,
+      successWindowMultiplier,
       finishes: [],
     }),
   );
@@ -428,7 +439,10 @@ function normalizeResult(row, value, { forceTimeout = false } = {}) {
       && targetIndex === expectedShadeTarget(row.seed)
       && selectedIndex === targetIndex;
   } else if (['timing_window', 'focus_hold'].includes(row.game_type)) {
-    normalized.success = normalized.success && score !== undefined && score >= 60;
+    const successWindowMultiplier = Number(attemptMetadata(row).successWindowMultiplier) || 1;
+    normalized.success = normalized.success
+      && score !== undefined
+      && score * successWindowMultiplier >= 60;
   } else if (row.game_type === 'rune_sequence') {
     normalized.success = normalized.success
       && normalized.input !== undefined
@@ -522,7 +536,8 @@ function finishAttempt(transaction, options) {
     if (retry) {
       nextStatus = 'retry';
       startedAt = normalizedNow;
-      expiresAt = normalizedNow + rule.durationSeconds;
+      const timeLimitMultiplier = Number(metadata.timeLimitMultiplier) || 1;
+      expiresAt = normalizedNow + Math.round(rule.durationSeconds * timeLimitMultiplier);
       finishedAt = null;
       response = {
         attempt: publicAttempt({

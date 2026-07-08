@@ -6,6 +6,7 @@ import test from 'node:test';
 const require = createRequire(import.meta.url);
 const {
   THEME_ID,
+  AP_REGEN_SECONDS,
   DAILY_AP,
   MAX_AP,
   ROLES,
@@ -33,8 +34,9 @@ const REQUIRED_ROOM_TYPES = [
 
 test('root king catalog exposes the approved constants and role rules', () => {
   assert.equal(THEME_ID, 'root_king');
-  assert.equal(DAILY_AP, 3);
-  assert.equal(MAX_AP, 6);
+  assert.equal(DAILY_AP, 5);
+  assert.equal(MAX_AP, 5);
+  assert.equal(AP_REGEN_SECONDS, 3 * 60 * 60);
   assert.deepEqual(ROLES, {
     knight: { stat: 'might', bonus: 3, ability: 'shield_wall' },
     scout: { stat: 'agility', bonus: 3, ability: 'reveal_room' },

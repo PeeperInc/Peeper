@@ -25,6 +25,8 @@ const {
   assistRoom,
   chooseScoutRoom,
   completeEventRoom,
+  startMinigameAttempt,
+  finishMinigameAttempt,
   equipFoundArtifactForMember,
   claimBossReward,
   finishExpedition,
@@ -268,6 +270,79 @@ function expeditionDb() {
 
 function inTx(db, fn) {
   return db.transaction(fn)();
+}
+
+function minigameArtifactScenario({ userId, artifactIds = [], heroHp = 3 }) {
+  const db = expeditionDb();
+  db.prepare('INSERT INTO users (id, coins) VALUES (?, 0)').run(userId);
+  const addArtifact = db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES (?, ?, 1, 0, 1, 1)
+  `);
+  for (const artifactId of artifactIds) addArtifact.run(userId, artifactId);
+  const eventRoom = {
+    ...hall,
+    key: 'timing_1',
+    type: 'trap',
+    encounterType: 'event',
+    miniGame: { kind: 'timing_window', label: 'Cross the blades' },
+    progressTarget: 2,
+    state: undefined,
+    progress: undefined,
+  };
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: `create-minigame-artifacts-${userId}`,
+    familyId: userId,
+    userId,
+    seed: `minigame-artifacts-${userId}`,
+    map: {
+      rooms: [{ ...camp, state: undefined, progress: undefined }, eventRoom],
+      edges: [{ from: 'camp_0', to: 'timing_1' }],
+    },
+    now: 1_000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: `prepare-minigame-artifacts-${userId}`,
+    expeditionId,
+    userId,
+    role: 'scout',
+    artifactIds,
+    now: 1_001,
+  }));
+  db.prepare(`
+    UPDATE family_expedition_rooms SET state = 'unlocked'
+    WHERE expedition_id = ? AND room_key = 'timing_1'
+  `).run(expeditionId);
+  db.prepare(`
+    UPDATE family_expedition_members SET hero_hp = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(heroHp, expeditionId, userId);
+  return { db, expeditionId, roomKey: 'timing_1', userId };
+}
+
+function failMinigameAttempt(scenario, suffix, now) {
+  const started = inTx(scenario.db, () => startMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: `start-${suffix}`,
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    now,
+  }));
+  return inTx(scenario.db, () => finishMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: `finish-${suffix}`,
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    attemptToken: started.attempt.attemptToken,
+    result: { success: false, score: 0 },
+    now: now + 1,
+  }));
 }
 
 test('UTC day keys and AP regeneration add one AP every three hours and cap at five', () => {
@@ -2002,4 +2077,91 @@ test('finishing consumes reserved passives and returns unused active copies', ()
     { artifactId: 'ration_box', quantity: 1 },
   ]);
   db.close();
+});
+
+test('Wooden Shield blocks one failed minigame hit in its room with persisted state and visuals', () => {
+  const scenario = minigameArtifactScenario({ userId: 31, artifactIds: ['wooden_shield'] });
+  inTx(scenario.db, () => useArtifactForMember({
+    transaction: scenario.db,
+    idempotencyKey: 'arm-wooden-shield-minigame',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    artifactId: 'wooden_shield',
+    now: 1_900,
+  }));
+
+  const first = failMinigameAttempt(scenario, 'wooden-shield-first', 2_000);
+  const firstMember = first.snapshot.members.find(member => member.userId === scenario.userId);
+  assert.equal(firstMember.heroHp, 3);
+  assert.deepEqual(first.visualEvents, [
+    { type: 'artifact_damage_prevented', artifactId: 'wooden_shield' },
+  ]);
+  assert.equal(firstMember.triggerHistory.some(entry => entry.artifactId === 'wooden_shield'), false);
+
+  const second = failMinigameAttempt(scenario, 'wooden-shield-second', 2_010);
+  assert.equal(second.snapshot.members.find(member => member.userId === scenario.userId).heroHp, 2);
+  assert.deepEqual(second.visualEvents, [{ type: 'hero_damaged', amount: 1, heroHp: 2 }]);
+  scenario.db.close();
+});
+
+test('Last Stand blocks only the first lethal minigame hit while Rabbit Foot remains combat-only', () => {
+  const lastStand = minigameArtifactScenario({
+    userId: 32,
+    artifactIds: ['last_stand_banner'],
+    heroHp: 1,
+  });
+  const first = failMinigameAttempt(lastStand, 'last-stand-first', 2_000);
+  const firstMember = first.snapshot.members.find(member => member.userId === lastStand.userId);
+  assert.equal(firstMember.heroHp, 1);
+  assert.deepEqual(first.visualEvents, [
+    { type: 'artifact_damage_prevented', artifactId: 'last_stand_banner' },
+  ]);
+  assert.equal(firstMember.triggerHistory.filter(entry => entry.artifactId === 'last_stand_banner').length, 1);
+
+  const second = failMinigameAttempt(lastStand, 'last-stand-second', 2_010);
+  const secondMember = second.snapshot.members.find(member => member.userId === lastStand.userId);
+  assert.equal(secondMember.heroHp, 0);
+  assert.equal(second.visualEvents.some(event => event.type === 'hero_damaged'), true);
+  assert.equal(second.visualEvents.some(event => event.type === 'hero_recovering'), true);
+  lastStand.db.close();
+
+  const rabbit = minigameArtifactScenario({ userId: 33, artifactIds: ['rabbit_foot'] });
+  const rabbitFailure = failMinigameAttempt(rabbit, 'rabbit-foot', 2_000);
+  const rabbitMember = rabbitFailure.snapshot.members.find(member => member.userId === rabbit.userId);
+  assert.equal(rabbitMember.heroHp, 2);
+  assert.deepEqual(rabbitFailure.visualEvents, [{ type: 'hero_damaged', amount: 1, heroHp: 2 }]);
+  assert.equal(rabbitMember.triggerHistory.some(entry => entry.artifactId === 'rabbit_foot'), false);
+  rabbit.db.close();
+});
+
+test('Old Torch persists a server-owned 10% timing window and extends the attempt limit', () => {
+  const scenario = minigameArtifactScenario({ userId: 34, artifactIds: ['old_torch'] });
+  const started = inTx(scenario.db, () => startMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: 'start-old-torch-window',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    now: 2_000,
+  }));
+  assert.equal(started.attempt.expiresAt - started.attempt.startedAt, 13);
+  const metadata = JSON.parse(scenario.db.prepare(`
+    SELECT result_json FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+  `).pluck().get(started.attempt.attemptToken));
+  assert.equal(metadata.successWindowMultiplier, 1.1);
+
+  const result = inTx(scenario.db, () => finishMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: 'finish-old-torch-window',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    attemptToken: started.attempt.attemptToken,
+    result: { success: true, score: 55 },
+    now: 2_001,
+  }));
+  assert.equal(result.success, true);
+  assert.equal(result.snapshot.rooms.find(room => room.key === scenario.roomKey).progress, 1);
+  scenario.db.close();
 });
