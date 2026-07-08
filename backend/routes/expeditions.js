@@ -16,6 +16,7 @@ const {
   startMinigameAttempt,
   finishMinigameAttempt,
   useRoleAbility,
+  useArtifactForMember,
   equipFoundArtifactForMember,
   claimBossReward,
   finishExpedition,
@@ -497,6 +498,30 @@ router.post('/:id/rooms/:roomKey/role-ability', (req, res) => {
       userId: req.currentUser.id,
       roomKey: req.params.roomKey,
       choiceId: req.body?.choiceId || null,
+    }))();
+    return res.json({
+      ...serializeFor(req.currentUser, access.family, result.snapshot, false),
+      visualEvents: result.visualEvents,
+    });
+  } catch (error) {
+    return handleRouteError(res, error);
+  }
+});
+
+router.post('/:id/rooms/:roomKey/artifacts/:artifactId/use', (req, res) => {
+  const idempotencyKey = requireIdempotencyKey(req, res);
+  if (!idempotencyKey) return;
+  const access = requireExpeditionAccess(req, res);
+  if (!access) return;
+
+  try {
+    const result = db.transaction(() => useArtifactForMember({
+      transaction: db,
+      idempotencyKey,
+      expeditionId: access.expeditionId,
+      userId: req.currentUser.id,
+      roomKey: req.params.roomKey,
+      artifactId: req.params.artifactId,
     }))();
     return res.json({
       ...serializeFor(req.currentUser, access.family, result.snapshot, false),

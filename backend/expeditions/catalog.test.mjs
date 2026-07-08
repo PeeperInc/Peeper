@@ -18,7 +18,7 @@ const {
 
 const VALID_STATS = new Set(['might', 'agility', 'arcana', 'spirit']);
 const VALID_RARITIES = new Set(['common', 'rare', 'epic', 'legendary']);
-const VALID_BEHAVIORS = new Set(['permanent', 'charged', 'consumable', 'cursed']);
+const VALID_USE_TYPES = new Set(['active', 'expedition_passive']);
 const REQUIRED_ROOM_TYPES = [
   'combat',
   'trap',
@@ -90,10 +90,10 @@ test('provisions contain the seven exact farm recipes and structured effects', (
   );
 });
 
-test('all 54 artifacts have unique valid IDs and declarative effect behavior', () => {
+test('all curated artifacts have unique IDs and explicit current-system effects', () => {
   const entries = Object.entries(ARTIFACTS);
-  assert.equal(entries.length, 54);
-  assert.equal(new Set(entries.map(([id]) => id)).size, 54);
+  assert.equal(entries.length, 24);
+  assert.equal(new Set(entries.map(([id]) => id)).size, 24);
 
   for (const [id, artifact] of entries) {
     assert.equal(artifact.id, id);
@@ -101,23 +101,11 @@ test('all 54 artifacts have unique valid IDs and declarative effect behavior', (
     assert.ok(artifact.name.length > 0);
     assert.ok(VALID_RARITIES.has(artifact.rarity), `${id} has invalid rarity`);
     assert.equal(typeof artifact.displayEffect, 'string');
-    assert.ok(VALID_BEHAVIORS.has(artifact.behavior.type), `${id} has invalid behavior`);
-    assert.equal(typeof artifact.effect.type, 'string');
-    assert.ok(artifact.effect.type.length > 0);
-    assert.equal(typeof artifact.effect.trigger, 'string');
-    assert.ok(artifact.effect.trigger.length > 0);
-    assert.equal(typeof artifact.effect.config, 'object');
-    assert.notEqual(artifact.effect.config, null);
-    assert.equal(Array.isArray(artifact.effect.config), false);
-    assert.equal(Object.hasOwn(artifact.effect.config, 'code'), false);
-
-    if (artifact.behavior.type === 'charged') {
-      assert.ok(Number.isInteger(artifact.behavior.initialCharges));
-      assert.ok(artifact.behavior.initialCharges > 0);
-    }
-    if (artifact.behavior.type === 'consumable') {
-      assert.equal(artifact.behavior.consumeOnTrigger, true);
-    }
+    assert.ok(VALID_USE_TYPES.has(artifact.useType), `${id} has invalid use type`);
+    assert.equal(typeof artifact.effect.kind, 'string');
+    assert.ok(artifact.effect.kind.length > 0);
+    assert.equal(Object.hasOwn(artifact.effect, 'trigger'), false);
+    assert.equal(Object.hasOwn(artifact.effect, 'roomTags'), false);
   }
 });
 
@@ -159,24 +147,49 @@ test('progress bands and base rarity weights match the approved rules', () => {
   assert.deepEqual(RARITY_WEIGHTS, { common: 65, rare: 25, epic: 8, legendary: 2 });
 });
 
-test('frontend and backend artifact metadata remain in parity', async () => {
+test('artifact catalog contains exactly the 24 public-test artifacts and current effect kinds', () => {
+  const expected = {
+    old_torch: ['common', 'expedition_passive', 'minigame_time'],
+    bent_sword: ['common', 'expedition_passive', 'combat_damage_bonus'],
+    chalk_rune: ['common', 'active', 'minigame_time_once'],
+    rabbit_foot: ['common', 'expedition_passive', 'prevent_personal_damage'],
+    bone_die: ['common', 'active', 'combat_roll_floor'],
+    wooden_shield: ['common', 'active', 'prevent_personal_damage'],
+    tiny_shovel: ['common', 'active', 'room_progress'],
+    ration_box: ['common', 'active', 'heal_self'],
+    rusty_lockpick: ['rare', 'active', 'minigame_auto_success'],
+    loaded_die: ['rare', 'active', 'combat_advantage'],
+    family_banner: ['rare', 'expedition_passive', 'role_recharge_threshold'],
+    rootcutters_axe: ['rare', 'expedition_passive', 'boss_damage_bonus'],
+    warding_nail: ['rare', 'active', 'place_room_shield'],
+    second_chance_coin: ['rare', 'active', 'place_room_retry'],
+    campfire_charm: ['rare', 'active', 'restore_role_charge'],
+    phoenix_feather: ['epic', 'active', 'revive_self'],
+    hourglass_shard: ['epic', 'active', 'restore_ap'],
+    last_stand_banner: ['epic', 'expedition_passive', 'prevent_knockout'],
+    emerald_heart: ['epic', 'expedition_passive', 'critical_heal'],
+    crooked_compass: ['epic', 'active', 'scout_choice'],
+    mimic_tooth: ['epic', 'expedition_passive', 'coin_multiplier'],
+    fates_broken_die: ['legendary', 'active', 'multi_combat_advantage'],
+    crown_of_twenty: ['legendary', 'expedition_passive', 'critical_threshold'],
+    root_kings_signet: ['legendary', 'expedition_passive', 'boss_damage_bonus'],
+  };
+  const actual = Object.fromEntries(Object.values(ARTIFACTS).map(artifact => [
+    artifact.id,
+    [artifact.rarity, artifact.useType, artifact.effect.kind],
+  ]));
+
+  assert.deepEqual(actual, expected);
+  assert.equal(Object.values(ARTIFACTS).filter(item => item.useType === 'active').length, 14);
+  assert.equal(Object.values(ARTIFACTS).filter(item => item.useType === 'expedition_passive').length, 10);
+});
+
+test('frontend provision metadata remains in parity', async () => {
   const assetCatalogUrl = new URL(
     '../../frontend/src/assets/expeditions/root-king/asset-catalog.json',
     import.meta.url,
   );
   const assetCatalog = JSON.parse(await readFile(assetCatalogUrl, 'utf8'));
-  const frontendArtifacts = Object.fromEntries(
-    assetCatalog.artifacts.map(({ id, name, rarity, effect }) => [id, { name, rarity, effect }]),
-  );
-  const backendArtifacts = Object.fromEntries(
-    Object.entries(ARTIFACTS).map(([id, artifact]) => [id, {
-      name: artifact.name,
-      rarity: artifact.rarity,
-      effect: artifact.displayEffect,
-    }]),
-  );
-
-  assert.deepEqual(backendArtifacts, frontendArtifacts);
   assert.equal(new Set(assetCatalog.provisions.map(provision => provision.id)).size, 7);
   assert.deepEqual(
     Object.keys(PROVISIONS).sort(),

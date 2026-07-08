@@ -1,4 +1,5 @@
 const Database = require('better-sqlite3');
+const crypto = require('node:crypto');
 const path = require('path');
 const {
   HOME_FRIDGE_DECOR_ITEM_ID,
@@ -574,6 +575,75 @@ addColumnIfMissing('family_expedition_members', 'hero_recover_at', 'INTEGER');
 addColumnIfMissing('family_expedition_members', 'role_charge', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('family_expedition_members', 'role_charge_progress', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('family_expedition_members', 'room_coins_earned', 'INTEGER NOT NULL DEFAULT 0');
+
+const CURATED_ARTIFACTS_BY_RARITY = Object.freeze({
+  common: ['old_torch', 'bent_sword', 'chalk_rune', 'rabbit_foot', 'bone_die', 'wooden_shield', 'tiny_shovel', 'ration_box'],
+  rare: ['rusty_lockpick', 'loaded_die', 'family_banner', 'rootcutters_axe', 'warding_nail', 'second_chance_coin', 'campfire_charm'],
+  epic: ['phoenix_feather', 'hourglass_shard', 'last_stand_banner', 'emerald_heart', 'crooked_compass', 'mimic_tooth'],
+  legendary: ['fates_broken_die', 'crown_of_twenty', 'root_kings_signet'],
+});
+const LEGACY_ARTIFACT_RARITY = Object.freeze(Object.fromEntries([
+  ...['rusty_buckle', 'map_scrap', 'cracked_compass', 'grave_salt', 'copper_bell', 'worn_gloves', 'moss_amulet', 'candle_stub', 'lucky_button', 'crow_feather', 'empty_vial', 'rope_knot'].map(id => [id, 'common']),
+  ...['clerics_bell', 'mirror_shard', 'silver_lantern', 'mapmakers_lens', 'goblin_coin', 'thornward_ring', 'echo_flute', 'mimic_whistle', 'scouts_monocle'].map(id => [id, 'rare']),
+  ...['blackroot_key', 'moonlit_d20', 'witch_bottle', 'gravekeepers_crown', 'hungry_satchel', 'chain_of_favors'].map(id => [id, 'epic']),
+  ...['eye_of_dungeon', 'endless_candle', 'door_without_key'].map(id => [id, 'legendary']),
+]));
+const CURATED_ARTIFACT_IDS = new Set(Object.values(CURATED_ARTIFACTS_BY_RARITY).flat());
+
+function deterministicArtifactReplacement(userId, artifactId, rarity) {
+  const candidates = CURATED_ARTIFACTS_BY_RARITY[rarity];
+  const digest = crypto.createHash('sha256').update(`${userId}:${artifactId}`).digest();
+  return candidates[digest.readUInt32BE(0) % candidates.length];
+}
+
+const migrateExpeditionArtifactCatalog = db.transaction(() => {
+  const rows = db.prepare(`
+    SELECT user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    FROM expedition_artifact_inventory ORDER BY user_id, artifact_id
+  `).all();
+  const merge = db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES (?, ?, ?, 0, ?, ?)
+    ON CONFLICT(user_id, artifact_id) DO UPDATE SET
+      quantity = quantity + excluded.quantity,
+      charges = 0,
+      first_acquired_at = MIN(first_acquired_at, excluded.first_acquired_at),
+      last_acquired_at = MAX(last_acquired_at, excluded.last_acquired_at)
+  `);
+  const remove = db.prepare(`
+    DELETE FROM expedition_artifact_inventory WHERE user_id = ? AND artifact_id = ?
+  `);
+  for (const row of rows.filter(item => CURATED_ARTIFACT_IDS.has(item.artifact_id))) {
+    const copies = Math.max(0, Number(row.quantity || 0), Number(row.charges || 0) > 0 ? 1 : 0);
+    db.prepare(`
+      UPDATE expedition_artifact_inventory SET quantity = ?, charges = 0
+      WHERE user_id = ? AND artifact_id = ?
+    `).run(copies, row.user_id, row.artifact_id);
+  }
+  for (const row of rows.filter(item => !CURATED_ARTIFACT_IDS.has(item.artifact_id))) {
+    const copies = Math.max(0, Number(row.quantity || 0), Number(row.charges || 0) > 0 ? 1 : 0);
+    const rarity = LEGACY_ARTIFACT_RARITY[row.artifact_id];
+    if (!rarity) continue;
+    remove.run(row.user_id, row.artifact_id);
+    if (copies <= 0) continue;
+    merge.run(
+      row.user_id,
+      deterministicArtifactReplacement(row.user_id, row.artifact_id, rarity),
+      copies,
+      row.first_acquired_at,
+      row.last_acquired_at,
+    );
+  }
+  db.prepare(`
+    INSERT OR REPLACE INTO app_settings (key, value, updated_at)
+    VALUES ('expedition_artifact_catalog_v2', '1', strftime('%s','now'))
+  `).run();
+});
+const expeditionArtifactCatalogMigrated = db.prepare(`
+  SELECT 1 FROM app_settings WHERE key = 'expedition_artifact_catalog_v2'
+`).get();
+if (!expeditionArtifactCatalogMigrated) migrateExpeditionArtifactCatalog();
 
 const migrateExpeditionMinigameIdempotency = db.transaction(() => {
   const insert = db.prepare(`

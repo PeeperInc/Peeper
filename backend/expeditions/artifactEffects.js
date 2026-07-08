@@ -2,348 +2,214 @@
 
 const { ARTIFACTS } = require('./catalog');
 
-const CORE_HOOKS = Object.freeze([
-  'before_roll',
-  'after_roll',
-  'before_progress',
-  'after_progress',
-  'before_loot',
-  'room_reveal',
+const ALLOWED_EFFECT_KINDS = Object.freeze([
+  'minigame_time',
+  'combat_damage_bonus',
+  'minigame_time_once',
+  'prevent_personal_damage',
+  'combat_roll_floor',
+  'room_progress',
+  'heal_self',
+  'minigame_auto_success',
+  'combat_advantage',
+  'role_recharge_threshold',
+  'boss_damage_bonus',
+  'place_room_shield',
+  'place_room_retry',
+  'restore_role_charge',
+  'revive_self',
+  'restore_ap',
+  'prevent_knockout',
+  'critical_heal',
+  'scout_choice',
+  'coin_multiplier',
+  'multi_combat_advantage',
+  'critical_threshold',
 ]);
-
-const ARTIFACT_HOOKS = CORE_HOOKS;
-
-const PHASE_BY_CATALOG_TRIGGER = Object.freeze({
-  before_roll: 'before_roll',
-  after_roll: 'after_roll',
-  before_progress: 'before_progress',
-  after_progress: 'after_progress',
-  before_loot: 'before_loot',
-  room_reveal: 'room_reveal',
-  before_assist: 'before_progress',
-  after_assist: 'after_progress',
-  before_debuff: 'before_progress',
-  before_complication: 'before_progress',
-});
 
 function clone(value) {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
 }
 
-function includesEvery(actual = [], expected = []) {
-  return expected.every(value => actual.includes(value));
+function roomIsCurrent(state) {
+  return Boolean(state.roomKey) && !['hidden', 'locked', 'cleared'].includes(state.roomState);
 }
 
-function matchesContext(state, config) {
-  if (config.stats && !config.stats.includes(state.stat)) return false;
-  if (config.roomTypes && !config.roomTypes.includes(state.roomType)) return false;
-  if (config.excludeRoomTypes?.includes(state.roomType)) return false;
-  if (config.roomTags && !includesEvery(state.roomTags, config.roomTags)) return false;
-  if (config.requiredRoomTags && !includesEvery(state.roomTags, config.requiredRoomTags)) return false;
-  if (config.actionTags && !includesEvery(state.actionTags, config.actionTags)) return false;
-  if (config.modifierTags && !includesEvery(state.modifierTags, config.modifierTags)) return false;
-  if (config.rawRolls && !config.rawRolls.includes(state.rawRoll)) return false;
-  if (config.minimumModifiedRoll !== undefined && state.modifiedRoll < config.minimumModifiedRoll) return false;
-  if (config.criticalOnly && !state.critical) return false;
-  if (config.whenProgressBelow !== undefined && state.progress >= config.whenProgressBelow) return false;
-  if (config.debuffTypes && !config.debuffTypes.includes(state.debuff?.type)) return false;
-  if (config.sourceTags && !includesEvery(state.roomTags, config.sourceTags)) return false;
-  return true;
-}
-
-function scopeKey(state, scope) {
-  if (scope === 'day') return String(state.dayKey ?? 'unknown');
-  if (scope === 'boss_phase') return `${state.expeditionId ?? 'unknown'}:${state.bossPhase ?? 'unknown'}`;
-  if (scope === 'expedition') return String(state.expeditionId ?? 'unknown');
-  return String(state.phase);
-}
-
-function historyCount(state, artifactId, scope, key) {
-  return state.triggerHistory
-    .filter(entry => entry.artifactId === artifactId && entry.scope === scope && entry.key === key)
-    .reduce((total, entry) => total + (entry.count || 1), 0);
-}
-
-function withinLimit(state, artifactId, limit) {
-  if (!limit) return true;
-  const key = scopeKey(state, limit.scope);
-  return historyCount(state, artifactId, limit.scope, key) < limit.count;
-}
-
-function recordTrigger(state, artifactId, limit) {
-  const scope = limit?.scope || 'trigger';
-  const key = scopeKey(state, scope);
-  const existing = state.triggerHistory.find(entry =>
-    entry.artifactId === artifactId && entry.scope === scope && entry.key === key);
-  if (existing) {
-    existing.count = (existing.count || 1) + 1;
-  } else {
-    state.triggerHistory.push({ artifactId, scope, key, count: 1 });
-  }
-}
-
-function randomPass(state, chance = 1) {
-  return chance >= 1 || state.rng() < chance;
-}
-
-function randomInteger(state, min, max) {
-  return min + Math.floor(state.rng() * (max - min + 1));
-}
-
-function addEvent(state, type, payload = {}) {
-  state.events.push({ type, ...payload });
-  return true;
-}
-
-const EFFECT_HANDLERS = Object.freeze({
-  roll_bonus(state, config) {
-    state.modifier += config.amount;
+const ACTIVE_EFFECT_HANDLERS = Object.freeze({
+  minigame_time_once(state, effect) {
+    if (!roomIsCurrent(state) || !state.hasMinigame || state.minigameTimeBonus) return false;
+    state.minigameTimeBonus = effect.seconds;
     return true;
   },
-  assist_bonus(state, config) {
-    state.assist += config.amount;
+  combat_roll_floor(state, effect) {
+    if (!roomIsCurrent(state) || !state.combat || state.combatRollFloor) return false;
+    state.combatRollFloor = effect.floor;
     return true;
   },
-  reroll(state, config) {
-    const nextRoll = state.rolls.shift() ?? randomInteger(state, 1, 20);
-    state.rawRoll = config.keep === 'higher' ? Math.max(state.rawRoll, nextRoll) : nextRoll;
-    return addEvent(state, 'reroll', { roll: nextRoll });
-  },
-  reveal_room_hint(state, config) {
-    state.revealHints += config.count;
+  prevent_personal_damage(state, effect) {
+    if (!roomIsCurrent(state) || state.personalDamageShield) return false;
+    state.personalDamageShield = effect.uses;
     return true;
   },
-  camp_effect_bonus(state, config) {
-    state.campEffectBonus += config.amount;
+  room_progress(state, effect) {
+    if (!roomIsCurrent(state) || state.roomType === 'boss') return false;
+    if ((state.roomProgress ?? 0) >= (state.roomProgressTarget ?? 0)) return false;
+    state.roomProgress = Math.min(state.roomProgressTarget, state.roomProgress + effect.amount);
     return true;
   },
-  ignore_modifier(state, config) {
-    state.ignoredModifierTags.push(...config.modifierTags);
+  heal_self(state, effect) {
+    if (!roomIsCurrent(state) || state.heroHp <= 0 || state.heroHp >= state.maxHeroHp) return false;
+    state.heroHp = Math.min(state.maxHeroHp, state.heroHp + effect.amount);
     return true;
   },
-  reduce_debuff(state, config) {
-    if (!state.debuff) return false;
-    state.debuff.amount = Math.max(0, (state.debuff.amount || 0) - config.amount);
+  minigame_auto_success(state) {
+    if (!roomIsCurrent(state) || !state.hasMinigame || state.combat || state.minigameAutoSuccess) return false;
+    state.minigameAutoSuccess = true;
     return true;
   },
-  store_shrine_buff(state, config) {
-    if (!state.shrineBuff) return false;
-    state.storedBuff = { ...clone(state.shrineBuff), reusable: Boolean(config.reusable) };
+  combat_advantage(state, effect) {
+    if (!roomIsCurrent(state) || !state.combat) return false;
+    state.combatAdvantageUses = (state.combatAdvantageUses || 0) + (effect.uses || 1);
     return true;
   },
-  helper_bonus(state, config) {
-    state.modifier += Math.min(config.maximum, state.helpers * config.amountPerHelper);
+  place_room_shield(state) {
+    if (!roomIsCurrent(state) || state.roomShield) return false;
+    state.placeRoomShield = true;
     return true;
   },
-  reflect_debuff(state) {
-    if (!state.debuff) return false;
-    state.reflectedDebuff = clone(state.debuff);
-    state.debuff = null;
+  place_room_retry(state) {
+    if (!roomIsCurrent(state) || state.roomRetry) return false;
+    state.placeRoomRetry = true;
     return true;
   },
-  reveal_adjacent_room(state, config) {
-    const room = state.adjacentRooms.find(candidate =>
-      candidate.state === 'hidden' && (!config.optionalOnly || candidate.optional));
-    if (!room) return false;
-    state.revealedRoomKeys.push(room.key);
+  restore_role_charge(state) {
+    if (!roomIsCurrent(state) || (state.roleCharge ?? 0) >= 1) return false;
+    state.roleCharge = 1;
+    state.roleChargeProgress = 0;
     return true;
   },
-  bonus_coins(state, config) {
-    if (!randomPass(state, config.chance)) return false;
-    state.coins += randomInteger(state, config.coins.min, config.coins.max);
+  revive_self(state, effect) {
+    if (!roomIsCurrent(state) || state.heroHp > 0 || !state.heroRecoverAt) return false;
+    state.heroHp = effect.hp;
+    state.heroRecoverAt = null;
     return true;
   },
-  prevent_debuff(state) {
-    if (!state.debuff) return false;
-    state.debuff = null;
-    state.debuffPrevented = true;
+  restore_ap(state, effect) {
+    if (!roomIsCurrent(state) || state.ap >= state.maxAp) return false;
+    state.ap = Math.min(state.maxAp, state.ap + effect.amount);
     return true;
   },
-  copy_support(state, config) {
-    if (state.support <= 0) return false;
-    state.modifier += config.amount;
+  scout_choice(state) {
+    if (!roomIsCurrent(state) || state.scoutChoiceArmed || (state.scoutChoices || []).length < 2) return false;
+    state.scoutChoiceArmed = true;
     return true;
   },
-  restore_role_ability(state) {
-    if (!state.roleAbilityUsed) return false;
-    state.roleAbilityRestored = true;
-    return true;
-  },
-  identify_mimic(state) {
-    if (!state.roomTags.includes('mimic')) return false;
-    state.mimicIdentified = true;
-    return true;
-  },
-  prevent_complication(state) {
-    if (!state.complication) return false;
-    state.complication = null;
-    state.complicationPrevented = true;
-    return true;
-  },
-  raise_raw_roll(state, config) {
-    if (state.rawRoll >= config.below) return false;
-    state.rawRoll = config.value;
-    return true;
-  },
-  multiply_coins(state, config) {
-    if (!randomPass(state, config.chance)) return false;
-    state.coinMultiplier *= config.multiplier;
-    return true;
-  },
-  clear_debuff(state) {
-    if (!state.debuff) return false;
-    state.debuff = null;
-    return true;
-  },
-  open_hidden_branch(state) {
-    const branch = state.hiddenBranches.find(candidate => candidate.state === 'hidden');
-    if (!branch) return false;
-    state.openedBranchKeys.push(branch.key);
-    return true;
-  },
-  add_room_progress(state, config) {
-    state.progress += config.amount;
-    return true;
-  },
-  minimum_progress(state, config) {
-    state.progress = Math.max(state.progress, config.minimum);
-    return true;
-  },
-  success_streak_loot(state, config) {
-    if (state.successStreak < config.successesRequired || !randomPass(state, config.chance)) return false;
-    state.artifactRolls += 1;
-    if (!state.success) state.successStreak = 0;
-    return true;
-  },
-  grant_personal_roll_buff(state, config) {
-    state.personalRollBuff = { amount: config.amount, uses: config.uses };
-    return true;
-  },
-  reveal_all_optional_rooms(state) {
-    const roomKeys = state.optionalRooms
-      .filter(room => room.state === 'hidden')
-      .map(room => room.key);
-    if (roomKeys.length === 0) return false;
-    state.revealedRoomKeys.push(...roomKeys);
-    return true;
-  },
-  critical_threshold(state, config) {
-    state.criticalThreshold = Math.min(state.criticalThreshold, config.minimumRawRoll);
-    state.critical = state.critical || state.rawRoll >= state.criticalThreshold;
-    return true;
-  },
-  phase_progress_bonus(state, config) {
-    state.progress += config.amount;
-    return true;
-  },
-  choose_roll(state, config) {
-    const candidates = state.rolls.splice(0, config.rolls);
-    while (candidates.length < config.rolls) candidates.push(randomInteger(state, 1, 20));
-    state.rawRoll = config.choose === 'higher' ? Math.max(...candidates) : candidates[0];
-    return addEvent(state, 'choose_roll', { rolls: candidates });
-  },
-  clear_room(state) {
-    state.clearRoom = true;
+  multi_combat_advantage(state, effect) {
+    if (!roomIsCurrent(state) || !state.combat) return false;
+    state.combatAdvantageUses = (state.combatAdvantageUses || 0) + effect.uses;
     return true;
   },
 });
 
-function createEffectState(context) {
+function applyActiveArtifact({ artifactId, state = {} } = {}) {
+  const artifact = ARTIFACTS[artifactId];
+  if (!artifact) throw new RangeError(`Unknown artifact: ${artifactId}`);
+  if (artifact.useType !== 'active') throw new RangeError(`Artifact is not active: ${artifactId}`);
+  const nextState = clone(state);
+  const handler = ACTIVE_EFFECT_HANDLERS[artifact.effect.kind];
+  const applied = Boolean(handler?.(nextState, artifact.effect));
+  return {
+    applied,
+    state: applied ? nextState : clone(state),
+    visualEvent: applied ? { type: 'artifact_used', artifactId, effectKind: artifact.effect.kind } : null,
+  };
+}
+
+function equippedPassiveIds(loadout) {
+  return new Set((loadout || [])
+    .map(slot => slot?.artifactId)
+    .filter(artifactId => ARTIFACTS[artifactId]?.useType === 'expedition_passive'));
+}
+
+function triggerUsed(history, artifactId) {
+  return (history || []).some(entry => entry.artifactId === artifactId && entry.scope === 'expedition');
+}
+
+function recordTrigger(state, artifactId) {
+  state.triggerHistory ||= [];
+  state.triggerHistory.push({ artifactId, scope: 'expedition', key: String(state.expeditionId ?? 'current'), count: 1 });
+}
+
+function applyPassiveArtifactEffects(context = {}) {
+  const state = clone(context);
+  const equipped = equippedPassiveIds(state.loadout);
+
+  if (state.phase === 'minigame_setup' && equipped.has('old_torch')) {
+    state.timeLimitMs = Math.round(state.timeLimitMs * ARTIFACTS.old_torch.effect.multiplier);
+  }
+  if (state.phase === 'role_recharge' && equipped.has('family_banner')) {
+    state.roleRechargeThreshold = ARTIFACTS.family_banner.effect.threshold;
+  }
+  if (state.phase === 'room_reward' && equipped.has('mimic_tooth')) {
+    state.coins = Math.floor(state.coins * ARTIFACTS.mimic_tooth.effect.multiplier);
+  }
+  if (state.phase === 'combat_roll') {
+    if (equipped.has('crown_of_twenty') && state.rawRoll === 19) {
+      state.critical = true;
+      state.progress = Math.max(state.progress || 0, 3);
+    }
+    if (equipped.has('bent_sword') && state.roomType !== 'boss'
+      && state.combatRoll >= 16 && state.combatRoll <= 19) {
+      state.progress = (state.progress || 0) + 1;
+    }
+    for (const artifactId of ['rootcutters_axe', 'root_kings_signet']) {
+      const effect = ARTIFACTS[artifactId].effect;
+      if (equipped.has(artifactId) && state.roomType === 'boss' && state.combatRoll >= effect.minRoll) {
+        state.progress = (state.progress || 0) + effect.amount;
+      }
+    }
+    if (equipped.has('emerald_heart') && state.critical && state.heroHp > 0) {
+      state.heroHp = Math.min(state.maxHeroHp || 3, state.heroHp + ARTIFACTS.emerald_heart.effect.amount);
+    }
+  }
+  if (state.phase === 'personal_damage' && state.damage > 0) {
+    if (equipped.has('rabbit_foot') && !triggerUsed(state.triggerHistory, 'rabbit_foot')) {
+      state.damage = 0;
+      recordTrigger(state, 'rabbit_foot');
+    } else if (equipped.has('last_stand_banner')
+      && !triggerUsed(state.triggerHistory, 'last_stand_banner')
+      && state.damage >= state.heroHp) {
+      state.damage = Math.max(0, state.heroHp - 1);
+      recordTrigger(state, 'last_stand_banner');
+    }
+  }
+  return state;
+}
+
+// Task 1-4 orchestration still passes through these lifecycle points. Keeping
+// them inert preserves that data flow without retaining any legacy handlers.
+function applyArtifactEffects(context = {}) {
   return {
     ...clone(context),
-    phase: context.phase,
     loadout: clone(context.loadout || []),
     triggerHistory: clone(context.triggerHistory || []),
     triggered: [],
     events: clone(context.events || []),
     modifier: context.modifier || 0,
     rawRoll: context.rawRoll ?? 0,
-    modifiedRoll: context.modifiedRoll ?? context.rawRoll ?? 0,
     progress: context.progress || 0,
     coins: context.coins || 0,
     coinMultiplier: context.coinMultiplier || 1,
     artifactRolls: context.artifactRolls || 0,
     assist: context.assist || 0,
-    helpers: context.helpers || 0,
-    support: context.support || 0,
-    successStreak: context.successStreak || 0,
-    roomTags: clone(context.roomTags || []),
-    actionTags: clone(context.actionTags || []),
-    modifierTags: clone(context.modifierTags || []),
-    ignoredModifierTags: clone(context.ignoredModifierTags || []),
-    rolls: clone(context.rolls || []),
-    adjacentRooms: clone(context.adjacentRooms || []),
-    optionalRooms: clone(context.optionalRooms || []),
-    hiddenBranches: clone(context.hiddenBranches || []),
-    revealedRoomKeys: clone(context.revealedRoomKeys || []),
-    openedBranchKeys: clone(context.openedBranchKeys || []),
-    revealHints: context.revealHints || 0,
-    campEffectBonus: context.campEffectBonus || 0,
-    criticalThreshold: context.criticalThreshold || 20,
-    rng: typeof context.rng === 'function' ? context.rng : () => 0,
   };
 }
 
-function slotCanTrigger(slot, behavior) {
-  if (slot.exhausted) return false;
-  if (behavior.type === 'charged') return (slot.charges ?? behavior.initialCharges ?? 0) > 0;
-  if (behavior.type === 'consumable') return (slot.quantity ?? 1) > 0;
-  return true;
-}
-
-function consumeSlot(slot, behavior) {
-  if (!behavior.consumeOnTrigger) return false;
-  if (behavior.type === 'charged') {
-    slot.charges = Math.max(0, (slot.charges ?? behavior.initialCharges ?? 0) - 1);
-    slot.exhausted = slot.charges === 0;
-  } else if (behavior.type === 'consumable') {
-    slot.quantity = Math.max(0, (slot.quantity ?? 1) - 1);
-    return slot.quantity === 0;
-  }
-  return false;
-}
-
-function finalizeState(state) {
-  delete state.rng;
-  delete state.apRecovered;
-  return state;
-}
-
-function applyArtifactEffects(context) {
-  if (!context || !ARTIFACT_HOOKS.includes(context.phase)) {
-    throw new TypeError('A valid artifact effect phase is required');
-  }
-  const state = createEffectState(context);
-  if (context.artifactsDisabled) return finalizeState(state);
-
-  for (let slotIndex = 0; slotIndex < state.loadout.length; slotIndex += 1) {
-    const slot = state.loadout[slotIndex];
-    if (!slot) continue;
-    const artifact = ARTIFACTS[slot.artifactId];
-    if (!artifact) continue;
-    if (PHASE_BY_CATALOG_TRIGGER[artifact.effect.trigger] !== state.phase) continue;
-    if (artifact.effect.type === 'recover_ap') continue;
-    if (artifact.effect.type === 'assist_bonus' && state.actionType !== 'assist') continue;
-    if (artifact.effect.type === 'grant_personal_roll_buff' && state.actionType !== 'assist') continue;
-    if (!slotCanTrigger(slot, artifact.behavior)) continue;
-    const { config = {} } = artifact.effect;
-    if (!matchesContext(state, config)) continue;
-    if (!withinLimit(state, artifact.id, config.limit)) continue;
-    const handler = EFFECT_HANDLERS[artifact.effect.type];
-    if (!handler || !handler(state, config, slot)) continue;
-
-    state.triggered.push(artifact.id);
-    recordTrigger(state, artifact.id, config.limit);
-    if (consumeSlot(slot, artifact.behavior)) state.loadout[slotIndex] = null;
-  }
-
-  return finalizeState(state);
-}
-
 module.exports = {
-  ARTIFACT_HOOKS,
-  CORE_HOOKS,
-  EFFECT_HANDLERS,
+  ACTIVE_EFFECT_HANDLERS,
+  ALLOWED_EFFECT_KINDS,
+  applyActiveArtifact,
   applyArtifactEffects,
+  applyPassiveArtifactEffects,
 };

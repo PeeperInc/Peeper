@@ -68,60 +68,26 @@ test('coin and personal artifact rewards use only the injected RNG', () => {
   assert.equal(ARTIFACTS[reward.artifacts[0]].rarity, 'common');
 });
 
-test('permanent duplicate rerolls among missing same-rarity artifacts', () => {
+test('all curated active and passive artifacts stack as whole copies', () => {
   const { resolveArtifactGrant } = loadLoot();
-  const inventory = [{ artifactId: 'old_torch', quantity: 1, charges: 0 }];
-  const result = resolveArtifactGrant({
-    artifactId: 'old_torch',
-    inventory,
-    rng: () => 0,
-  });
-  assert.notEqual(result.artifactId, 'old_torch');
-  assert.equal(ARTIFACTS[result.artifactId].rarity, 'common');
-  assert.equal(result.kind, 'artifact');
+  for (const artifact of Object.values(ARTIFACTS)) {
+    const result = resolveArtifactGrant({
+      artifactId: artifact.id,
+      inventory: [{ artifactId: artifact.id, quantity: 2, charges: 99 }],
+    });
+    assert.equal(result.kind, 'artifact', artifact.id);
+    assert.equal(result.artifactId, artifact.id, artifact.id);
+    assert.equal(result.addedQuantity, 1, artifact.id);
+    assert.equal(result.addedCharges, 0, artifact.id);
+  }
 });
 
-test('permanent duplicate becomes rarity-scaled coins when rarity is complete', () => {
-  const { resolveArtifactGrant, DUPLICATE_COIN_SUBSTITUTE } = loadLoot();
-  const inventory = Object.values(ARTIFACTS)
-    .filter(item => item.rarity === 'legendary')
-    .map(item => ({ artifactId: item.id, quantity: 1, charges: 0 }));
-  const result = resolveArtifactGrant({ artifactId: 'endless_candle', inventory, rng: () => 0 });
-  assert.deepEqual(result, {
-    kind: 'coins',
-    coins: DUPLICATE_COIN_SUBSTITUTE.legendary,
-    duplicateArtifactId: 'endless_candle',
-    rarity: 'legendary',
-  });
-});
-
-test('permanent duplicate reroll includes missing charged and consumable items', () => {
-  const { resolveArtifactGrant } = loadLoot();
-  const common = Object.values(ARTIFACTS).filter(item => item.rarity === 'common');
-  const missingId = 'chalk_rune';
-  const inventory = common
-    .filter(item => item.id !== missingId)
-    .map(item => ({ artifactId: item.id, quantity: 1, charges: 1 }));
-  const result = resolveArtifactGrant({ artifactId: 'old_torch', inventory, rng: () => 0 });
-  assert.equal(result.artifactId, missingId);
-  assert.equal(result.addedQuantity, 1);
-});
-
-test('charged and consumable duplicates stack with catalog semantics', () => {
-  const { resolveArtifactGrant } = loadLoot();
-  const charged = resolveArtifactGrant({ artifactId: 'rusty_lockpick', inventory: [] });
-  assert.equal(charged.addedCharges, ARTIFACTS.rusty_lockpick.behavior.initialCharges);
-  assert.equal(charged.addedQuantity, 0);
-
-  const consumable = resolveArtifactGrant({ artifactId: 'chalk_rune', inventory: [] });
-  assert.equal(consumable.addedQuantity, 1);
-  assert.equal(consumable.addedCharges, 0);
-
-  const permanent = resolveArtifactGrant({ artifactId: 'old_torch', inventory: [] });
-  assert.equal(permanent.addedQuantity, 1);
-
-  const cursed = resolveArtifactGrant({ artifactId: 'hungry_satchel', inventory: [] });
-  assert.equal(cursed.addedQuantity, 1);
+test('every rarity pool contains only curated catalog IDs', () => {
+  const { artifactsForRarity } = loadLoot();
+  const emitted = ['common', 'rare', 'epic', 'legendary']
+    .flatMap(rarity => artifactsForRarity(rarity).map(artifact => artifact.id));
+  assert.deepEqual(new Set(emitted), new Set(Object.keys(ARTIFACTS)));
+  assert.equal(emitted.includes('endless_candle'), false);
 });
 
 test('artifact grant rejects absent and nontransactional write callers', () => {
@@ -154,8 +120,8 @@ test('database grant accepts only an active caller transaction', () => {
 
   const row = db.prepare('SELECT * FROM expedition_artifact_inventory WHERE user_id = 7').get();
   assert.equal(row.artifact_id, 'rusty_lockpick');
-  assert.equal(row.quantity, 0);
-  assert.equal(row.charges, 6);
+  assert.equal(row.quantity, 2);
+  assert.equal(row.charges, 0);
   assert.equal(row.first_acquired_at, 100);
   assert.equal(row.last_acquired_at, 200);
   db.close();

@@ -9,7 +9,11 @@ const {
   PROVISIONS,
   ROLES,
 } = require('./catalog');
-const { applyArtifactEffects } = require('./artifactEffects');
+const {
+  applyActiveArtifact,
+  applyArtifactEffects,
+  applyPassiveArtifactEffects,
+} = require('./artifactEffects');
 const {
   ROLE_EFFECT_TYPES,
   advanceRoleCharge,
@@ -228,6 +232,15 @@ function applyRoleChargeRestoration(member, room) {
   restoration.uses -= 1;
 }
 
+function applyArtifactRechargeThreshold(member) {
+  const result = applyPassiveArtifactEffects({
+    phase: 'role_recharge',
+    loadout: member.loadout,
+    roleRechargeThreshold: 3,
+  });
+  member.roleRechargeThreshold = result.roleRechargeThreshold;
+}
+
 function consumeProvisionRecipe(transaction, userId, provisionId, now) {
   if (!provisionId) return null;
   const provision = PROVISIONS[provisionId];
@@ -314,11 +327,7 @@ function grantPersonalLoot({ transaction, userId, loot = {}, rng = () => 0, now 
 }
 
 function slotFromInventoryItem(item) {
-  return {
-    artifactId: item.artifactId ?? item.artifact_id,
-    charges: item.charges ?? 0,
-    quantity: item.quantity ?? 0,
-  };
+  return { artifactId: item.artifactId ?? item.artifact_id };
 }
 
 function inventoryItemFor(inventory = [], artifactId) {
@@ -331,18 +340,35 @@ function normalizeLoadout(loadout = [], maxSlots = 3) {
   return normalized;
 }
 
+function armedEffect(member, kind, roomKey) {
+  return (member.triggerHistory || []).find(entry => (
+    entry.scope === 'armed'
+    && entry.effectKind === kind
+    && entry.roomKey === roomKey
+    && (entry.remainingUses || 0) > 0
+  ));
+}
+
+function consumeArmedEffect(member, effect) {
+  if (!effect) return;
+  effect.remainingUses -= 1;
+  if (effect.remainingUses <= 0) {
+    member.triggerHistory = (member.triggerHistory || []).filter(entry => entry !== effect);
+  }
+}
+
 function equipFoundArtifact({ loadout = [], inventory = [], artifactId, slotIndex, maxSlots = 3 } = {}) {
   if (!ARTIFACTS[artifactId]) throw new RangeError(`Unknown artifact: ${artifactId}`);
   const owned = inventoryItemFor(inventory, artifactId);
-  if (!owned || ((owned.quantity ?? 0) <= 0 && (owned.charges ?? 0) <= 0)) {
+  if (!owned || (owned.quantity ?? 0) <= 0) {
     throw new RangeError(`Artifact not owned: ${artifactId}`);
   }
-  const targetSlot = slotIndex ?? normalizeLoadout(loadout, maxSlots).findIndex(slot => !slot || slot.exhausted);
+  const targetSlot = slotIndex ?? normalizeLoadout(loadout, maxSlots).findIndex(slot => !slot);
   if (!Number.isInteger(targetSlot) || targetSlot < 0 || targetSlot >= maxSlots) {
     throw new RangeError('slotIndex must target one of three loadout slots');
   }
   const next = normalizeLoadout(loadout, maxSlots);
-  if (next[targetSlot] && !next[targetSlot].exhausted) {
+  if (next[targetSlot]) {
     throw new RangeError('slot is occupied');
   }
   next[targetSlot] = slotFromInventoryItem(owned);
@@ -362,11 +388,19 @@ function prepareMemberLoadout({ member, inventory = [], artifactIds = null } = {
   }
   if (Array.isArray(artifactIds)) {
     if (artifactIds.length > 3) throw new RangeError('loadout cannot exceed three slots');
+    const requested = new Map();
+    for (const artifactId of artifactIds) {
+      requested.set(artifactId, (requested.get(artifactId) || 0) + 1);
+    }
+    for (const [artifactId, count] of requested) {
+      if (!ARTIFACTS[artifactId]) throw new RangeError(`Unknown artifact: ${artifactId}`);
+      const owned = inventoryItemFor(inventory, artifactId);
+      if (!owned || (owned.quantity ?? 0) < count) {
+        throw new RangeError(`not enough copies of artifact: ${artifactId}`);
+      }
+    }
     prepared.loadout = artifactIds.map(artifactId => {
       const owned = inventoryItemFor(inventory, artifactId);
-      if (!owned || ((owned.quantity ?? 0) <= 0 && (owned.charges ?? 0) <= 0)) {
-        throw new RangeError(`Artifact not owned: ${artifactId}`);
-      }
       return slotFromInventoryItem(owned);
     });
     prepared.loadout = normalizeLoadout(prepared.loadout, 3);
@@ -523,12 +557,31 @@ function resolveAttempt({
 
   const nextRoom = clone(room || {});
   applyRoleChargeRestoration(nextMember, nextRoom);
+  applyArtifactRechargeThreshold(nextMember);
   const nextExpedition = clone(expedition || {});
   nextExpedition.sharedBuffs = clone(nextExpedition.sharedBuffs || {});
   const nextAction = clone(action || {});
   const events = [];
   const artifactsDisabledForAction = nextMember.debuff?.type === 'cursed';
   let rawRoll = rollD20(roll, rng);
+  const encounterType = nextRoom.encounterType || nextRoom.type;
+  const combatRoom = nextRoom.type === 'boss' || ['combat', 'boss'].includes(encounterType);
+  if (combatRoom) {
+    const floorEffect = armedEffect(nextMember, 'combat_roll_floor', nextRoom.key);
+    if (floorEffect) {
+      rawRoll = Math.max(rawRoll, ARTIFACTS.bone_die.effect.floor);
+      consumeArmedEffect(nextMember, floorEffect);
+      events.push({ type: 'artifact_roll_floor', artifactId: floorEffect.artifactId, roll: rawRoll });
+    }
+    const advantage = armedEffect(nextMember, 'combat_advantage', nextRoom.key)
+      || armedEffect(nextMember, 'multi_combat_advantage', nextRoom.key);
+    if (advantage) {
+      const secondRoll = rollD20(reroll, rng);
+      rawRoll = Math.max(rawRoll, secondRoll);
+      consumeArmedEffect(nextMember, advantage);
+      events.push({ type: 'artifact_advantage', artifactId: advantage.artifactId, rolls: [roll, secondRoll], chosen: rawRoll });
+    }
+  }
 
   const modifiers = buildRollModifiers({
     expedition: nextExpedition,
@@ -574,6 +627,11 @@ function resolveAttempt({
   nextMember.loadout = afterRoll.loadout;
   nextMember.triggerHistory = afterRoll.triggerHistory;
   modifiedRoll = rawRoll + modifiers.total;
+  const criticalRawRoll = rawRoll === 20 || (
+    rawRoll === ARTIFACTS.crown_of_twenty.effect.threshold
+    && nextMember.loadout.some(slot => slot?.artifactId === 'crown_of_twenty')
+  );
+  const outcomeRawRoll = criticalRawRoll ? 20 : rawRoll;
 
   const raiseModifiedRoll = nextMember.provisionState?.raiseModifiedRoll;
   if ((raiseModifiedRoll?.uses ?? 0) > 0 && modifiedRoll < raiseModifiedRoll.below) {
@@ -581,17 +639,48 @@ function resolveAttempt({
     modifiedRoll = raiseModifiedRoll.value;
   }
 
-  const encounterType = nextRoom.encounterType || nextRoom.type;
-  const combatRoom = nextRoom.type === 'boss' || ['combat', 'boss'].includes(encounterType);
   const combatRollValue = Math.max(1, Math.min(20, modifiedRoll));
-  const combatOutcome = combatRoom ? combatRollOutcome(combatRollValue) : null;
+  const combatOutcomeValue = criticalRawRoll ? 20 : combatRollValue;
+  const combatOutcome = combatRoom ? combatRollOutcome(combatOutcomeValue) : null;
   let progressAwarded = progressForRoll({
-    rawRoll,
+    rawRoll: outcomeRawRoll,
     modifiedRoll,
   });
   if (combatOutcome) {
     progressAwarded = combatOutcome.progress;
-    const heroDamage = combatOutcome.heroDamage;
+    const passiveCombat = applyPassiveArtifactEffects({
+      phase: 'combat_roll',
+      expeditionId: nextExpedition.id,
+      loadout: nextMember.loadout,
+      triggerHistory: nextMember.triggerHistory,
+      roomType: nextRoom.type,
+      rawRoll,
+      combatRoll: combatRollValue,
+      critical: criticalRawRoll,
+      progress: progressAwarded,
+      heroHp: nextMember.heroHp,
+      maxHeroHp: 3,
+    });
+    progressAwarded = passiveCombat.progress;
+    nextMember.heroHp = passiveCombat.heroHp;
+    let heroDamage = combatOutcome.heroDamage;
+    const personalShield = armedEffect(nextMember, 'prevent_personal_damage', nextRoom.key);
+    if (heroDamage > 0 && personalShield) {
+      heroDamage = 0;
+      consumeArmedEffect(nextMember, personalShield);
+      events.push({ type: 'artifact_damage_prevented', artifactId: personalShield.artifactId });
+    } else if (heroDamage > 0) {
+      const protection = applyPassiveArtifactEffects({
+        phase: 'personal_damage',
+        expeditionId: nextExpedition.id,
+        loadout: nextMember.loadout,
+        triggerHistory: nextMember.triggerHistory,
+        damage: heroDamage,
+        heroHp: nextMember.heroHp,
+      });
+      heroDamage = protection.damage;
+      nextMember.triggerHistory = protection.triggerHistory || nextMember.triggerHistory;
+    }
     if (heroDamage > 0) {
       nextMember.heroHp = Math.max(0, Number(nextMember.heroHp ?? 3) - heroDamage);
       events.push({ type: 'hero_damaged', amount: heroDamage, heroHp: nextMember.heroHp });
@@ -599,8 +688,8 @@ function resolveAttempt({
     events.push({
       type: 'combat_roll',
       outcome: combatOutcome.label,
-      roll: combatRollValue,
-      progress: combatOutcome.progress,
+      roll: combatOutcomeValue,
+      progress: progressAwarded,
       heroDamage,
     });
   }
@@ -728,7 +817,13 @@ function resolveAttempt({
         // artifact-driven bonus loot can still apply through the normal hooks.
         loot: { coins: { min: 0, max: 0 }, artifactRolls: 0 },
       };
-  const loot = rollAttemptLoot({ room: lootRoom, member: nextMember, rawRoll, rng });
+  const loot = rollAttemptLoot({ room: lootRoom, member: nextMember, rawRoll: outcomeRawRoll, rng });
+  const passiveReward = applyPassiveArtifactEffects({
+    phase: 'room_reward',
+    loadout: nextMember.loadout,
+    coins: loot.coins,
+  });
+  loot.coins = passiveReward.coins;
   const beforeLoot = applyArtifactEffects({
     phase: 'before_loot',
     actionType: 'attempt',
@@ -741,7 +836,7 @@ function resolveAttempt({
     actionTags: nextAction.tags || [],
     rawRoll,
     modifiedRoll,
-    critical: rawRoll === 20,
+    critical: criticalRawRoll,
     success: progressAwarded > 0,
     successStreak: nextMember.successStreak || 0,
     coins: loot.coins,
@@ -793,6 +888,7 @@ function resolveAssist({
   const regenerated = regenerateAp(member || {}, now);
   const nextMember = normalizeRoleDay({ ...(clone(member || {})), ...regenerated }, dayKey);
   const nextRoom = clone(room || {});
+  applyArtifactRechargeThreshold(nextMember);
   if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
   if (['hidden', 'locked', 'cleared'].includes(nextRoom.state)) {
     throw new RangeError('room is not assistable');
@@ -1174,6 +1270,32 @@ function readInventory(transaction, userId) {
   `).all(userId);
 }
 
+function reserveArtifactCopies(transaction, userId, artifactIds) {
+  const requested = new Map();
+  for (const artifactId of artifactIds || []) {
+    requested.set(artifactId, (requested.get(artifactId) || 0) + 1);
+  }
+  for (const [artifactId, count] of requested) {
+    const result = transaction.prepare(`
+      UPDATE expedition_artifact_inventory
+      SET quantity = quantity - ?
+      WHERE user_id = ? AND artifact_id = ? AND quantity >= ?
+    `).run(count, userId, artifactId, count);
+    if (result.changes !== 1) throw new RangeError(`not enough copies of artifact: ${artifactId}`);
+  }
+}
+
+function returnArtifactCopy(transaction, userId, artifactId, now) {
+  transaction.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES (?, ?, 1, 0, ?, ?)
+    ON CONFLICT(user_id, artifact_id) DO UPDATE SET
+      quantity = quantity + 1,
+      last_acquired_at = excluded.last_acquired_at
+  `).run(userId, artifactId, now, now);
+}
+
 function mapWithRoomStates(map, rooms) {
   const roomsByKey = new Map(rooms.map(room => [room.key, room]));
   return {
@@ -1434,6 +1556,7 @@ function prepareMember(options) {
     inventory: readInventory(transaction, userId),
     artifactIds,
   });
+  reserveArtifactCopies(transaction, userId, artifactIds);
   transaction.prepare(`
     INSERT INTO family_expedition_members (
       expedition_id, user_id, role, ap, ap_regen_day, ap_regen_at, hero_hp, hero_recover_at, role_ability_day, role_ability_used,
@@ -1704,8 +1827,11 @@ function chooseScoutRoom(options) {
   assertHeroCanAct(memberState, now);
   const dayKey = utcDayKey(now);
   const scout = normalizeRoleDay(memberState, dayKey);
-  if (scout.role !== 'scout') throw new RangeError('only scouts can choose the next room');
-  consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout' });
+  const compassEffect = armedEffect(scout, 'scout_choice', fromRoomKey);
+  if (!compassEffect) {
+    if (scout.role !== 'scout') throw new RangeError('only scouts can choose the next room');
+    consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout' });
+  }
 
   const targetKey = choice.targetKey || choice.room?.key;
   const connected = (snapshot.expedition.map.edges || [])
@@ -1727,8 +1853,12 @@ function chooseScoutRoom(options) {
     },
   };
   const nextTarget = applyScoutChoiceToTarget(source, target, choice, userId, now);
-  scout.roleCharge = 0;
-  scout.roleChargeProgress = 0;
+  if (compassEffect) {
+    consumeArmedEffect(scout, compassEffect);
+  } else {
+    scout.roleCharge = 0;
+    scout.roleChargeProgress = 0;
+  }
 
   updateRoom(transaction, expeditionId, nextSource);
   updateRoomDefinition(transaction, expeditionId, nextTarget);
@@ -1952,6 +2082,7 @@ function startMinigameAttempt(options) {
       snapshot,
     };
   }
+  let startedMember = null;
   const attempt = startAttempt(transaction, {
     expeditionId,
     roomId: room.id,
@@ -1972,10 +2103,55 @@ function startMinigameAttempt(options) {
       const nextMember = normalizeRoleDay({ ...memberState, ...regenerateAp(memberState, now) }, utcDayKey(now));
       if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
       nextMember.ap -= 1;
+      applyArtifactRechargeThreshold(nextMember);
+      startedMember = nextMember;
       updateMember(transaction, expeditionId, nextMember, { ap: 1, progress: 0 });
     },
   });
-  return { attempt, visualEvents: [], snapshot: readSnapshot(transaction, expeditionId) };
+  const visualEvents = [];
+  if (startedMember) {
+    const baseDurationMs = (attempt.expiresAt - attempt.startedAt) * 1000;
+    const passive = applyPassiveArtifactEffects({
+      phase: 'minigame_setup',
+      loadout: startedMember.loadout,
+      timeLimitMs: baseDurationMs,
+    });
+    const timeEffect = armedEffect(startedMember, 'minigame_time_once', room.key);
+    const bonusSeconds = timeEffect ? ARTIFACTS.chalk_rune.effect.seconds : 0;
+    if (timeEffect) {
+      consumeArmedEffect(startedMember, timeEffect);
+      visualEvents.push({ type: 'artifact_minigame_time', artifactId: timeEffect.artifactId, seconds: bonusSeconds });
+    }
+    const autoSuccessEffect = armedEffect(startedMember, 'minigame_auto_success', room.key);
+    if (autoSuccessEffect) {
+      consumeArmedEffect(startedMember, autoSuccessEffect);
+      visualEvents.push({ type: 'artifact_minigame_auto_success', artifactId: autoSuccessEffect.artifactId });
+    }
+    const expiresAt = attempt.startedAt + Math.round(passive.timeLimitMs / 1000) + bonusSeconds;
+    if (expiresAt !== attempt.expiresAt || autoSuccessEffect) {
+      attempt.expiresAt = expiresAt;
+      transaction.prepare(`
+        UPDATE family_expedition_minigame_attempts SET expires_at = ? WHERE attempt_token = ?
+      `).run(expiresAt, attempt.attemptToken);
+      const responseJson = stringifyJson({ attempt });
+      transaction.prepare(`
+        UPDATE family_expedition_minigame_idempotency
+        SET response_json = ?, updated_at = ?
+        WHERE user_id = ? AND idempotency_key = ?
+      `).run(responseJson, unixSeconds(now), userId, idempotencyKey);
+      const row = transaction.prepare(`
+        SELECT result_json FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+      `).get(attempt.attemptToken);
+      const metadata = parseJson(row.result_json, {});
+      metadata.startResponse = { attempt };
+      if (autoSuccessEffect) metadata.artifactAutoSuccess = autoSuccessEffect.artifactId;
+      transaction.prepare(`
+        UPDATE family_expedition_minigame_attempts SET result_json = ? WHERE attempt_token = ?
+      `).run(stringifyJson(metadata), attempt.attemptToken);
+    }
+    updateMember(transaction, expeditionId, startedMember);
+  }
+  return { attempt, visualEvents, snapshot: readSnapshot(transaction, expeditionId) };
 }
 
 function readMinigameStartHttpReplay(options) {
@@ -2176,10 +2352,16 @@ function applyMinigameSuccess({
 
   let loot = {};
   if (nextRoom.state === 'cleared') {
+    const rolledLoot = rollEventLoot({ room: nextRoom, member: memberState, rng });
+    const passiveReward = applyPassiveArtifactEffects({
+      phase: 'room_reward',
+      loadout: memberState.loadout,
+      coins: rolledLoot.coins,
+    });
     loot = grantPersonalLoot({
       transaction,
       userId,
-      loot: rollEventLoot({ room: nextRoom, member: memberState, rng }),
+      loot: { ...rolledLoot, coins: passiveReward.coins },
       rng,
       now,
     });
@@ -2216,13 +2398,21 @@ function finishMinigameAttempt(options) {
   } = options;
   const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
   const currentTime = unixSeconds(now);
+  const attemptMetadataRow = transaction.prepare(`
+    SELECT result_json FROM family_expedition_minigame_attempts
+    WHERE attempt_token = ? AND expedition_id = ? AND user_id = ?
+  `).get(attemptToken, expeditionId, userId);
+  const attemptMetadata = parseJson(attemptMetadataRow?.result_json, {});
+  const effectiveResult = attemptMetadata.artifactAutoSuccess
+    ? { success: true, score: 100, reason: 'artifact_auto_success' }
+    : result;
   const replay = readFinishReplay(transaction, {
     expeditionId,
     roomId: room.id,
     userId,
     attemptToken,
     idempotencyKey,
-    result,
+    result: effectiveResult,
   });
   if (replay?.httpResponse) return { httpResponse: replay.httpResponse };
   const response = finishAttempt(transaction, {
@@ -2231,7 +2421,7 @@ function finishMinigameAttempt(options) {
     userId,
     attemptToken,
     idempotencyKey,
-    result,
+    result: effectiveResult,
     now: currentTime,
     consumeRetry: () => (isMinigameSuperseded(transaction, expeditionId, room)
       ? null
@@ -2291,6 +2481,7 @@ function equipFoundArtifactForMember(options) {
     artifactId,
     slotIndex,
   });
+  reserveArtifactCopies(transaction, userId, [artifactId]);
   transaction.prepare(`
     UPDATE family_expedition_members SET loadout_json = ?
     WHERE expedition_id = ? AND user_id = ?
@@ -2306,6 +2497,137 @@ function equipFoundArtifactForMember(options) {
     now,
   });
   return readSnapshot(transaction, expeditionId);
+}
+
+function armedEffectFromState(artifact, roomKey, state) {
+  const uses = state.combatAdvantageUses
+    || state.personalDamageShield
+    || 1;
+  return {
+    artifactId: artifact.id,
+    effectKind: artifact.effect.kind,
+    roomKey,
+    remainingUses: uses,
+    scope: 'armed',
+  };
+}
+
+function useArtifactForMember(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    roomKey,
+    artifactId,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const intent = { expeditionId, userId, roomKey, artifactId };
+  const replay = findIdempotentAction(transaction, {
+    userId,
+    idempotencyKey,
+    expectedActionType: 'use_artifact',
+    expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
+  });
+  if (replay) {
+    const modifiers = parseJson(replay.modifierJson, {});
+    return { snapshot: readSnapshot(transaction, expeditionId), visualEvents: modifiers.events || [] };
+  }
+
+  const snapshot = readSnapshot(transaction, expeditionId);
+  assertExpeditionNotFinished(snapshot);
+  if (snapshot.expedition.status !== 'active') throw new RangeError('expedition is not active');
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  const recoveredMember = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
+  const member = normalizeRoleDay({
+    ...recoveredMember,
+    ...regenerateAp(recoveredMember, now),
+  }, utcDayKey(now));
+  const slotIndex = member.loadout.findIndex(slot => slot?.artifactId === artifactId);
+  if (slotIndex < 0) throw new RangeError(`artifact is not equipped: ${artifactId}`);
+  const artifact = ARTIFACTS[artifactId];
+  if (!artifact) throw new RangeError(`Unknown artifact: ${artifactId}`);
+  if (artifact.useType !== 'active') throw new RangeError(`Artifact is not active: ${artifactId}`);
+  if (artifactId !== 'phoenix_feather') assertHeroCanAct(member, now);
+  const encounterType = room.encounterType || room.type;
+  const roomEffects = listActiveRoomEffects(transaction, { expeditionId, roomId: room.id });
+  const state = {
+    roomKey,
+    roomState: room.state,
+    roomType: room.type,
+    roomProgress: room.progress,
+    roomProgressTarget: room.progressTarget,
+    hasMinigame: Boolean(room.miniGame),
+    combat: ['combat', 'boss'].includes(encounterType) || ['combat', 'boss'].includes(room.type),
+    heroHp: member.heroHp,
+    heroRecoverAt: member.heroRecoverAt,
+    maxHeroHp: 3,
+    ap: member.ap,
+    maxAp: MAX_AP,
+    roleCharge: member.roleCharge,
+    roleChargeProgress: member.roleChargeProgress,
+    roomShield: roomEffects.some(effect => effect.effectType === ROLE_EFFECT_TYPES.knight),
+    roomRetry: roomEffects.some(effect => effect.effectType === ROLE_EFFECT_TYPES.mage),
+    scoutChoices: (room.scoutChoices || []).map(choice => choice.id),
+  };
+  const applied = applyActiveArtifact({ artifactId, state });
+  if (!applied.applied) throw new RangeError(`artifact is not applicable: ${artifactId}`);
+
+  member.loadout[slotIndex] = null;
+  member.heroHp = applied.state.heroHp ?? member.heroHp;
+  member.heroRecoverAt = applied.state.heroRecoverAt ?? null;
+  member.ap = applied.state.ap ?? member.ap;
+  member.roleCharge = applied.state.roleCharge ?? member.roleCharge;
+  member.roleChargeProgress = applied.state.roleChargeProgress ?? member.roleChargeProgress;
+  room.progress = applied.state.roomProgress ?? room.progress;
+
+  if (applied.state.placeRoomShield || applied.state.placeRoomRetry) {
+    const effectType = applied.state.placeRoomShield
+      ? ROLE_EFFECT_TYPES.knight
+      : ROLE_EFFECT_TYPES.mage;
+    transaction.prepare(`
+      INSERT INTO family_expedition_room_effects (
+        expedition_id, room_id, effect_type, placed_by, remaining_uses,
+        payload_json, created_at
+      ) VALUES (?, ?, ?, ?, 1, ?, ?)
+    `).run(expeditionId, room.id, effectType, userId, stringifyJson({ source: artifactId }), now);
+  }
+
+  const armedKinds = new Set([
+    'minigame_time_once',
+    'combat_roll_floor',
+    'prevent_personal_damage',
+    'minigame_auto_success',
+    'combat_advantage',
+    'multi_combat_advantage',
+    'scout_choice',
+  ]);
+  if (armedKinds.has(artifact.effect.kind)) {
+    member.triggerHistory.push(armedEffectFromState(artifact, roomKey, applied.state));
+  }
+  updateMember(transaction, expeditionId, member);
+  if (room.progress >= room.progressTarget && room.type !== 'boss') {
+    room.progress = room.progressTarget;
+    room.state = 'cleared';
+    room.clearedAt = now;
+  }
+  updateRoom(transaction, expeditionId, room);
+  if (room.state === 'cleared') persistUnlocks(transaction, expeditionId, snapshot.expedition.map, room.key, now);
+  const visualEvents = [applied.visualEvent];
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId,
+    actionType: 'use_artifact',
+    modifiers: { events: visualEvents, artifactId },
+    intent,
+    progressAwarded: Math.max(0, room.progress - state.roomProgress),
+    now,
+  });
+  return { snapshot: readSnapshot(transaction, expeditionId), visualEvents };
 }
 
 function claimBossReward(options) {
@@ -2393,6 +2715,18 @@ function finishExpedition(options) {
   if (!canFinishExpedition({ expedition: snapshot.expedition, userId, rooms: snapshot.rooms })) {
     throw new RangeError('user cannot finish expedition yet');
   }
+  for (const member of snapshot.members) {
+    for (const slot of member.loadout || []) {
+      const artifact = ARTIFACTS[slot?.artifactId];
+      if (artifact?.useType === 'active') {
+        returnArtifactCopy(transaction, member.userId, artifact.id, now);
+      }
+    }
+    transaction.prepare(`
+      UPDATE family_expedition_members SET loadout_json = ?
+      WHERE expedition_id = ? AND user_id = ?
+    `).run(encodeLoadoutState({ ...member, loadout: [] }), expeditionId, member.userId);
+  }
   transaction.prepare(`
     UPDATE family_expeditions SET status = 'finished', finished_at = ? WHERE id = ?
   `).run(now, expeditionId);
@@ -2449,6 +2783,7 @@ module.exports = {
   startMinigameAttempt,
   finishMinigameAttempt,
   equipFoundArtifactForMember,
+  useArtifactForMember,
   claimBossReward,
   finishExpedition,
 };

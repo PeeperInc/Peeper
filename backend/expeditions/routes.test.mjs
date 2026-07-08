@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -8,6 +9,7 @@ import test from 'node:test';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+const Database = require('better-sqlite3');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'peeper-expeditions-routes-'));
 process.env.PEEPER_DB_PATH = path.join(tempDir, 'test.db');
 process.env.NODE_ENV = 'development';
@@ -89,6 +91,96 @@ function createFamilyWithMembers(memberTelegramIds = ['tg-owner']) {
 
 test.beforeEach(() => {
   resetDb();
+});
+
+test('artifact use route applies once, replays idempotently, and rejects stale concurrent use', async () => {
+  const { userIds } = createFamilyWithMembers();
+  db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES (?, 'tiny_shovel', 1, 0, 1, 1)
+  `).run(userIds[0]);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'artifact-route-start' });
+  const expeditionId = started.body.expedition.id;
+  const prepared = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'artifact-route-prepare',
+    role: 'scout',
+    artifactIds: ['tiny_shovel'],
+  });
+  const room = prepared.body.map.rooms.find(candidate => (
+    candidate.state === 'unlocked' && candidate.type !== 'boss'
+  ));
+  const url = `/${expeditionId}/rooms/${room.key}/artifacts/tiny_shovel/use`;
+  const [first, replay] = await Promise.all([
+    request('POST', url, 'tg-owner', { idempotencyKey: 'artifact-route-use' }),
+    request('POST', url, 'tg-owner', { idempotencyKey: 'artifact-route-use' }),
+  ]);
+  assert.equal(first.status, 200);
+  assert.equal(replay.status, 200);
+  assert.deepEqual(first.body.visualEvents, replay.body.visualEvents);
+  assert.equal(first.body.visualEvents[0].artifactId, 'tiny_shovel');
+  const stale = await request('POST', url, 'tg-owner', { idempotencyKey: 'artifact-route-stale' });
+  assert.equal(stale.status, 400);
+  assert.match(stale.body.error, /not equipped/i);
+  assert.equal(db.prepare(`
+    SELECT COUNT(*) AS count FROM family_expedition_actions
+    WHERE user_id = ? AND action_type = 'use_artifact'
+  `).get(userIds[0]).count, 1);
+});
+
+test('legacy artifact migration is deterministic, merge-safe, and idempotent across restarts', () => {
+  const migrationDir = fs.mkdtempSync(path.join(os.tmpdir(), 'peeper-artifact-migration-'));
+  const databasePath = path.join(migrationDir, 'migration.db');
+  const initialize = () => execFileSync(process.execPath, ['-e', `
+    const db = require('./backend/database.js');
+    db.close();
+  `], {
+    cwd: path.resolve(import.meta.dirname, '../..'),
+    env: { ...process.env, PEEPER_DB_PATH: databasePath },
+  });
+  try {
+    initialize();
+    const legacy = new Database(databasePath);
+    legacy.prepare("INSERT INTO users (id, telegram_id) VALUES (7, 'migration-user')").run();
+    legacy.prepare(`
+      INSERT INTO expedition_artifact_inventory (
+        user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+      ) VALUES
+        (7, 'map_scrap', 2, 0, 10, 20),
+        (7, 'wooden_shield', 3, 0, 5, 30),
+        (7, 'rusty_lockpick', 0, 4, 15, 25),
+        (7, 'unsupported_old_item', 1, 0, 1, 1)
+    `).run();
+    legacy.prepare("DELETE FROM app_settings WHERE key = 'expedition_artifact_catalog_v2'").run();
+    legacy.close();
+
+    initialize();
+    const migrated = new Database(databasePath);
+    const first = migrated.prepare(`
+      SELECT artifact_id AS artifactId, quantity, charges
+      FROM expedition_artifact_inventory WHERE user_id = 7 ORDER BY artifact_id
+    `).all();
+    migrated.close();
+    initialize();
+    const reopened = new Database(databasePath);
+    const second = reopened.prepare(`
+      SELECT artifact_id AS artifactId, quantity, charges
+      FROM expedition_artifact_inventory WHERE user_id = 7 ORDER BY artifact_id
+    `).all();
+    const migrationKey = reopened.prepare(`
+      SELECT value FROM app_settings WHERE key = 'expedition_artifact_catalog_v2'
+    `).pluck().get();
+    reopened.close();
+    assert.deepEqual(first, [
+      { artifactId: 'rusty_lockpick', quantity: 1, charges: 0 },
+      { artifactId: 'unsupported_old_item', quantity: 1, charges: 0 },
+      { artifactId: 'wooden_shield', quantity: 5, charges: 0 },
+    ]);
+    assert.deepEqual(second, first);
+    assert.equal(migrationKey, '1');
+  } finally {
+    fs.rmSync(migrationDir, { recursive: true, force: true });
+  }
 });
 
 test('serializer returns stable camelCase state and redacts hidden/private fields', () => {
@@ -267,7 +359,7 @@ test('mutations require idempotencyKey and prepare delegates role and artifact o
     artifactIds: ['bent_sword'],
   });
   assert.equal(unownedArtifact.status, 400);
-  assert.match(unownedArtifact.body.error, /Artifact not owned/);
+  assert.match(unownedArtifact.body.error, /not enough copies of artifact/);
 
   db.prepare(`
     INSERT INTO expedition_artifact_inventory (

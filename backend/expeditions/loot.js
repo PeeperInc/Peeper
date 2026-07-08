@@ -8,15 +8,6 @@ const LOOT_TABLES = Object.freeze({
   boss: Object.freeze({ common: 20, rare: 35, epic: 30, legendary: 15 }),
 });
 
-const DUPLICATE_COIN_SUBSTITUTE = Object.freeze({
-  common: 8,
-  rare: 20,
-  epic: 50,
-  legendary: 125,
-});
-
-const UNIQUE_BEHAVIORS = new Set(['permanent', 'cursed']);
-
 function assertRng(rng) {
   if (typeof rng !== 'function') throw new TypeError('rng must be a function');
 }
@@ -64,39 +55,17 @@ function rollPersonalLoot({
   return { coins, artifacts };
 }
 
-function normalizeInventory(inventory) {
-  return new Map((inventory || []).map(item => [item.artifactId ?? item.artifact_id, item]));
-}
-
 function resolveArtifactGrant({ artifactId, inventory = [], rng = () => 0 }) {
   const artifact = ARTIFACTS[artifactId];
   if (!artifact) throw new RangeError(`Unknown artifact: ${artifactId}`);
   assertRng(rng);
 
-  const owned = normalizeInventory(inventory);
-  let grantedArtifact = artifact;
-  if (UNIQUE_BEHAVIORS.has(artifact.behavior.type) && owned.has(artifactId)) {
-    const missing = artifactsForRarity(artifact.rarity)
-      .filter(candidate => !owned.has(candidate.id));
-    if (missing.length === 0) {
-      return {
-        kind: 'coins',
-        coins: DUPLICATE_COIN_SUBSTITUTE[artifact.rarity],
-        duplicateArtifactId: artifactId,
-        rarity: artifact.rarity,
-      };
-    }
-    grantedArtifact = missing[Math.min(missing.length - 1, Math.floor(rng() * missing.length))];
-  }
-
   return {
     kind: 'artifact',
-    artifactId: grantedArtifact.id,
-    rarity: grantedArtifact.rarity,
-    addedQuantity: grantedArtifact.behavior.type === 'charged' ? 0 : 1,
-    addedCharges: grantedArtifact.behavior.type === 'charged'
-      ? grantedArtifact.behavior.initialCharges
-      : 0,
+    artifactId: artifact.id,
+    rarity: artifact.rarity,
+    addedQuantity: 1,
+    addedCharges: 0,
   };
 }
 
@@ -139,7 +108,6 @@ function grantArtifact({ transaction, userId, artifactId, rng = () => 0, now = M
 }
 
 module.exports = {
-  DUPLICATE_COIN_SUBSTITUTE,
   LOOT_TABLES,
   artifactsForRarity,
   grantArtifact,
