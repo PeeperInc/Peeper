@@ -54,6 +54,15 @@ const baseStart = {
   now: 1_000,
 };
 
+const PUBLIC_ATTEMPT_KEYS = [
+  'attemptToken',
+  'expiresAt',
+  'gameType',
+  'retry',
+  'seed',
+  'startedAt',
+];
+
 test('start creates an active opaque attempt with deterministic seed and exact public shape', () => {
   const db = attemptDb();
   const first = startAttempt(db, baseStart);
@@ -66,14 +75,7 @@ test('start creates an active opaque attempt with deterministic seed and exact p
   assert.equal(first.startedAt, 1_000);
   assert.equal(first.expiresAt, 1_015);
   assert.equal(first.retry, false);
-  assert.deepEqual(Object.keys(first).sort(), [
-    'attemptToken',
-    'expiresAt',
-    'gameType',
-    'retry',
-    'seed',
-    'startedAt',
-  ]);
+  assert.deepEqual(Object.keys(first).sort(), PUBLIC_ATTEMPT_KEYS);
   assert.equal(db.prepare('SELECT ap_spent FROM family_expedition_minigame_attempts').get().ap_spent, 1);
 });
 
@@ -88,6 +90,25 @@ test('duplicate start replays the same attempt and rejects mismatched intent', (
     () => startAttempt(db, { ...baseStart, gameType: 'shadow_match' }),
     /idempotency conflict/i,
   );
+});
+
+test('ordinary start replay stays immutable after the attempt becomes a Mage retry', () => {
+  const db = attemptDb();
+  const first = startAttempt(db, baseStart);
+  assert.deepEqual(startAttempt(db, baseStart), first);
+
+  finishAttempt(db, {
+    ...baseStart,
+    attemptToken: first.attemptToken,
+    idempotencyKey: 'finish-ordinary-into-retry',
+    now: 1_004,
+    result: { success: false, reason: 'collision' },
+    consumeRetry: () => ({ event: { type: 'mage_retry' } }),
+  });
+
+  const delayedReplay = startAttempt(db, baseStart);
+  assert.deepEqual(delayedReplay, first);
+  assert.deepEqual(Object.keys(delayedReplay).sort(), PUBLIC_ATTEMPT_KEYS);
 });
 
 test('only one unresolved attempt can exist per expedition room and user', () => {
@@ -200,6 +221,74 @@ test('finish validates bounded game proof and resolves success once', () => {
   }), /idempotency conflict/i);
 });
 
+test('finish replay after its deadline returns the immutable response before timeout normalization', () => {
+  const db = attemptDb();
+  const attempt = startAttempt(db, { ...baseStart, gameType: 'focus_hold' });
+  let successCalls = 0;
+  let failureCalls = 0;
+  const options = {
+    ...baseStart,
+    gameType: undefined,
+    attemptToken: attempt.attemptToken,
+    idempotencyKey: 'finish-before-deadline',
+    result: { success: true, score: 78 },
+    onSuccess: () => {
+      successCalls += 1;
+      return {
+        progressAwarded: 2,
+        loot: { coins: 9 },
+        visualEvents: [{ type: 'event_minigame_success' }],
+      };
+    },
+    onFailure: () => {
+      failureCalls += 1;
+      return { visualEvents: [{ type: 'hero_damaged' }] };
+    },
+  };
+  const first = finishAttempt(db, { ...options, now: 1_003 });
+  const replay = finishAttempt(db, { ...options, now: attempt.expiresAt + 10 });
+
+  assert.deepEqual(replay, first);
+  assert.deepEqual(Object.keys(first.attempt).sort(), PUBLIC_ATTEMPT_KEYS);
+  assert.equal(successCalls, 1);
+  assert.equal(failureCalls, 0);
+});
+
+test('finish envelopes keep outcome and rewards outside every exact six-field attempt', () => {
+  const db = attemptDb();
+  const successAttempt = startAttempt(db, { ...baseStart, gameType: 'focus_hold' });
+  const success = finishAttempt(db, {
+    ...baseStart,
+    gameType: undefined,
+    attemptToken: successAttempt.attemptToken,
+    idempotencyKey: 'finish-shape-success',
+    now: 1_003,
+    result: { success: true, score: 80 },
+    onSuccess: () => ({
+      progressAwarded: 1,
+      loot: { coins: 4 },
+      visualEvents: [{ type: 'event_minigame_success' }],
+    }),
+  });
+  assert.deepEqual(Object.keys(success.attempt).sort(), PUBLIC_ATTEMPT_KEYS);
+  assert.equal(success.state, 'succeeded');
+  assert.equal(success.success, true);
+  assert.equal(success.progressAwarded, 1);
+  assert.deepEqual(success.loot, { coins: 4 });
+  assert.deepEqual(success.visualEvents, [{ type: 'event_minigame_success' }]);
+
+  const replay = finishAttempt(db, {
+    ...baseStart,
+    gameType: undefined,
+    attemptToken: successAttempt.attemptToken,
+    idempotencyKey: 'finish-shape-success',
+    now: 1_004,
+    result: { success: true, score: 80 },
+  });
+  assert.deepEqual(replay, success);
+  assert.deepEqual(Object.keys(replay.attempt).sort(), PUBLIC_ATTEMPT_KEYS);
+});
+
 test('failure can transition through one Mage retry without AP or damage', () => {
   const db = attemptDb();
   const attempt = startAttempt(db, baseStart);
@@ -215,7 +304,8 @@ test('failure can transition through one Mage retry without AP or damage', () =>
     onFailure: () => { damageCalls += 1; },
   });
   assert.equal(retry.state, 'retry');
-  assert.equal(retry.retry, true);
+  assert.equal(retry.attempt.retry, true);
+  assert.deepEqual(Object.keys(retry.attempt).sort(), PUBLIC_ATTEMPT_KEYS);
   assert.deepEqual(retry.visualEvents, [{ type: 'mage_retry' }]);
   assert.equal(damageCalls, 0);
   assert.equal(db.prepare('SELECT ap_spent FROM family_expedition_minigame_attempts').get().ap_spent, 1);
@@ -234,7 +324,8 @@ test('failure can transition through one Mage retry without AP or damage', () =>
     },
   });
   assert.equal(failed.state, 'failed');
-  assert.equal(failed.retry, false);
+  assert.equal(failed.attempt.retry, false);
+  assert.deepEqual(Object.keys(failed.attempt).sort(), PUBLIC_ATTEMPT_KEYS);
   assert.equal(failed.heroHp, 2);
   assert.equal(damageCalls, 1);
 });
@@ -258,6 +349,7 @@ test('timeout expires as one failed attempt and replay does not duplicate damage
   assert.equal(expired.state, 'expired');
   assert.equal(expired.success, false);
   assert.equal(expired.heroHp, 0);
+  assert.deepEqual(Object.keys(expired.attempt).sort(), PUBLIC_ATTEMPT_KEYS);
   assert.equal(damageCalls, 1);
   assert.deepEqual(expireAttempt(db, {
     expeditionId: 10,
@@ -290,9 +382,10 @@ test('deadline is exclusive and timeout consumes Mage retry with a fresh deadlin
 
   assert.equal(result.state, 'retry');
   assert.equal(result.success, false);
-  assert.equal(result.retry, true);
-  assert.equal(result.startedAt, attempt.expiresAt);
-  assert.equal(result.expiresAt, attempt.expiresAt + 15);
+  assert.equal(result.attempt.retry, true);
+  assert.deepEqual(Object.keys(result.attempt).sort(), PUBLIC_ATTEMPT_KEYS);
+  assert.equal(result.attempt.startedAt, attempt.expiresAt);
+  assert.equal(result.attempt.expiresAt, attempt.expiresAt + 15);
   assert.equal(retryCalls, 1);
   assert.equal(damageCalls, 0);
 });

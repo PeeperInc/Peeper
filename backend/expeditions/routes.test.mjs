@@ -705,6 +705,15 @@ test('persisted mini-game routes spend AP at start, isolate tokens, and retire t
   ]);
   assert.equal(attemptStart.body.member.ap, 4);
 
+  const immediateStartReplay = await request(
+    'POST',
+    `/${expeditionId}/rooms/${eventRow.roomKey}/minigame/start`,
+    'tg-owner',
+    { idempotencyKey: 'route-minigame-start' },
+  );
+  assert.equal(immediateStartReplay.status, 200);
+  assert.deepEqual(immediateStartReplay.body, attemptStart.body);
+
   const combatRoom = db.prepare(`
     SELECT room_key AS roomKey, payload_json AS payloadJson
     FROM family_expedition_rooms
@@ -746,8 +755,22 @@ test('persisted mini-game routes spend AP at start, isolate tokens, and retire t
     },
   );
   assert.equal(finish.status, 200);
-  assert.equal(finish.body.attempt.state, 'succeeded');
+  assert.deepEqual(Object.keys(finish.body.attempt).sort(), [
+    'attemptToken',
+    'expiresAt',
+    'gameType',
+    'retry',
+    'seed',
+    'startedAt',
+  ]);
+  assert.equal(finish.body.state, 'succeeded');
+  assert.equal(finish.body.success, true);
   assert.equal(finish.body.member.ap, 4);
+
+  db.prepare(`
+    UPDATE family_expedition_members SET ap = 0, hero_hp = 1
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
 
   const replay = await request(
     'POST',
@@ -759,8 +782,16 @@ test('persisted mini-game routes spend AP at start, isolate tokens, and retire t
     },
   );
   assert.equal(replay.status, 200);
-  assert.equal(replay.body.attempt.state, 'succeeded');
-  assert.equal(replay.body.member.ap, 4);
+  assert.deepEqual(replay.body, finish.body);
+
+  const delayedStartReplay = await request(
+    'POST',
+    `/${expeditionId}/rooms/${eventRow.roomKey}/minigame/start`,
+    'tg-owner',
+    { idempotencyKey: 'route-minigame-start' },
+  );
+  assert.equal(delayedStartReplay.status, 200);
+  assert.deepEqual(delayedStartReplay.body, attemptStart.body);
 });
 
 test('stale mini-game timeout commits even when replacement start is rejected', async () => {
@@ -841,6 +872,7 @@ test('stale mini-game timeout returns a free Mage retry instead of starting agai
     'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
     { idempotencyKey: 'start-expiring-mage-attempt' },
   );
+  const originalOrdinaryStartResponse = first.body;
   db.prepare(`
     UPDATE family_expedition_minigame_attempts SET expires_at = ? WHERE attempt_token = ?
   `).run(Math.floor(Date.now() / 1000) - 1, first.body.attempt.attemptToken);
@@ -863,6 +895,12 @@ test('stale mini-game timeout returns a free Mage retry instead of starting agai
   assert.equal(retry.body.member.ap, 4);
   assert.equal(retry.body.member.heroHp, 3);
   assert.equal(retry.body.visualEvents[0].type, 'mage_retry');
+  const ordinaryStartAfterRetry = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-expiring-mage-attempt' },
+  );
+  assert.equal(ordinaryStartAfterRetry.status, 200);
+  assert.deepEqual(ordinaryStartAfterRetry.body, originalOrdinaryStartResponse);
   const originalRetryStartResponse = {
     attempt: retry.body.attempt,
     visualEvents: retry.body.visualEvents,
@@ -889,7 +927,13 @@ test('stale mini-game timeout returns a free Mage retry instead of starting agai
     },
   );
   assert.equal(finishedRetry.status, 200);
-  assert.equal(finishedRetry.body.attempt.state, 'succeeded');
+  assert.equal(finishedRetry.body.state, 'succeeded');
+  const ordinaryStartAfterResolution = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-expiring-mage-attempt' },
+  );
+  assert.equal(ordinaryStartAfterResolution.status, 200);
+  assert.deepEqual(ordinaryStartAfterResolution.body, originalOrdinaryStartResponse);
 
   const delayedReplay = await request(
     'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
@@ -1008,7 +1052,7 @@ test('persisted mini-game routes apply Mage retry, knockout recovery, and Knight
     { idempotencyKey: 'finish-route-mage-retry', result: { success: false, score: 0 } },
   );
   assert.equal(retry.status, 200);
-  assert.equal(retry.body.attempt.state, 'retry');
+  assert.equal(retry.body.state, 'retry');
   assert.equal(retry.body.visualEvents[0].type, 'mage_retry');
   assert.equal(retry.body.member.ap, 4);
   assert.equal(retry.body.member.heroHp, 1);

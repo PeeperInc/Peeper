@@ -11,6 +11,8 @@ const {
   assistRoom,
   chooseScoutRoom,
   expireStaleMinigameAttempt,
+  readMinigameStartHttpReplay,
+  persistMinigameHttpReplay,
   startMinigameAttempt,
   finishMinigameAttempt,
   useRoleAbility,
@@ -538,32 +540,63 @@ router.post('/:id/rooms/:roomKey/minigame/start', (req, res) => {
   if (!access) return;
 
   try {
-    const expiration = db.transaction(() => expireStaleMinigameAttempt({
+    const persistedReplay = db.transaction(() => readMinigameStartHttpReplay({
       transaction: db,
       idempotencyKey,
       expeditionId: access.expeditionId,
       userId: req.currentUser.id,
       roomKey: req.params.roomKey,
     }))();
-    if (expiration.resolved && expiration.attempt?.retry) {
-      return res.json({
-        ...serializeFor(req.currentUser, access.family, expiration.snapshot, false),
-        attempt: expiration.attempt,
-        visualEvents: expiration.visualEvents || [],
+    if (persistedReplay) return res.json(persistedReplay);
+
+    const expiration = db.transaction(() => {
+      const result = expireStaleMinigameAttempt({
+        transaction: db,
+        idempotencyKey,
+        expeditionId: access.expeditionId,
+        userId: req.currentUser.id,
+        roomKey: req.params.roomKey,
       });
-    }
-    const result = db.transaction(() => startMinigameAttempt({
-      transaction: db,
-      idempotencyKey,
-      expeditionId: access.expeditionId,
-      userId: req.currentUser.id,
-      roomKey: req.params.roomKey,
-    }))();
-    return res.json({
-      ...serializeFor(req.currentUser, access.family, result.snapshot, false),
-      attempt: result.attempt,
-      ...(result.visualEvents?.length ? { visualEvents: result.visualEvents } : {}),
-    });
+      if (!result.resolved || !result.attempt?.retry) return { result, body: null };
+      const body = {
+        ...serializeFor(req.currentUser, access.family, result.snapshot, false),
+        attempt: result.attempt,
+        visualEvents: result.visualEvents || [],
+      };
+      persistMinigameHttpReplay({
+        transaction: db,
+        idempotencyKey,
+        userId: req.currentUser.id,
+        kind: 'start',
+        response: body,
+      });
+      return { result, body };
+    })();
+    if (expiration.body) return res.json(expiration.body);
+    const body = db.transaction(() => {
+      const result = startMinigameAttempt({
+        transaction: db,
+        idempotencyKey,
+        expeditionId: access.expeditionId,
+        userId: req.currentUser.id,
+        roomKey: req.params.roomKey,
+      });
+      if (result.httpResponse) return result.httpResponse;
+      const response = {
+        ...serializeFor(req.currentUser, access.family, result.snapshot, false),
+        attempt: result.attempt,
+        ...(result.visualEvents?.length ? { visualEvents: result.visualEvents } : {}),
+      };
+      persistMinigameHttpReplay({
+        transaction: db,
+        idempotencyKey,
+        userId: req.currentUser.id,
+        kind: 'start',
+        response,
+      });
+      return response;
+    })();
+    return res.json(body);
   } catch (error) {
     return handleRouteError(res, error);
   }
@@ -576,21 +609,33 @@ router.post('/:id/rooms/:roomKey/minigame/:attemptToken/finish', (req, res) => {
   if (!access) return;
 
   try {
-    const result = db.transaction(() => finishMinigameAttempt({
-      transaction: db,
-      idempotencyKey,
-      expeditionId: access.expeditionId,
-      userId: req.currentUser.id,
-      roomKey: req.params.roomKey,
-      attemptToken: req.params.attemptToken,
-      result: req.body?.result,
-      rng: secureRng,
-    }))();
-    return res.json({
-      ...serializeFor(req.currentUser, access.family, result.snapshot, false),
-      attempt: result.attempt,
-      visualEvents: result.attempt.visualEvents || [],
-    });
+    const body = db.transaction(() => {
+      const result = finishMinigameAttempt({
+        transaction: db,
+        idempotencyKey,
+        expeditionId: access.expeditionId,
+        userId: req.currentUser.id,
+        roomKey: req.params.roomKey,
+        attemptToken: req.params.attemptToken,
+        result: req.body?.result,
+        rng: secureRng,
+      });
+      if (result.httpResponse) return result.httpResponse;
+      const { snapshot, ...outcome } = result;
+      const response = {
+        ...serializeFor(req.currentUser, access.family, snapshot, false),
+        ...outcome,
+      };
+      persistMinigameHttpReplay({
+        transaction: db,
+        idempotencyKey,
+        userId: req.currentUser.id,
+        kind: 'finish',
+        response,
+      });
+      return response;
+    })();
+    return res.json(body);
   } catch (error) {
     return handleRouteError(res, error);
   }

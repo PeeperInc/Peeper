@@ -24,9 +24,11 @@ const {
 const {
   INTERNAL_IDEMPOTENCY_PREFIX,
   assertGlobalIdempotencyKeyUnused,
+  bindHttpReplay,
   bindStartReplay,
   finishAttempt,
   readOpenAttempt,
+  readFinishReplay,
   readStartReplay,
   startAttempt,
 } = require('./minigameAttempts');
@@ -1942,6 +1944,7 @@ function startMinigameAttempt(options) {
     idempotencyKey,
   });
   if (replay) {
+    if (replay.httpResponse) return { httpResponse: replay.httpResponse };
     return {
       attempt: replay.attempt,
       visualEvents: replay.visualEvents,
@@ -1972,6 +1975,35 @@ function startMinigameAttempt(options) {
     },
   });
   return { attempt, visualEvents: [], snapshot: readSnapshot(transaction, expeditionId) };
+}
+
+function readMinigameStartHttpReplay(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    roomKey,
+  } = options;
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  return readStartReplay(transaction, {
+    expeditionId,
+    roomId: room.id,
+    userId,
+    gameType: minigameTypeForRoom(room),
+    idempotencyKey,
+  })?.httpResponse || null;
+}
+
+function persistMinigameHttpReplay(options) {
+  assertMutationInput(options);
+  return bindHttpReplay(options.transaction, {
+    userId: options.userId,
+    idempotencyKey: options.idempotencyKey,
+    kind: options.kind,
+    response: options.response,
+  });
 }
 
 function expireStaleMinigameAttempt(options) {
@@ -2019,7 +2051,7 @@ function expireStaleMinigameAttempt(options) {
     }),
   });
   const visualEvents = clone(resolution.visualEvents || []);
-  const replay = resolution.retry
+  const replay = resolution.attempt.retry
     ? bindStartReplay(transaction, {
       expeditionId,
       roomId: room.id,
@@ -2156,7 +2188,16 @@ function finishMinigameAttempt(options) {
   } = options;
   const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
   const currentTime = unixSeconds(now);
-  const attempt = finishAttempt(transaction, {
+  const replay = readFinishReplay(transaction, {
+    expeditionId,
+    roomId: room.id,
+    userId,
+    attemptToken,
+    idempotencyKey,
+    result,
+  });
+  if (replay?.httpResponse) return { httpResponse: replay.httpResponse };
+  const response = finishAttempt(transaction, {
     expeditionId,
     roomId: room.id,
     userId,
@@ -2188,7 +2229,7 @@ function finishMinigameAttempt(options) {
       now: currentTime,
     }),
   });
-  return { attempt, snapshot: readSnapshot(transaction, expeditionId) };
+  return { ...response, snapshot: readSnapshot(transaction, expeditionId) };
 }
 
 function equipFoundArtifactForMember(options) {
@@ -2373,6 +2414,8 @@ module.exports = {
   useRoleAbility,
   completeEventRoom,
   expireStaleMinigameAttempt,
+  readMinigameStartHttpReplay,
+  persistMinigameHttpReplay,
   startMinigameAttempt,
   finishMinigameAttempt,
   equipFoundArtifactForMember,
