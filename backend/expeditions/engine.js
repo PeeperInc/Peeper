@@ -2037,11 +2037,13 @@ function expireStaleMinigameAttempt(options) {
     result: { success: false, reason: 'timeout' },
     forceState: 'expired',
     now: currentTime,
-    consumeRetry: () => consumeMageRetry(transaction, {
-      expeditionId,
-      roomId: room.id,
-      now: currentTime,
-    }),
+    consumeRetry: () => (isMinigameSuperseded(transaction, expeditionId, room)
+      ? null
+      : consumeMageRetry(transaction, {
+        expeditionId,
+        roomId: room.id,
+        now: currentTime,
+      })),
     onFailure: () => applyMinigameFailure({
       transaction,
       expeditionId,
@@ -2071,10 +2073,24 @@ function expireStaleMinigameAttempt(options) {
   };
 }
 
+function isMinigameSuperseded(transaction, expeditionId, room) {
+  const snapshot = readSnapshot(transaction, expeditionId);
+  const currentRoom = rowToRoom(getRoomRow(transaction, expeditionId, room.key));
+  return snapshot.expedition.status !== 'active' || currentRoom.state === 'cleared';
+}
+
 function applyMinigameFailure({ transaction, expeditionId, room, userId, idempotencyKey, now }) {
   const snapshot = readSnapshot(transaction, expeditionId);
+  const currentRoom = rowToRoom(getRoomRow(transaction, expeditionId, room.key));
+  if (snapshot.expedition.status !== 'active' || currentRoom.state === 'cleared') {
+    const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
+    return {
+      terminalState: 'superseded',
+      heroHp: memberState.heroHp,
+      visualEvents: [{ type: 'event_minigame_expedition_closed' }],
+    };
+  }
   assertExpeditionNotFinished(snapshot);
-  if (snapshot.expedition.status !== 'active') throw new RangeError('expedition is not active');
   const memberState = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
   const shield = consumeRoomEffect(transaction, {
     expeditionId,
@@ -2126,15 +2142,18 @@ function applyMinigameSuccess({
   now,
 }) {
   const snapshot = readSnapshot(transaction, expeditionId);
-  assertExpeditionNotFinished(snapshot);
-  if (snapshot.expedition.status !== 'active') throw new RangeError('expedition is not active');
   const currentRoom = rowToRoom(getRoomRow(transaction, expeditionId, room.key));
-  if (currentRoom.state === 'cleared') {
+  if (snapshot.expedition.status !== 'active' || currentRoom.state === 'cleared') {
     return {
       terminalState: 'superseded',
       progressAwarded: 0,
       loot: {},
-      visualEvents: [{ type: 'event_minigame_already_cleared', progressAwarded: 0 }],
+      visualEvents: [{
+        type: currentRoom.state === 'cleared'
+          ? 'event_minigame_already_cleared'
+          : 'event_minigame_expedition_closed',
+        progressAwarded: 0,
+      }],
     };
   }
   assertMinigameRoom(currentRoom);
@@ -2214,11 +2233,13 @@ function finishMinigameAttempt(options) {
     idempotencyKey,
     result,
     now: currentTime,
-    consumeRetry: () => consumeMageRetry(transaction, {
-      expeditionId,
-      roomId: room.id,
-      now: currentTime,
-    }),
+    consumeRetry: () => (isMinigameSuperseded(transaction, expeditionId, room)
+      ? null
+      : consumeMageRetry(transaction, {
+        expeditionId,
+        roomId: room.id,
+        now: currentTime,
+      })),
     onSuccess: ({ outcome }) => applyMinigameSuccess({
       transaction,
       expeditionId,

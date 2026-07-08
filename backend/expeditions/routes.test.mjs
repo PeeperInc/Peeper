@@ -803,7 +803,7 @@ test('persisted mini-game routes spend AP at start, isolate tokens, and retire t
   assert.deepEqual(delayedStartReplay.body, attemptStart.body);
 });
 
-test('paid concurrent mini-game finish after another member clears resolves without duplicate rewards or damage', async () => {
+test('paid mini-game attempts close safely after another member clears and finishes the expedition', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-concurrent-event' });
   const expeditionId = started.body.expedition.id;
@@ -829,6 +829,11 @@ test('paid concurrent mini-game finish after another member clears resolves with
     SET state = 'unlocked', progress = 0, progress_target = 1, payload_json = ?
     WHERE id = ?
   `).run(JSON.stringify(payload), room.id);
+  const cleanupRoomId = Number(db.prepare(`
+    INSERT INTO family_expedition_rooms (
+      expedition_id, room_key, room_type, state, progress_target, payload_json, unlocked_at
+    ) VALUES (?, 'cleanup-event', 'event', 'unlocked', 1, ?, strftime('%s','now'))
+  `).run(expeditionId, JSON.stringify(payload)).lastInsertRowid);
 
   const ownerStart = await request(
     'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
@@ -838,8 +843,13 @@ test('paid concurrent mini-game finish after another member clears resolves with
     'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-sibling',
     { idempotencyKey: 'concurrent-sibling-start' },
   );
+  const siblingCleanupStart = await request(
+    'POST', `/${expeditionId}/rooms/cleanup-event/minigame/start`, 'tg-sibling',
+    { idempotencyKey: 'concurrent-sibling-cleanup-start' },
+  );
   assert.equal(ownerStart.status, 200);
   assert.equal(siblingStart.status, 200);
+  assert.equal(siblingCleanupStart.status, 200);
 
   const ownerFinish = await request(
     'POST',
@@ -849,6 +859,16 @@ test('paid concurrent mini-game finish after another member clears resolves with
   );
   assert.equal(ownerFinish.status, 200);
   assert.equal(ownerFinish.body.state, 'succeeded');
+  db.prepare(`
+    UPDATE family_expedition_rooms
+    SET state = 'cleared', progress = progress_target, cleared_at = strftime('%s','now')
+    WHERE expedition_id = ? AND room_type = 'boss'
+  `).run(expeditionId);
+  const expeditionFinish = await request('POST', `/${expeditionId}/finish`, 'tg-owner', {
+    idempotencyKey: 'finish-concurrent-expedition',
+  });
+  assert.equal(expeditionFinish.status, 200);
+  assert.equal(expeditionFinish.body.expedition.status, 'finished');
   const ownerCoins = db.prepare('SELECT coins FROM users WHERE id = ?').pluck().get(userIds[0]);
   const siblingCoinsBefore = db.prepare('SELECT coins FROM users WHERE id = ?').pluck().get(userIds[1]);
 
@@ -879,6 +899,20 @@ test('paid concurrent mini-game finish after another member clears resolves with
   );
   assert.equal(replay.status, 200);
   assert.deepEqual(replay.body, siblingFinish.body);
+  db.prepare(`
+    UPDATE family_expedition_minigame_attempts
+    SET expires_at = strftime('%s','now') - 1
+    WHERE attempt_token = ?
+  `).run(siblingCleanupStart.body.attempt.attemptToken);
+  const rejectedNewStart = await request(
+    'POST', `/${expeditionId}/rooms/cleanup-event/minigame/start`, 'tg-sibling',
+    { idempotencyKey: 'post-finish-new-start' },
+  );
+  assert.equal(rejectedNewStart.status, 400);
+  assert.equal(rejectedNewStart.body.error, 'expedition is finished');
+  assert.equal(db.prepare(`
+    SELECT status FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+  `).pluck().get(siblingCleanupStart.body.attempt.attemptToken), 'superseded');
   assert.equal(db.prepare(`
     SELECT COUNT(*) FROM family_expedition_minigame_attempts
     WHERE user_id = ? AND status IN ('ready', 'active', 'retry')
@@ -886,6 +920,20 @@ test('paid concurrent mini-game finish after another member clears resolves with
   assert.equal(db.prepare(`
     SELECT hero_hp FROM family_expedition_members WHERE expedition_id = ? AND user_id = ?
   `).pluck().get(expeditionId, userIds[1]), 3);
+  assert.equal(db.prepare(`
+    SELECT COUNT(*) FROM family_expedition_history WHERE expedition_id = ?
+  `).pluck().get(expeditionId), 1);
+  assert.equal(db.prepare(`
+    SELECT COUNT(*) FROM family_expedition_actions
+    WHERE expedition_id = ? AND action_type = 'finish_expedition'
+  `).pluck().get(expeditionId), 1);
+  assert.equal(db.prepare(`
+    SELECT COUNT(*) FROM family_expedition_actions
+    WHERE expedition_id = ? AND room_id = ? AND action_type = 'event_minigame'
+  `).pluck().get(expeditionId, room.id), 1);
+  assert.equal(db.prepare(`
+    SELECT progress FROM family_expedition_rooms WHERE id = ?
+  `).pluck().get(cleanupRoomId), 0);
 });
 
 test('stale mini-game timeout commits even when replacement start is rejected', async () => {

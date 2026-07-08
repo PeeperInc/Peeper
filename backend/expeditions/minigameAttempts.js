@@ -541,12 +541,17 @@ function finishAttempt(transaction, options) {
   if (!response) {
     nextStatus = timedOut ? 'expired' : 'failed';
     const failure = clone(onFailure({ row: clone(row), outcome: clone(outcome) }) || {});
+    const { terminalState = nextStatus, ...failurePayload } = failure;
+    if (![nextStatus, 'superseded'].includes(terminalState)) {
+      throw new RangeError(`Unsupported mini-game terminal state: ${terminalState}`);
+    }
+    nextStatus = terminalState;
     response = {
       attempt: publicAttempt({ ...row, status: nextStatus }),
       state: nextStatus,
       success: false,
       reason: outcome.reason || (timedOut ? 'timeout' : 'failed'),
-      ...failure,
+      ...failurePayload,
     };
   }
 
