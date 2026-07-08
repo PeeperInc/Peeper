@@ -101,7 +101,14 @@ function globalKeyUsage(transaction, { userId, idempotencyKey }) {
     }
     const startReplay = (metadata.startReplays || [])
       .find(item => item.idempotencyKey === idempotencyKey);
-    if (startReplay) return { kind: 'start', row, intent: startReplay.intent };
+    if (startReplay) {
+      return {
+        kind: 'start',
+        row,
+        intent: startReplay.intent,
+        response: startReplay.response,
+      };
+    }
     const finish = (metadata.finishes || []).find(item => item.idempotencyKey === idempotencyKey);
     if (finish) return { kind: 'finish', row, intent: finish.intent, response: finish.response };
   }
@@ -137,20 +144,43 @@ function bindStartReplay(transaction, options) {
       && keyUsage.row.id === row.id
       && stableStringify(keyUsage.intent) === stableStringify(intent)
     ) {
-      return publicAttempt(row);
+      return keyUsage.response
+        ? clone(keyUsage.response)
+        : { attempt: publicAttempt(row), visualEvents: [] };
     }
     throw new Error('idempotency conflict: start key was used with different intent');
   }
 
   const metadata = attemptMetadata(row);
+  const response = {
+    attempt: publicAttempt(row),
+    visualEvents: clone(options.visualEvents || []),
+  };
   metadata.startReplays = [
     ...(metadata.startReplays || []),
-    { idempotencyKey, intent },
+    { idempotencyKey, intent, response },
   ];
   transaction.prepare(`
     UPDATE family_expedition_minigame_attempts SET result_json = ? WHERE id = ?
   `).run(JSON.stringify(metadata), row.id);
-  return publicAttempt(row);
+  return clone(response);
+}
+
+function readStartReplay(transaction, options) {
+  const {
+    expeditionId,
+    roomId,
+    userId,
+    idempotencyKey,
+  } = options;
+  const gameType = normalizeGameType(options.gameType);
+  const intent = { expeditionId, roomId, userId, gameType };
+  const keyUsage = globalKeyUsage(transaction, { userId, idempotencyKey });
+  if (!keyUsage) return null;
+  if (keyUsage.kind !== 'start' || stableStringify(keyUsage.intent) !== stableStringify(intent)) {
+    throw new Error('idempotency conflict: start key was used with different intent');
+  }
+  return keyUsage.response ? clone(keyUsage.response) : null;
 }
 
 function assertGlobalIdempotencyKeyUnused(transaction, options) {
@@ -459,5 +489,6 @@ module.exports = {
   finishAttempt,
   isReservedIdempotencyKey,
   readOpenAttempt,
+  readStartReplay,
   startAttempt,
 };

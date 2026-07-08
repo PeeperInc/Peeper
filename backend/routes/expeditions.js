@@ -562,6 +562,7 @@ router.post('/:id/rooms/:roomKey/minigame/start', (req, res) => {
     return res.json({
       ...serializeFor(req.currentUser, access.family, result.snapshot, false),
       attempt: result.attempt,
+      ...(result.visualEvents?.length ? { visualEvents: result.visualEvents } : {}),
     });
   } catch (error) {
     return handleRouteError(res, error);

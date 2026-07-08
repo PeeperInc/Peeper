@@ -27,6 +27,7 @@ const {
   bindStartReplay,
   finishAttempt,
   readOpenAttempt,
+  readStartReplay,
   startAttempt,
 } = require('./minigameAttempts');
 const {
@@ -1932,11 +1933,26 @@ function startMinigameAttempt(options) {
   } = options;
   const snapshot = readSnapshot(transaction, expeditionId);
   const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  const gameType = minigameTypeForRoom(room);
+  const replay = readStartReplay(transaction, {
+    expeditionId,
+    roomId: room.id,
+    userId,
+    gameType,
+    idempotencyKey,
+  });
+  if (replay) {
+    return {
+      attempt: replay.attempt,
+      visualEvents: replay.visualEvents,
+      snapshot,
+    };
+  }
   const attempt = startAttempt(transaction, {
     expeditionId,
     roomId: room.id,
     userId,
-    gameType: minigameTypeForRoom(room),
+    gameType,
     idempotencyKey,
     now: unixSeconds(now),
     onStart: () => {
@@ -1955,7 +1971,7 @@ function startMinigameAttempt(options) {
       updateMember(transaction, expeditionId, nextMember, { ap: 1, progress: 0 });
     },
   });
-  return { attempt, snapshot: readSnapshot(transaction, expeditionId) };
+  return { attempt, visualEvents: [], snapshot: readSnapshot(transaction, expeditionId) };
 }
 
 function expireStaleMinigameAttempt(options) {
@@ -2003,7 +2019,7 @@ function expireStaleMinigameAttempt(options) {
     }),
   });
   const visualEvents = clone(resolution.visualEvents || []);
-  const attempt = resolution.retry
+  const replay = resolution.retry
     ? bindStartReplay(transaction, {
       expeditionId,
       roomId: room.id,
@@ -2011,12 +2027,13 @@ function expireStaleMinigameAttempt(options) {
       attemptToken: openAttempt.attemptToken,
       idempotencyKey,
       gameType: minigameTypeForRoom(room),
+      visualEvents,
     })
-    : resolution;
+    : null;
   return {
-    attempt,
+    attempt: replay?.attempt || resolution,
     resolved: true,
-    visualEvents,
+    visualEvents: replay?.visualEvents || visualEvents,
     snapshot: readSnapshot(transaction, expeditionId),
   };
 }

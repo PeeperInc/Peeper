@@ -863,14 +863,43 @@ test('stale mini-game timeout returns a free Mage retry instead of starting agai
   assert.equal(retry.body.member.ap, 4);
   assert.equal(retry.body.member.heroHp, 3);
   assert.equal(retry.body.visualEvents[0].type, 'mage_retry');
+  const originalRetryStartResponse = {
+    attempt: retry.body.attempt,
+    visualEvents: retry.body.visualEvents,
+  };
 
   const exactReplay = await request(
     'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
     { idempotencyKey: 'start-after-mage-timeout' },
   );
   assert.equal(exactReplay.status, 200);
-  assert.deepEqual(exactReplay.body.attempt, retry.body.attempt);
+  assert.deepEqual({
+    attempt: exactReplay.body.attempt,
+    visualEvents: exactReplay.body.visualEvents,
+  }, originalRetryStartResponse);
   assert.equal(exactReplay.body.member.ap, 4);
+
+  const finishedRetry = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.roomKey}/minigame/${retry.body.attempt.attemptToken}/finish`,
+    'tg-owner',
+    {
+      idempotencyKey: 'finish-mage-timeout-retry',
+      result: { success: true, score: 100, seed: retry.body.attempt.seed },
+    },
+  );
+  assert.equal(finishedRetry.status, 200);
+  assert.equal(finishedRetry.body.attempt.state, 'succeeded');
+
+  const delayedReplay = await request(
+    'POST', `/${expeditionId}/rooms/${room.roomKey}/minigame/start`, 'tg-owner',
+    { idempotencyKey: 'start-after-mage-timeout' },
+  );
+  assert.equal(delayedReplay.status, 200);
+  assert.deepEqual({
+    attempt: delayedReplay.body.attempt,
+    visualEvents: delayedReplay.body.visualEvents,
+  }, originalRetryStartResponse);
 
   payload.miniGame = { kind: 'root_crossing' };
   db.prepare('UPDATE family_expedition_rooms SET payload_json = ? WHERE id = ?')
