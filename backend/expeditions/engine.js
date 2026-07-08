@@ -232,11 +232,12 @@ function applyRoleChargeRestoration(member, room) {
   restoration.uses -= 1;
 }
 
-function applyArtifactRechargeThreshold(member) {
+function applyArtifactRechargeThreshold(member, artifactsDisabled = false) {
   const result = applyPassiveArtifactEffects({
     phase: 'role_recharge',
     loadout: member.loadout,
     roleRechargeThreshold: 3,
+    artifactsDisabled,
   });
   member.roleRechargeThreshold = result.roleRechargeThreshold;
 }
@@ -357,8 +358,17 @@ function consumeArmedEffect(member, effect) {
   }
 }
 
-function applyWearerDamageProtection({ member, expeditionId, roomKey, damage, damageSource, events }) {
+function applyWearerDamageProtection({
+  member,
+  expeditionId,
+  roomKey,
+  damage,
+  damageSource,
+  events,
+  artifactsDisabled = false,
+}) {
   let remainingDamage = damage;
+  if (artifactsDisabled) return remainingDamage;
   const personalShield = armedEffect(member, 'prevent_personal_damage', roomKey);
   if (remainingDamage > 0 && personalShield) {
     remainingDamage = 0;
@@ -586,16 +596,16 @@ function resolveAttempt({
 
   const nextRoom = clone(room || {});
   applyRoleChargeRestoration(nextMember, nextRoom);
-  applyArtifactRechargeThreshold(nextMember);
+  const artifactsDisabledForAction = nextMember.debuff?.type === 'cursed';
+  applyArtifactRechargeThreshold(nextMember, artifactsDisabledForAction);
   const nextExpedition = clone(expedition || {});
   nextExpedition.sharedBuffs = clone(nextExpedition.sharedBuffs || {});
   const nextAction = clone(action || {});
   const events = [];
-  const artifactsDisabledForAction = nextMember.debuff?.type === 'cursed';
   let rawRoll = rollD20(roll, rng);
   const encounterType = nextRoom.encounterType || nextRoom.type;
   const combatRoom = nextRoom.type === 'boss' || ['combat', 'boss'].includes(encounterType);
-  if (combatRoom) {
+  if (combatRoom && !artifactsDisabledForAction) {
     const floorEffect = armedEffect(nextMember, 'combat_roll_floor', nextRoom.key);
     if (floorEffect) {
       rawRoll = Math.max(rawRoll, ARTIFACTS.bone_die.effect.floor);
@@ -657,7 +667,8 @@ function resolveAttempt({
   nextMember.triggerHistory = afterRoll.triggerHistory;
   modifiedRoll = rawRoll + modifiers.total;
   const criticalRawRoll = rawRoll === 20 || (
-    rawRoll === ARTIFACTS.crown_of_twenty.effect.threshold
+    !artifactsDisabledForAction
+    && rawRoll === ARTIFACTS.crown_of_twenty.effect.threshold
     && nextMember.loadout.some(slot => slot?.artifactId === 'crown_of_twenty')
   );
   const outcomeRawRoll = criticalRawRoll ? 20 : rawRoll;
@@ -689,6 +700,7 @@ function resolveAttempt({
       progress: progressAwarded,
       heroHp: nextMember.heroHp,
       maxHeroHp: 3,
+      artifactsDisabled: artifactsDisabledForAction,
     });
     progressAwarded = passiveCombat.progress;
     nextMember.heroHp = passiveCombat.heroHp;
@@ -699,6 +711,7 @@ function resolveAttempt({
       damage: combatOutcome.heroDamage,
       damageSource: 'combat',
       events,
+      artifactsDisabled: artifactsDisabledForAction,
     });
     if (heroDamage > 0) {
       nextMember.heroHp = Math.max(0, Number(nextMember.heroHp ?? 3) - heroDamage);
@@ -841,6 +854,7 @@ function resolveAttempt({
     phase: 'room_reward',
     loadout: nextMember.loadout,
     coins: loot.coins,
+    artifactsDisabled: artifactsDisabledForAction,
   });
   loot.coins = passiveReward.coins;
   const beforeLoot = applyArtifactEffects({
@@ -907,7 +921,7 @@ function resolveAssist({
   const regenerated = regenerateAp(member || {}, now);
   const nextMember = normalizeRoleDay({ ...(clone(member || {})), ...regenerated }, dayKey);
   const nextRoom = clone(room || {});
-  applyArtifactRechargeThreshold(nextMember);
+  applyArtifactRechargeThreshold(nextMember, nextMember.debuff?.type === 'cursed');
   if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
   if (['hidden', 'locked', 'cleared'].includes(nextRoom.state)) {
     throw new RangeError('room is not assistable');
@@ -1553,8 +1567,11 @@ function prepareMember(options) {
     expectedIntent: intent,
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
+  const existingPreparation = transaction.prepare(`
+    SELECT 1 FROM family_expedition_members WHERE expedition_id = ? AND user_id = ?
+  `).get(expeditionId, userId);
+  if (existingPreparation) throw new RangeError('member is already prepared');
   if (!ROLES[role]) throw new RangeError(`Unknown role: ${role}`);
-  consumeProvisionRecipe(transaction, userId, provisionId, now);
   const dayKey = utcDayKey(now);
   const prepared = prepareMemberLoadout({
     member: {
@@ -1575,25 +1592,12 @@ function prepareMember(options) {
     inventory: readInventory(transaction, userId),
     artifactIds,
   });
-  reserveArtifactCopies(transaction, userId, artifactIds);
-  transaction.prepare(`
+  const claimed = transaction.prepare(`
     INSERT INTO family_expedition_members (
       expedition_id, user_id, role, ap, ap_regen_day, ap_regen_at, hero_hp, hero_recover_at, role_ability_day, role_ability_used,
       provision_id, provision_state_json, loadout_json, debuff_json, prepared_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(expedition_id, user_id) DO UPDATE SET
-      role = excluded.role,
-      ap = excluded.ap,
-      ap_regen_day = excluded.ap_regen_day,
-      ap_regen_at = excluded.ap_regen_at,
-      hero_hp = excluded.hero_hp,
-      hero_recover_at = excluded.hero_recover_at,
-      role_ability_day = excluded.role_ability_day,
-      role_ability_used = excluded.role_ability_used,
-      provision_id = excluded.provision_id,
-      provision_state_json = excluded.provision_state_json,
-      loadout_json = excluded.loadout_json,
-      debuff_json = excluded.debuff_json
+    ON CONFLICT(expedition_id, user_id) DO NOTHING
   `).run(
     expeditionId,
     userId,
@@ -1611,6 +1615,9 @@ function prepareMember(options) {
     encodeDebuff(prepared.debuff),
     now,
   );
+  if (claimed.changes !== 1) throw new RangeError('member is already prepared');
+  consumeProvisionRecipe(transaction, userId, provisionId, now);
+  reserveArtifactCopies(transaction, userId, artifactIds);
   insertAction(transaction, {
     idempotencyKey,
     expeditionId,

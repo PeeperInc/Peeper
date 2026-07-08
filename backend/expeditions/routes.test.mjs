@@ -183,6 +183,68 @@ test('legacy artifact migration is deterministic, merge-safe, and idempotent acr
   }
 });
 
+test('legacy artifact migration normalizes malformed copy counts and commits its marker atomically', () => {
+  const migrationDir = fs.mkdtempSync(path.join(os.tmpdir(), 'peeper-artifact-malformed-'));
+  const databasePath = path.join(migrationDir, 'migration.db');
+  const initialize = () => execFileSync(process.execPath, ['-e', `
+    const db = require('./backend/database.js');
+    db.close();
+  `], {
+    cwd: path.resolve(import.meta.dirname, '../..'),
+    env: { ...process.env, PEEPER_DB_PATH: databasePath },
+  });
+  try {
+    const legacy = new Database(databasePath);
+    legacy.exec(`
+      CREATE TABLE expedition_artifact_inventory (
+        user_id INTEGER NOT NULL,
+        artifact_id TEXT NOT NULL,
+        quantity,
+        charges,
+        first_acquired_at INTEGER,
+        last_acquired_at INTEGER,
+        PRIMARY KEY(user_id, artifact_id)
+      );
+      INSERT INTO expedition_artifact_inventory VALUES
+        (71, 'map_scrap', 'not-a-number', 'broken', 1, 1),
+        (72, 'clerics_bell', NULL, NULL, 1, 1),
+        (73, 'blackroot_key', -9, -4, 1, 1),
+        (74, 'eye_of_dungeon', '1e100', 0, 1, 1);
+    `);
+    legacy.close();
+
+    initialize();
+    const migrated = new Database(databasePath);
+    const first = migrated.prepare(`
+      SELECT user_id AS userId, artifact_id AS artifactId, quantity, charges
+      FROM expedition_artifact_inventory WHERE user_id BETWEEN 71 AND 74 ORDER BY user_id
+    `).all();
+    const marker = migrated.prepare(`
+      SELECT value FROM app_settings WHERE key = 'expedition_artifact_catalog_v2'
+    `).pluck().get();
+    migrated.close();
+    assert.deepEqual(first.map(row => ({ userId: row.userId, quantity: row.quantity, charges: row.charges })), [
+      { userId: 71, quantity: 1, charges: 0 },
+      { userId: 72, quantity: 1, charges: 0 },
+      { userId: 73, quantity: 1, charges: 0 },
+      { userId: 74, quantity: 1_000_000, charges: 0 },
+    ]);
+    assert.equal(first.every(row => typeof row.artifactId === 'string' && row.artifactId.length > 0), true);
+    assert.equal(marker, '1');
+
+    initialize();
+    const reopened = new Database(databasePath);
+    const second = reopened.prepare(`
+      SELECT user_id AS userId, artifact_id AS artifactId, quantity, charges
+      FROM expedition_artifact_inventory WHERE user_id BETWEEN 71 AND 74 ORDER BY user_id
+    `).all();
+    reopened.close();
+    assert.deepEqual(second, first);
+  } finally {
+    fs.rmSync(migrationDir, { recursive: true, force: true });
+  }
+});
+
 test('serializer returns stable camelCase state and redacts hidden/private fields', () => {
   const state = serializeExpeditionState({
     userId: 1,

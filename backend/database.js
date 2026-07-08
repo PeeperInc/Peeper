@@ -589,6 +589,20 @@ const LEGACY_ARTIFACT_RARITY = Object.freeze(Object.fromEntries([
   ...['eye_of_dungeon', 'endless_candle', 'door_without_key'].map(id => [id, 'legendary']),
 ]));
 const CURATED_ARTIFACT_IDS = new Set(Object.values(CURATED_ARTIFACTS_BY_RARITY).flat());
+const MAX_LEGACY_ARTIFACT_COPIES = 1_000_000;
+
+function normalizeLegacyArtifactCopies(quantity, charges) {
+  const numericQuantity = Number(quantity);
+  const numericCharges = Number(charges);
+  const positiveQuantity = Number.isFinite(numericQuantity) && numericQuantity > 0
+    ? numericQuantity
+    : 0;
+  const chargedCopy = Number.isFinite(numericCharges) && numericCharges > 0 ? 1 : 0;
+  return Math.min(
+    MAX_LEGACY_ARTIFACT_COPIES,
+    Math.max(1, Math.round(Math.max(positiveQuantity, chargedCopy))),
+  );
+}
 
 function deterministicArtifactReplacement(userId, artifactId, rarity) {
   const candidates = CURATED_ARTIFACTS_BY_RARITY[rarity];
@@ -615,18 +629,17 @@ const migrateExpeditionArtifactCatalog = db.transaction(() => {
     DELETE FROM expedition_artifact_inventory WHERE user_id = ? AND artifact_id = ?
   `);
   for (const row of rows.filter(item => CURATED_ARTIFACT_IDS.has(item.artifact_id))) {
-    const copies = Math.max(0, Number(row.quantity || 0), Number(row.charges || 0) > 0 ? 1 : 0);
+    const copies = normalizeLegacyArtifactCopies(row.quantity, row.charges);
     db.prepare(`
       UPDATE expedition_artifact_inventory SET quantity = ?, charges = 0
       WHERE user_id = ? AND artifact_id = ?
     `).run(copies, row.user_id, row.artifact_id);
   }
   for (const row of rows.filter(item => !CURATED_ARTIFACT_IDS.has(item.artifact_id))) {
-    const copies = Math.max(0, Number(row.quantity || 0), Number(row.charges || 0) > 0 ? 1 : 0);
+    const copies = normalizeLegacyArtifactCopies(row.quantity, row.charges);
     const rarity = LEGACY_ARTIFACT_RARITY[row.artifact_id];
     if (!rarity) continue;
     remove.run(row.user_id, row.artifact_id);
-    if (copies <= 0) continue;
     merge.run(
       row.user_id,
       deterministicArtifactReplacement(row.user_id, row.artifact_id, rarity),

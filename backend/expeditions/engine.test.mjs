@@ -824,6 +824,129 @@ test('cursed disables artifacts for one action and blinded clears without a gene
   assert.equal(blinded.member.debuff, null);
 });
 
+test('cursed combat suppresses offensive passives and Emerald Heart healing', () => {
+  const combatRoom = {
+    ...hall,
+    type: 'combat',
+    encounterType: 'combat',
+    progressTarget: 20,
+    actions: [{ id: 'strike', stat: 'might', modifier: 0, tags: [] }],
+  };
+  const loadout = [
+    { artifactId: 'crown_of_twenty' },
+    { artifactId: 'bent_sword' },
+    { artifactId: 'emerald_heart' },
+  ];
+  const crown = resolveAttempt({
+    expedition: { id: 61, status: 'active' },
+    member: member({ role: 'scout', heroHp: 2, debuff: { type: 'cursed' }, loadout }),
+    room: combatRoom,
+    action: combatRoom.actions[0],
+    roll: 19,
+    now: Date.UTC(2026, 5, 23),
+  });
+  assert.equal(crown.rawRoll, 19);
+  assert.equal(crown.progressAwarded, 2);
+  assert.equal(crown.member.heroHp, 2);
+
+  const heart = resolveAttempt({
+    expedition: { id: 61, status: 'active' },
+    member: member({ role: 'scout', heroHp: 2, debuff: { type: 'cursed' }, loadout }),
+    room: combatRoom,
+    action: combatRoom.actions[0],
+    roll: 20,
+    now: Date.UTC(2026, 5, 23),
+  });
+  assert.equal(heart.progressAwarded, 3);
+  assert.equal(heart.member.heroHp, 2);
+});
+
+test('cursed combat preserves armed roll artifacts for the next eligible action', () => {
+  const combatRoom = {
+    ...hall,
+    type: 'combat',
+    encounterType: 'combat',
+    progressTarget: 20,
+    actions: [{ id: 'strike', stat: 'might', modifier: 0, tags: [] }],
+  };
+  const armed = [
+    { artifactId: 'bone_die', effectKind: 'combat_roll_floor', roomKey: hall.key, remainingUses: 1, scope: 'armed' },
+    { artifactId: 'loaded_die', effectKind: 'combat_advantage', roomKey: hall.key, remainingUses: 1, scope: 'armed' },
+  ];
+  const cursed = resolveAttempt({
+    expedition: { id: 62, status: 'active' },
+    member: member({ role: 'scout', debuff: { type: 'cursed' }, triggerHistory: armed }),
+    room: combatRoom,
+    action: combatRoom.actions[0],
+    roll: 1,
+    reroll: 20,
+    now: Date.UTC(2026, 5, 23),
+  });
+  assert.equal(cursed.rawRoll, 1);
+  assert.deepEqual(cursed.member.triggerHistory, armed);
+  assert.equal(cursed.events.some(event => event.type.startsWith('artifact_')), false);
+
+  const eligible = resolveAttempt({
+    expedition: { id: 62, status: 'active' },
+    member: { ...cursed.member, ap: 5, heroHp: 3, heroRecoverAt: null },
+    room: combatRoom,
+    action: combatRoom.actions[0],
+    roll: 1,
+    reroll: 20,
+    now: Date.UTC(2026, 5, 23),
+  });
+  assert.equal(eligible.rawRoll, 20);
+  assert.equal(eligible.member.triggerHistory.length, 0);
+  assert.equal(eligible.events.some(event => event.type === 'artifact_roll_floor'), true);
+  assert.equal(eligible.events.some(event => event.type === 'artifact_advantage'), true);
+});
+
+test('cursed combat bypasses all armed and passive personal damage protection', () => {
+  const combatRoom = {
+    ...hall,
+    type: 'combat',
+    encounterType: 'combat',
+    progressTarget: 20,
+    actions: [{ id: 'strike', stat: 'might', modifier: 0, tags: [] }],
+  };
+  const shield = {
+    artifactId: 'wooden_shield',
+    effectKind: 'prevent_personal_damage',
+    roomKey: hall.key,
+    remainingUses: 1,
+    scope: 'armed',
+  };
+  const cursed = resolveAttempt({
+    expedition: { id: 63, status: 'active' },
+    member: member({
+      role: 'scout',
+      heroHp: 1,
+      debuff: { type: 'cursed' },
+      loadout: [{ artifactId: 'rabbit_foot' }, { artifactId: 'last_stand_banner' }],
+      triggerHistory: [shield],
+    }),
+    room: combatRoom,
+    action: combatRoom.actions[0],
+    roll: 1,
+    now: Date.UTC(2026, 5, 23),
+  });
+  assert.equal(cursed.member.heroHp, 0);
+  assert.deepEqual(cursed.member.triggerHistory, [shield]);
+  assert.equal(cursed.events.some(event => event.type === 'artifact_damage_prevented'), false);
+
+  const eligible = resolveAttempt({
+    expedition: { id: 63, status: 'active' },
+    member: { ...cursed.member, ap: 5, heroHp: 3, heroRecoverAt: null },
+    room: combatRoom,
+    action: combatRoom.actions[0],
+    roll: 1,
+    now: Date.UTC(2026, 5, 23),
+  });
+  assert.equal(eligible.member.heroHp, 3);
+  assert.equal(eligible.member.triggerHistory.some(entry => entry.artifactId === 'wooden_shield'), false);
+  assert.equal(eligible.events.some(event => event.type === 'artifact_damage_prevented'), true);
+});
+
 test('provisions grant AP, prevent debuffs, and protect minimum progress', () => {
   assert.equal(prepareMemberLoadout({
     member: member({ ap: 2, provisionId: 'carrot_rations' }),
@@ -1350,6 +1473,65 @@ test('preparation provisions consume farm inventory and replay without double sp
     provisionId: 'carrot_rations',
     now: Date.UTC(2026, 5, 23),
   })), /Not enough Carrot/);
+  db.close();
+});
+
+test('preparation claims one immutable loadout and rejects a different request without reserving again', () => {
+  const db = expeditionDb();
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-exclusive-prepare',
+    familyId: 85,
+    userId: 35,
+    seed: 'exclusive-prepare-seed',
+    map,
+    now: 1_000,
+  }));
+  const expeditionId = created.expedition.id;
+  db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES
+      (35, 'bent_sword', 1, 0, 1, 1),
+      (35, 'chalk_rune', 1, 0, 1, 1)
+  `).run();
+  const firstRequest = {
+    transaction: db,
+    idempotencyKey: 'prepare-exclusive-first',
+    expeditionId,
+    userId: 35,
+    role: 'scout',
+    artifactIds: ['bent_sword'],
+    now: 1_001,
+  };
+  inTx(db, () => prepareMember(firstRequest));
+  inTx(db, () => prepareMember(firstRequest));
+  assert.throws(() => inTx(db, () => prepareMember({
+    ...firstRequest,
+    idempotencyKey: 'prepare-exclusive-second',
+    role: 'mage',
+    artifactIds: ['chalk_rune'],
+    now: 1_002,
+  })), /already prepared/i);
+
+  const prepared = db.prepare(`
+    SELECT role, loadout_json AS loadoutJson
+    FROM family_expedition_members WHERE expedition_id = ? AND user_id = 35
+  `).get(expeditionId);
+  const inventory = db.prepare(`
+    SELECT artifact_id AS artifactId, quantity
+    FROM expedition_artifact_inventory WHERE user_id = 35 ORDER BY artifact_id
+  `).all();
+  assert.equal(prepared.role, 'scout');
+  assert.equal(JSON.parse(prepared.loadoutJson).slots[0].artifactId, 'bent_sword');
+  assert.deepEqual(inventory, [
+    { artifactId: 'bent_sword', quantity: 0 },
+    { artifactId: 'chalk_rune', quantity: 1 },
+  ]);
+  assert.equal(db.prepare(`
+    SELECT COUNT(*) AS count FROM family_expedition_actions
+    WHERE user_id = 35 AND action_type = 'prepare_member'
+  `).get().count, 1);
   db.close();
 });
 

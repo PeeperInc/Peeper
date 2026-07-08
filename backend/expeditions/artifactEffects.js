@@ -143,6 +143,7 @@ function recordTrigger(state, artifactId) {
 
 function applyPassiveArtifactEffects(context = {}) {
   const state = clone(context);
+  if (state.artifactsDisabled) return state;
   const equipped = equippedPassiveIds(state.loadout);
 
   if (state.phase === 'minigame_setup' && equipped.has('old_torch')) {
