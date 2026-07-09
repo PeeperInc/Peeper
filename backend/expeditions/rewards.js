@@ -235,7 +235,7 @@ function buildRewardPayload({
     rng,
   });
   const contributionCoins = member.contributionAp * CONTRIBUTION_COIN_STEP;
-  const finalCoins = finalCoinBase + contributionCoins + artifactPayload.substitutionCoins;
+  const finalCoins = finalCoinBase + contributionCoins;
   const totalCoins = roomCoins + finalCoins;
 
   return {

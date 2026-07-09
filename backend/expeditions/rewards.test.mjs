@@ -211,6 +211,49 @@ test('higher contribution never yields fewer coins under identical expedition in
   db.close();
 });
 
+test('duplicate substitutions do not let lower contribution earn more total coins', () => {
+  const db = rewardDb();
+  addUser(db, 10);
+  addUser(db, 11);
+  const expeditionId = createFinishedExpedition(db, {
+    rooms: [
+      { key: 'vault_1', type: 'treasure', state: 'cleared', loot: { coins: { min: 0, max: 0 }, artifactRolls: 1 } },
+    ],
+    members: [
+      { userId: 10, contributionAp: 1, loadout: [{ artifactId: 'old_torch' }] },
+      { userId: 11, contributionAp: 2 },
+    ],
+  });
+  const rolls = [
+    0, // room coins
+    0, // final coin base
+    0, 0.99, 0, // low contributor duplicate old_torch
+    0, 0.99, 0, // high contributor non-duplicate old_torch
+  ];
+
+  const created = inTx(db, () => createPendingRewards(db, {
+    expeditionId,
+    now: 11_000,
+    rng: () => rolls.shift() ?? 0,
+  }));
+  const low = created.find(reward => reward.userId === 10).payload;
+  const high = created.find(reward => reward.userId === 11).payload;
+
+  assert.deepEqual(low.artifacts, [{
+    artifactId: 'old_torch',
+    duplicate: true,
+    coins: 10,
+  }]);
+  assert.deepEqual(high.artifacts, [{ artifactId: 'old_torch' }]);
+  assert.equal(low.contributionAp, 1);
+  assert.equal(high.contributionAp, 2);
+  assert.ok(
+    high.totalCoins >= low.totalCoins,
+    `expected high contribution totalCoins ${high.totalCoins} >= low contribution totalCoins ${low.totalCoins}`,
+  );
+  db.close();
+});
+
 test('pending payload generation is immutable and idempotent', () => {
   const db = rewardDb();
   addUser(db, 10);
@@ -301,7 +344,7 @@ test('claiming is idempotent, user scoped, and grants the immutable payload once
   db.close();
 });
 
-test('duplicate artifact substitutions are doubled before final totals are persisted', () => {
+test('duplicate artifact substitutions keep doubled coin metadata outside final totals', () => {
   const db = rewardDb();
   addUser(db, 10, 0);
   const expeditionId = createFinishedExpedition(db, {
@@ -322,7 +365,7 @@ test('duplicate artifact substitutions are doubled before final totals are persi
     duplicate: true,
     coins: 10,
   }]);
-  assert.equal(reward.payload.finalCoins >= 10, true);
+  assert.equal(reward.payload.finalCoins, 30);
   assert.equal(reward.payload.totalCoins, reward.payload.roomCoins + reward.payload.finalCoins);
   db.close();
 });
