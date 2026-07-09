@@ -324,6 +324,13 @@ function minigameArtifactScenario({ userId, artifactIds = [], heroHp = 3 }) {
   return { db, expeditionId, roomKey: 'timing_1', userId };
 }
 
+function expeditionMember(db, expeditionId, userId) {
+  return db.prepare(`
+    SELECT loadout_json AS loadoutJson, debuff_json AS debuffJson, role_charge AS roleCharge
+    FROM family_expedition_members WHERE expedition_id = ? AND user_id = ?
+  `).get(expeditionId, userId);
+}
+
 function failMinigameAttempt(scenario, suffix, now) {
   const started = inTx(scenario.db, () => startMinigameAttempt({
     transaction: scenario.db,
@@ -1821,6 +1828,96 @@ test('transactional scout choice locks one next room option per source room', ()
   db.close();
 });
 
+test('cursed members cannot spend Crooked Compass on scout choices and keep it for the next eligible choice', () => {
+  const db = expeditionDb();
+  db.prepare('INSERT INTO users (id, coins) VALUES (24, 0)').run();
+  db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES (24, 'crooked_compass', 1, 0, 1, 1)
+  `).run();
+  const choiceMap = {
+    rooms: [
+      {
+        ...camp,
+        state: undefined,
+        progress: undefined,
+        scoutChoices: [
+          { id: 'trap-path', targetKey: 'hall_1', label: 'Needle Floor' },
+          { id: 'mystery-path', targetKey: 'hall_1', label: 'Whispering Door' },
+        ],
+      },
+      { ...hall, state: undefined, progress: undefined },
+    ],
+    edges: [{ from: 'camp_0', to: 'hall_1' }],
+  };
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-cursed-compass',
+    familyId: 24,
+    userId: 24,
+    seed: 'cursed-compass',
+    map: choiceMap,
+    now: 1_000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-cursed-compass',
+    expeditionId,
+    userId: 24,
+    role: 'mage',
+    artifactIds: ['crooked_compass'],
+    now: 1_001,
+  }));
+  inTx(db, () => useArtifactForMember({
+    transaction: db,
+    idempotencyKey: 'arm-cursed-compass',
+    expeditionId,
+    userId: 24,
+    roomKey: 'camp_0',
+    artifactId: 'crooked_compass',
+    now: 1_002,
+  }));
+  db.prepare(`
+    UPDATE family_expedition_members SET debuff_json = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(JSON.stringify({ type: 'cursed' }), expeditionId, 24);
+
+  assert.throws(() => inTx(db, () => chooseScoutRoom({
+    transaction: db,
+    idempotencyKey: 'choose-cursed-compass',
+    expeditionId,
+    userId: 24,
+    fromRoomKey: 'camp_0',
+    choiceId: 'trap-path',
+    now: 1_003,
+  })), /only scouts can choose/);
+  const cursedMember = expeditionMember(db, expeditionId, 24);
+  assert.equal(JSON.parse(cursedMember.loadoutJson).triggerHistory.some(entry => (
+    entry.artifactId === 'crooked_compass' && entry.remainingUses === 1
+  )), true);
+
+  db.prepare(`
+    UPDATE family_expedition_members SET debuff_json = '{}'
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, 24);
+  const eligible = inTx(db, () => chooseScoutRoom({
+    transaction: db,
+    idempotencyKey: 'choose-eligible-compass',
+    expeditionId,
+    userId: 24,
+    fromRoomKey: 'camp_0',
+    choiceId: 'trap-path',
+    now: 1_004,
+  }));
+  assert.equal(eligible.rooms.find(room => room.key === 'camp_0').scoutChoice.choiceId, 'trap-path');
+  assert.equal(eligible.members.find(member => member.userId === 24).triggerHistory.some(entry => (
+    entry.artifactId === 'crooked_compass'
+  )), false);
+  db.close();
+});
+
 test('transactional event minigame clears event rooms without d20 and pays loot only on clear', () => {
   const db = expeditionDb();
   db.prepare('INSERT INTO users (id, coins) VALUES (22, 0)').run();
@@ -2345,5 +2442,88 @@ test('Old Torch persists a server-owned 10% timing window and extends the attemp
   }));
   assert.equal(result.success, true);
   assert.equal(result.snapshot.rooms.find(room => room.key === scenario.roomKey).progress, 1);
+  scenario.db.close();
+});
+
+test('cursed minigame starts skip Old Torch and armed minigame artifacts until the next eligible attempt', () => {
+  const scenario = minigameArtifactScenario({
+    userId: 36,
+    artifactIds: ['old_torch', 'chalk_rune', 'rusty_lockpick'],
+  });
+  inTx(scenario.db, () => useArtifactForMember({
+    transaction: scenario.db,
+    idempotencyKey: 'arm-cursed-chalk-rune',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    artifactId: 'chalk_rune',
+    now: 1_900,
+  }));
+  inTx(scenario.db, () => useArtifactForMember({
+    transaction: scenario.db,
+    idempotencyKey: 'arm-cursed-rusty-lockpick',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    artifactId: 'rusty_lockpick',
+    now: 1_901,
+  }));
+  scenario.db.prepare(`
+    UPDATE family_expedition_members SET debuff_json = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(JSON.stringify({ type: 'cursed' }), scenario.expeditionId, scenario.userId);
+
+  const cursed = inTx(scenario.db, () => startMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: 'start-cursed-minigame-artifacts',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    now: 2_000,
+  }));
+  assert.equal(cursed.attempt.expiresAt - cursed.attempt.startedAt, 12);
+  assert.deepEqual(cursed.visualEvents, []);
+  const cursedMetadata = JSON.parse(scenario.db.prepare(`
+    SELECT result_json FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+  `).pluck().get(cursed.attempt.attemptToken));
+  assert.equal(cursedMetadata.successWindowMultiplier, 1);
+  assert.equal(cursedMetadata.artifactAutoSuccess, undefined);
+  const afterCursed = cursed.snapshot.members.find(member => member.userId === scenario.userId);
+  assert.equal(afterCursed.triggerHistory.filter(entry => (
+    ['chalk_rune', 'rusty_lockpick'].includes(entry.artifactId)
+  )).length, 2);
+
+  const finishedCursed = inTx(scenario.db, () => finishMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: 'finish-cursed-minigame-artifacts',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    attemptToken: cursed.attempt.attemptToken,
+    result: { success: true, score: 55 },
+    now: 2_001,
+  }));
+  assert.equal(finishedCursed.snapshot.members.find(member => member.userId === scenario.userId)
+    .triggerHistory.filter(entry => ['chalk_rune', 'rusty_lockpick'].includes(entry.artifactId)).length, 2);
+  const eligible = inTx(scenario.db, () => startMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: 'start-eligible-minigame-artifacts',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    now: 2_010,
+  }));
+  assert.deepEqual(eligible.visualEvents, [
+    { type: 'artifact_minigame_time', artifactId: 'chalk_rune', seconds: 3 },
+    { type: 'artifact_minigame_auto_success', artifactId: 'rusty_lockpick' },
+  ]);
+  assert.equal(eligible.attempt.expiresAt - eligible.attempt.startedAt, 16);
+  const eligibleMetadata = JSON.parse(scenario.db.prepare(`
+    SELECT result_json FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+  `).pluck().get(eligible.attempt.attemptToken));
+  assert.equal(eligibleMetadata.successWindowMultiplier, 1.1);
+  assert.equal(eligibleMetadata.artifactAutoSuccess, 'rusty_lockpick');
+  assert.equal(eligible.snapshot.members.find(member => member.userId === scenario.userId)
+    .triggerHistory.some(entry => ['chalk_rune', 'rusty_lockpick'].includes(entry.artifactId)), false);
   scenario.db.close();
 });

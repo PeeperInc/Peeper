@@ -591,7 +591,12 @@ const LEGACY_ARTIFACT_RARITY = Object.freeze(Object.fromEntries([
 const CURATED_ARTIFACT_IDS = new Set(Object.values(CURATED_ARTIFACTS_BY_RARITY).flat());
 const MAX_LEGACY_ARTIFACT_COPIES = 1_000_000;
 
+function isExplicitZero(value) {
+  return value === 0 || value === '0';
+}
+
 function normalizeLegacyArtifactCopies(quantity, charges) {
+  if (isExplicitZero(quantity) && isExplicitZero(charges)) return 0;
   const numericQuantity = Number(quantity);
   const numericCharges = Number(charges);
   const positiveQuantity = Number.isFinite(numericQuantity) && numericQuantity > 0
@@ -630,6 +635,10 @@ const migrateExpeditionArtifactCatalog = db.transaction(() => {
   `);
   for (const row of rows.filter(item => CURATED_ARTIFACT_IDS.has(item.artifact_id))) {
     const copies = normalizeLegacyArtifactCopies(row.quantity, row.charges);
+    if (copies <= 0) {
+      remove.run(row.user_id, row.artifact_id);
+      continue;
+    }
     db.prepare(`
       UPDATE expedition_artifact_inventory SET quantity = ?, charges = 0
       WHERE user_id = ? AND artifact_id = ?
@@ -637,6 +646,10 @@ const migrateExpeditionArtifactCatalog = db.transaction(() => {
   }
   for (const row of rows.filter(item => !CURATED_ARTIFACT_IDS.has(item.artifact_id))) {
     const copies = normalizeLegacyArtifactCopies(row.quantity, row.charges);
+    if (copies <= 0) {
+      remove.run(row.user_id, row.artifact_id);
+      continue;
+    }
     const rarity = LEGACY_ARTIFACT_RARITY[row.artifact_id];
     if (!rarity) continue;
     remove.run(row.user_id, row.artifact_id);

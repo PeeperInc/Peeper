@@ -1853,7 +1853,10 @@ function chooseScoutRoom(options) {
   assertHeroCanAct(memberState, now);
   const dayKey = utcDayKey(now);
   const scout = normalizeRoleDay(memberState, dayKey);
-  const compassEffect = armedEffect(scout, 'scout_choice', fromRoomKey);
+  const artifactsDisabledForAction = scout.debuff?.type === 'cursed';
+  const compassEffect = artifactsDisabledForAction
+    ? null
+    : armedEffect(scout, 'scout_choice', fromRoomKey);
   if (!compassEffect) {
     if (scout.role !== 'scout') throw new RangeError('only scouts can choose the next room');
     consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout' });
@@ -1885,6 +1888,7 @@ function chooseScoutRoom(options) {
     scout.roleCharge = 0;
     scout.roleChargeProgress = 0;
   }
+  scout.debuff = null;
 
   updateRoom(transaction, expeditionId, nextSource);
   updateRoomDefinition(transaction, expeditionId, nextTarget);
@@ -2109,7 +2113,8 @@ function startMinigameAttempt(options) {
     };
   }
   let startedMember = null;
-  const attempt = startAttempt(transaction, {
+  let startedArtifactsDisabled = false;
+  let attempt = startAttempt(transaction, {
     expeditionId,
     roomId: room.id,
     userId,
@@ -2128,8 +2133,10 @@ function startMinigameAttempt(options) {
       assertHeroCanAct(memberState, now);
       const nextMember = normalizeRoleDay({ ...memberState, ...regenerateAp(memberState, now) }, utcDayKey(now));
       if ((nextMember.ap ?? 0) < 1) throw new RangeError('member does not have enough AP');
+      startedArtifactsDisabled = nextMember.debuff?.type === 'cursed';
       nextMember.ap -= 1;
-      applyArtifactRechargeThreshold(nextMember);
+      applyArtifactRechargeThreshold(nextMember, startedArtifactsDisabled);
+      nextMember.debuff = null;
       startedMember = nextMember;
       updateMember(transaction, expeditionId, nextMember, { ap: 1, progress: 0 });
       const passive = applyPassiveArtifactEffects({
@@ -2137,6 +2144,7 @@ function startMinigameAttempt(options) {
         loadout: startedMember.loadout,
         timeLimitMs: 1_000,
         successWindowMultiplier: 1,
+        artifactsDisabled: startedArtifactsDisabled,
       });
       return {
         timeLimitMultiplier: passive.timeLimitMs / 1_000,
@@ -2145,42 +2153,47 @@ function startMinigameAttempt(options) {
     },
   });
   const visualEvents = [];
-  if (startedMember) {
+  let minigameBonusSeconds = 0;
+  let artifactAutoSuccessId = null;
+  if (startedMember && !startedArtifactsDisabled) {
     const timeEffect = armedEffect(startedMember, 'minigame_time_once', room.key);
-    const bonusSeconds = timeEffect ? ARTIFACTS.chalk_rune.effect.seconds : 0;
     if (timeEffect) {
+      const bonusSeconds = ARTIFACTS.chalk_rune.effect.seconds;
       consumeArmedEffect(startedMember, timeEffect);
       visualEvents.push({ type: 'artifact_minigame_time', artifactId: timeEffect.artifactId, seconds: bonusSeconds });
+      minigameBonusSeconds += bonusSeconds;
     }
     const autoSuccessEffect = armedEffect(startedMember, 'minigame_auto_success', room.key);
     if (autoSuccessEffect) {
       consumeArmedEffect(startedMember, autoSuccessEffect);
       visualEvents.push({ type: 'artifact_minigame_auto_success', artifactId: autoSuccessEffect.artifactId });
+      artifactAutoSuccessId = autoSuccessEffect.artifactId;
     }
-    const expiresAt = attempt.expiresAt + bonusSeconds;
-    if (expiresAt !== attempt.expiresAt || autoSuccessEffect) {
-      attempt.expiresAt = expiresAt;
+  }
+  if (minigameBonusSeconds > 0 || artifactAutoSuccessId) {
+    if (minigameBonusSeconds > 0) {
+      attempt = { ...attempt, expiresAt: attempt.expiresAt + minigameBonusSeconds };
       transaction.prepare(`
         UPDATE family_expedition_minigame_attempts SET expires_at = ? WHERE attempt_token = ?
-      `).run(expiresAt, attempt.attemptToken);
-      const responseJson = stringifyJson({ attempt });
-      transaction.prepare(`
-        UPDATE family_expedition_minigame_idempotency
-        SET response_json = ?, updated_at = ?
-        WHERE user_id = ? AND idempotency_key = ?
-      `).run(responseJson, unixSeconds(now), userId, idempotencyKey);
-      const row = transaction.prepare(`
-        SELECT result_json FROM family_expedition_minigame_attempts WHERE attempt_token = ?
-      `).get(attempt.attemptToken);
-      const metadata = parseJson(row.result_json, {});
-      metadata.startResponse = { attempt };
-      if (autoSuccessEffect) metadata.artifactAutoSuccess = autoSuccessEffect.artifactId;
-      transaction.prepare(`
-        UPDATE family_expedition_minigame_attempts SET result_json = ? WHERE attempt_token = ?
-      `).run(stringifyJson(metadata), attempt.attemptToken);
+      `).run(attempt.expiresAt, attempt.attemptToken);
     }
-    updateMember(transaction, expeditionId, startedMember);
+    const responseJson = stringifyJson({ attempt });
+    transaction.prepare(`
+      UPDATE family_expedition_minigame_idempotency
+      SET response_json = ?, updated_at = ?
+      WHERE user_id = ? AND idempotency_key = ?
+    `).run(responseJson, unixSeconds(now), userId, idempotencyKey);
+    const row = transaction.prepare(`
+      SELECT result_json FROM family_expedition_minigame_attempts WHERE attempt_token = ?
+    `).get(attempt.attemptToken);
+    const metadata = parseJson(row.result_json, {});
+    metadata.startResponse = { attempt };
+    if (artifactAutoSuccessId) metadata.artifactAutoSuccess = artifactAutoSuccessId;
+    transaction.prepare(`
+      UPDATE family_expedition_minigame_attempts SET result_json = ? WHERE attempt_token = ?
+    `).run(stringifyJson(metadata), attempt.attemptToken);
   }
+  if (startedMember) updateMember(transaction, expeditionId, startedMember);
   return { attempt, visualEvents, snapshot: readSnapshot(transaction, expeditionId) };
 }
 

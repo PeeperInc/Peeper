@@ -147,6 +147,7 @@ test('legacy artifact migration is deterministic, merge-safe, and idempotent acr
         user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
       ) VALUES
         (7, 'map_scrap', 2, 0, 10, 20),
+        (7, 'candle_stub', 0, 0, 8, 18),
         (7, 'wooden_shield', 3, 0, 5, 30),
         (7, 'rusty_lockpick', 0, 4, 15, 25),
         (7, 'unsupported_old_item', 1, 0, 1, 1)
@@ -209,7 +210,8 @@ test('legacy artifact migration normalizes malformed copy counts and commits its
         (71, 'map_scrap', 'not-a-number', 'broken', 1, 1),
         (72, 'clerics_bell', NULL, NULL, 1, 1),
         (73, 'blackroot_key', -9, -4, 1, 1),
-        (74, 'eye_of_dungeon', '1e100', 0, 1, 1);
+        (74, 'eye_of_dungeon', '1e100', 0, 1, 1),
+        (75, 'candle_stub', 0, 0, 1, 1);
     `);
     legacy.close();
 
@@ -217,7 +219,7 @@ test('legacy artifact migration normalizes malformed copy counts and commits its
     const migrated = new Database(databasePath);
     const first = migrated.prepare(`
       SELECT user_id AS userId, artifact_id AS artifactId, quantity, charges
-      FROM expedition_artifact_inventory WHERE user_id BETWEEN 71 AND 74 ORDER BY user_id
+      FROM expedition_artifact_inventory WHERE user_id BETWEEN 71 AND 75 ORDER BY user_id
     `).all();
     const marker = migrated.prepare(`
       SELECT value FROM app_settings WHERE key = 'expedition_artifact_catalog_v2'
@@ -229,6 +231,7 @@ test('legacy artifact migration normalizes malformed copy counts and commits its
       { userId: 73, quantity: 1, charges: 0 },
       { userId: 74, quantity: 1_000_000, charges: 0 },
     ]);
+    assert.equal(first.some(row => row.userId === 75), false);
     assert.equal(first.every(row => typeof row.artifactId === 'string' && row.artifactId.length > 0), true);
     assert.equal(marker, '1');
 
@@ -236,7 +239,7 @@ test('legacy artifact migration normalizes malformed copy counts and commits its
     const reopened = new Database(databasePath);
     const second = reopened.prepare(`
       SELECT user_id AS userId, artifact_id AS artifactId, quantity, charges
-      FROM expedition_artifact_inventory WHERE user_id BETWEEN 71 AND 74 ORDER BY user_id
+      FROM expedition_artifact_inventory WHERE user_id BETWEEN 71 AND 75 ORDER BY user_id
     `).all();
     reopened.close();
     assert.deepEqual(second, first);
