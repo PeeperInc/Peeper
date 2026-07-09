@@ -259,6 +259,7 @@ function rewardByExpeditionUser(db, expeditionId, userId) {
 function createPendingRewards(db, {
   expeditionId,
   now = Date.now(),
+  completedAt,
   rng = () => 0,
 } = {}) {
   assertTransaction(db);
@@ -267,8 +268,10 @@ function createPendingRewards(db, {
   const currentTime = unixSeconds(now);
   const expedition = readExpedition(db, expeditionId);
   if (!expedition) throw new RangeError('Expedition not found');
-  const completedAt = expedition.finishedAt || expedition.bossDefeatedAt || currentTime;
-  const rewardExpedition = { ...expedition, finishedAt: completedAt };
+  const payloadCompletedAt = completedAt == null
+    ? expedition.finishedAt || expedition.bossDefeatedAt || currentTime
+    : unixSeconds(completedAt);
+  const rewardExpedition = { ...expedition, finishedAt: payloadCompletedAt };
   const rooms = readRooms(db, expeditionId);
   const eligibleMembers = readMembers(db, expeditionId)
     .filter(member => member.contributionAp > 0);

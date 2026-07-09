@@ -2769,7 +2769,7 @@ function finishExpedition(options) {
   if (!canFinishExpedition({ expedition: snapshot.expedition, userId, rooms: snapshot.rooms })) {
     throw new RangeError('user cannot finish expedition yet');
   }
-  createPendingRewards(transaction, { expeditionId, now, rng });
+  createPendingRewards(transaction, { expeditionId, now, completedAt: now, rng });
   for (const member of snapshot.members) {
     for (const slot of member.loadout || []) {
       const artifact = ARTIFACTS[slot?.artifactId];

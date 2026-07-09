@@ -1339,6 +1339,66 @@ test('transactional helpers persist attempts, unlocks, idempotent replay, and fi
   db.close();
 });
 
+test('finish expedition reward payload uses finish transaction time after boss defeat', () => {
+  const db = expeditionDb();
+  db.exec(`
+    CREATE TABLE family_expedition_pending_rewards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      expedition_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL,
+      claimed_at INTEGER,
+      UNIQUE(expedition_id, user_id)
+    );
+  `);
+  const created = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'create-reward-finish-time',
+    familyId: 78,
+    userId: 10,
+    seed: 'reward-finish-time-seed',
+    map,
+    now: 1000,
+  }));
+  const expeditionId = created.expedition.id;
+  inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'prepare-reward-finish-time',
+    expeditionId,
+    userId: 10,
+    role: 'scout',
+    now: Date.UTC(2026, 5, 23),
+  }));
+  db.prepare(`
+    UPDATE family_expeditions SET status = 'boss_defeated', boss_defeated_at = ?
+    WHERE id = ?
+  `).run(1999, expeditionId);
+  db.prepare(`
+    UPDATE family_expedition_members SET contribution_ap = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(3, expeditionId, 10);
+
+  inTx(db, () => finishExpedition({
+    transaction: db,
+    idempotencyKey: 'finish-reward-finish-time',
+    expeditionId,
+    userId: 10,
+    now: 2000,
+  }));
+
+  const reward = db.prepare(`
+    SELECT payload_json AS payloadJson, created_at AS createdAt
+    FROM family_expedition_pending_rewards
+    WHERE expedition_id = ? AND user_id = ?
+  `).get(expeditionId, 10);
+  const payload = JSON.parse(reward.payloadJson);
+  assert.equal(payload.completedAt, 2000);
+  assert.notEqual(payload.completedAt, 1999);
+  assert.equal(reward.createdAt, 2000);
+  db.close();
+});
+
 test('transactional attempts award personal coins and artifacts only when the room is cleared', () => {
   const db = expeditionDb();
   db.prepare('INSERT INTO users (id, coins) VALUES (10, 0)').run();
