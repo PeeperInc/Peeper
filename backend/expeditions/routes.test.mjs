@@ -56,6 +56,7 @@ async function request(method, url, telegramId = 'tg-owner', body = undefined) {
 
 function resetDb() {
   db.exec(`
+    DELETE FROM family_expedition_pending_rewards;
     DELETE FROM family_expedition_history;
     DELETE FROM family_expedition_actions;
     DELETE FROM family_expedition_members;
@@ -318,6 +319,33 @@ test('serializer returns stable camelCase state and redacts hidden/private field
     artifactInventory: [
       { userId: 1, artifactId: 'bent_sword', quantity: 1, charges: 0 },
     ],
+    pendingRewards: [
+      {
+        id: 90,
+        expeditionId: 7,
+        userId: 2,
+        payload: { totalCoins: 999, rewardSeed: 'other-hidden' },
+        createdAt: 444,
+        claimedAt: null,
+      },
+      {
+        id: 91,
+        expeditionId: 8,
+        userId: 1,
+        payload: {
+          contributionAp: 3,
+          roomCoins: 24,
+          finalCoins: 30,
+          totalCoins: 54,
+          artifacts: [{ artifactId: 'old_torch' }],
+          expeditionTitle: 'The Root King',
+          completedAt: 500,
+          rewardSeed: 'pending-hidden',
+        },
+        createdAt: 555,
+        claimedAt: null,
+      },
+    ],
   });
 
   assert.deepEqual(Object.keys(state), [
@@ -328,6 +356,8 @@ test('serializer returns stable camelCase state and redacts hidden/private field
     'recentActions',
     'personalEvents',
     'artifactInventory',
+    'pendingRewards',
+    'pendingRewardCount',
     'catalog',
     'permissions',
   ]);
@@ -351,6 +381,23 @@ test('serializer returns stable camelCase state and redacts hidden/private field
   assert.deepEqual(state.artifactInventory, [
     { artifactId: 'bent_sword', quantity: 1, charges: 0 },
   ]);
+  assert.deepEqual(state.pendingRewards, [
+    {
+      id: 91,
+      expeditionId: 8,
+      payload: {
+        contributionAp: 3,
+        roomCoins: 24,
+        finalCoins: 30,
+        totalCoins: 54,
+        artifacts: [{ artifactId: 'old_torch' }],
+        expeditionTitle: 'The Root King',
+        completedAt: 500,
+      },
+      createdAt: 555,
+    },
+  ]);
+  assert.equal(state.pendingRewardCount, 1);
 });
 
 test('GET /current returns empty expedition state when the user has no family', async () => {
@@ -1485,6 +1532,96 @@ test('POST claim-boss-reward enforces contribution threshold and claims once', a
   } finally {
     crypto.randomInt = originalRandomInt;
   }
+});
+
+test('finishing creates pending rewards and a new expedition keeps them visible', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-pending-finish' });
+  const expeditionId = started.body.expedition.id;
+  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-pending-finish',
+    role: 'scout',
+  });
+  db.prepare(`
+    UPDATE family_expeditions SET status = 'boss_defeated', boss_defeated_at = 2000
+    WHERE id = ?
+  `).run(expeditionId);
+  db.prepare(`
+    UPDATE family_expedition_rooms
+    SET state = 'cleared', progress = progress_target, cleared_at = 2000
+    WHERE expedition_id = ?
+  `).run(expeditionId);
+  db.prepare(`
+    UPDATE family_expedition_members SET contribution_ap = 3
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
+
+  const finished = await request('POST', `/${expeditionId}/finish`, 'tg-owner', {
+    idempotencyKey: 'finish-pending-reward',
+  });
+  assert.equal(finished.status, 200);
+  assert.equal(finished.body.pendingRewardCount, 1);
+  assert.equal(finished.body.pendingRewards.length, 1);
+  assert.equal(finished.body.pendingRewards[0].payload.contributionAp, 3);
+  assert.equal(finished.body.pendingRewards[0].payload.totalCoins > 0, true);
+
+  const next = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-after-pending-finish' });
+  assert.equal(next.status, 200);
+  assert.equal(next.body.expedition.status, 'active');
+  assert.equal(next.body.pendingRewardCount, 1);
+  assert.equal(next.body.pendingRewards[0].id, finished.body.pendingRewards[0].id);
+});
+
+test('pending reward claim is user-scoped and does not require current family membership', async () => {
+  const { familyId, userIds } = createFamilyWithMembers(['tg-owner', 'tg-other']);
+  const expeditionId = Number(db.prepare(`
+    INSERT INTO family_expeditions (
+      family_id, theme_id, seed, status, map_json, shared_buffs_json,
+      started_by, started_at, boss_defeated_at, finished_at
+    ) VALUES (?, 'root_king', 'claim-without-family', 'finished', '{}', '{}', ?, 1000, 2000, 2500)
+  `).run(familyId, userIds[0]).lastInsertRowid);
+  const rewardId = Number(db.prepare(`
+    INSERT INTO family_expedition_pending_rewards (
+      expedition_id, user_id, payload_json, created_at
+    ) VALUES (?, ?, ?, 3000)
+  `).run(expeditionId, userIds[0], JSON.stringify({
+    contributionAp: 2,
+    roomCoins: 12,
+    finalCoins: 30,
+    totalCoins: 42,
+    artifacts: [{ artifactId: 'old_torch' }],
+    expeditionTitle: 'Finished Before Leaving',
+    completedAt: 2500,
+  })).lastInsertRowid);
+  db.prepare('DELETE FROM family_members WHERE family_id = ? AND user_id = ?').run(familyId, userIds[0]);
+
+  const wrongUser = await request('POST', `/rewards/${rewardId}/claim`, 'tg-other');
+  assert.equal(wrongUser.status, 400);
+  assert.match(wrongUser.body.error, /not found/i);
+
+  const claimed = await request('POST', `/rewards/${rewardId}/claim`, 'tg-owner');
+  assert.equal(claimed.status, 200);
+  assert.equal(claimed.body.reward.id, rewardId);
+  assert.deepEqual(claimed.body.reward.payload, {
+    contributionAp: 2,
+    roomCoins: 12,
+    finalCoins: 30,
+    totalCoins: 42,
+    artifacts: [{ artifactId: 'old_torch' }],
+    expeditionTitle: 'Finished Before Leaving',
+    completedAt: 2500,
+  });
+  assert.equal(claimed.body.pendingRewardCount, 0);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').pluck().get(userIds[0]), 542);
+
+  const replay = await request('POST', `/rewards/${rewardId}/claim`, 'tg-owner');
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.reward.claimedAt, claimed.body.reward.claimedAt);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').pluck().get(userIds[0]), 542);
+  assert.equal(db.prepare(`
+    SELECT quantity FROM expedition_artifact_inventory
+    WHERE user_id = ? AND artifact_id = 'old_torch'
+  `).pluck().get(userIds[0]), 1);
 });
 
 test('former family members cannot mutate an expedition they helped start', async () => {

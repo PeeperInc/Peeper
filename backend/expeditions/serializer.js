@@ -232,6 +232,24 @@ function serializeInventory(inventory = []) {
   }));
 }
 
+function serializePendingReward(reward) {
+  if (!reward) return null;
+  return definedObject([
+    ['id', reward.id],
+    ['expeditionId', reward.expeditionId ?? reward.expedition_id],
+    ['payload', stripSensitive(reward.payload || {})],
+    ['createdAt', reward.createdAt ?? reward.created_at],
+    ['claimedAt', reward.claimedAt ?? reward.claimed_at],
+  ]);
+}
+
+function serializePendingRewards(pendingRewards = [], userId = null) {
+  return pendingRewards
+    .filter(reward => userId == null || (reward.userId ?? reward.user_id) === userId)
+    .filter(reward => (reward.claimedAt ?? reward.claimed_at) == null)
+    .map(serializePendingReward);
+}
+
 function serializeProvisions(farmInventory = []) {
   const quantities = new Map(farmInventory.map(item => [
     item.productId ?? item.product_id,
@@ -255,12 +273,14 @@ function serializeExpeditionState({
   familyMembers = [],
   artifactInventory = [],
   farmInventory = [],
+  pendingRewards = [],
   canStart = false,
 } = {}) {
   const expedition = snapshot?.expedition || null;
   const members = snapshot?.members || [];
   const member = members.find(candidate => candidate.userId === userId) || null;
   const rooms = snapshot?.rooms || [];
+  const serializedPendingRewards = serializePendingRewards(pendingRewards, userId);
 
   return {
     expedition: serializeExpedition(expedition),
@@ -273,6 +293,8 @@ function serializeExpeditionState({
     recentActions: (snapshot?.actions || []).slice(-20).map(serializeAction),
     personalEvents: serializePersonalEvents(snapshot?.memberEvents || [], userId),
     artifactInventory: serializeInventory(artifactInventory),
+    pendingRewards: serializedPendingRewards,
+    pendingRewardCount: serializedPendingRewards.length,
     catalog: {
       roles: clone(ROLES),
       provisions: serializeProvisions(farmInventory),
@@ -286,4 +308,4 @@ function serializeExpeditionState({
   };
 }
 
-module.exports = { serializeExpeditionState };
+module.exports = { serializeExpeditionState, serializePendingReward };

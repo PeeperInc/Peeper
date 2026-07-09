@@ -43,6 +43,7 @@ const {
   rollCoins,
   rollPersonalLoot,
 } = require('./loot');
+const { createPendingRewards } = require('./rewards');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_SUPPORT = 6;
@@ -2752,6 +2753,7 @@ function finishExpedition(options) {
     idempotencyKey,
     expeditionId,
     userId,
+    rng = () => 0,
     now = Math.floor(Date.now() / 1000),
   } = options;
   const intent = { expeditionId, userId };
@@ -2767,6 +2769,7 @@ function finishExpedition(options) {
   if (!canFinishExpedition({ expedition: snapshot.expedition, userId, rooms: snapshot.rooms })) {
     throw new RangeError('user cannot finish expedition yet');
   }
+  createPendingRewards(transaction, { expeditionId, now, rng });
   for (const member of snapshot.members) {
     for (const slot of member.loadout || []) {
       const artifact = ARTIFACTS[slot?.artifactId];

@@ -24,12 +24,19 @@ const {
 } = require('../expeditions/engine');
 const { THEME_ID } = require('../expeditions/catalog');
 const { generateExpeditionMap } = require('../expeditions/generator');
-const { serializeExpeditionState } = require('../expeditions/serializer');
+const {
+  serializeExpeditionState,
+  serializePendingReward,
+} = require('../expeditions/serializer');
 const { listActiveRoomEffects } = require('../expeditions/roleEffects');
 const {
   isReservedIdempotencyKey,
   normalizeIdempotencyKey,
 } = require('../expeditions/minigameAttempts');
+const {
+  claimPendingReward,
+  listPendingRewards,
+} = require('../expeditions/rewards');
 
 const router = express.Router();
 
@@ -255,6 +262,7 @@ function serializeFor(user, family, snapshot, canStart = false) {
     familyMembers: family ? getFamilyMembers(family.id) : [],
     artifactInventory: getArtifactInventory(user.id),
     farmInventory: getFarmInventory(user.id),
+    pendingRewards: listPendingRewards(db, { userId: user.id }),
     canStart,
   });
 }
@@ -392,6 +400,29 @@ router.post('/start', (req, res) => {
     if (error.statusCode === 409) {
       return res.status(409).json({ error: error.message });
     }
+    return handleRouteError(res, error);
+  }
+});
+
+router.post('/rewards/:rewardId/claim', (req, res) => {
+  const rewardId = Number.parseInt(req.params.rewardId, 10);
+  if (!Number.isInteger(rewardId)) {
+    return res.status(400).json({ error: 'Invalid reward id' });
+  }
+
+  try {
+    const result = db.transaction(() => claimPendingReward(db, {
+      rewardId,
+      userId: req.currentUser.id,
+    }))();
+    const pendingRewards = listPendingRewards(db, { userId: req.currentUser.id })
+      .map(serializePendingReward);
+    return res.json({
+      reward: serializePendingReward(result.reward),
+      pendingRewards,
+      pendingRewardCount: result.pendingCount,
+    });
+  } catch (error) {
     return handleRouteError(res, error);
   }
 });
@@ -724,6 +755,7 @@ router.post('/:id/finish', (req, res) => {
       idempotencyKey,
       expeditionId: access.expeditionId,
       userId: req.currentUser.id,
+      rng: secureRng,
     }))();
     return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
   } catch (error) {
