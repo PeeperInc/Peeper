@@ -36,6 +36,41 @@ function stringifyJson(value) {
   return JSON.stringify(value ?? {});
 }
 
+function parseClaimableRewardPayload(text) {
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new RangeError('Invalid reward payload');
+  }
+
+  const isNonNegativeInteger = value => Number.isInteger(value) && value >= 0;
+  const validArtifacts = Array.isArray(payload?.artifacts)
+    && payload.artifacts.every(artifact => (
+      artifact
+      && typeof artifact === 'object'
+      && typeof artifact.artifactId === 'string'
+      && artifact.artifactId.length > 0
+      && (artifact.coins === undefined || isNonNegativeInteger(artifact.coins))
+    ));
+  const valid = payload
+    && typeof payload === 'object'
+    && !Array.isArray(payload)
+    && isNonNegativeInteger(payload.contributionAp)
+    && isNonNegativeInteger(payload.roomCoins)
+    && isNonNegativeInteger(payload.finalCoins)
+    && isNonNegativeInteger(payload.totalCoins)
+    && payload.totalCoins === payload.roomCoins + payload.finalCoins
+    && validArtifacts
+    && typeof payload.expeditionTitle === 'string'
+    && payload.expeditionTitle.length > 0
+    && Number.isInteger(payload.completedAt)
+    && payload.completedAt > 0;
+
+  if (!valid) throw new RangeError('Invalid reward payload');
+  return payload;
+}
+
 function assertDb(db) {
   if (!db || typeof db.prepare !== 'function') {
     throw new TypeError('A SQLite transaction or database handle is required');
@@ -356,14 +391,16 @@ function claimPendingReward(db, {
     throw new RangeError('Reward not found');
   }
   const currentTime = unixSeconds(now);
-  const reward = rowToReward(db.prepare(`
+  const rewardRow = db.prepare(`
     SELECT * FROM family_expedition_pending_rewards
     WHERE id = ? AND user_id = ?
-  `).get(rewardId, userId));
+  `).get(rewardId, userId);
+  const reward = rowToReward(rewardRow);
   if (!reward) throw new RangeError('Reward not found');
 
   if (!reward.claimedAt) {
-    grantPayload(db, userId, reward.payload, currentTime);
+    const payload = parseClaimableRewardPayload(rewardRow.payload_json);
+    grantPayload(db, userId, payload, currentTime);
     db.prepare(`
       UPDATE family_expedition_pending_rewards
       SET claimed_at = ?

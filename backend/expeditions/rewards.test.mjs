@@ -344,6 +344,32 @@ test('claiming is idempotent, user scoped, and grants the immutable payload once
   db.close();
 });
 
+test('malformed pending reward payload cannot be claimed or hidden', () => {
+  const db = rewardDb();
+  addUser(db, 10, 100);
+  const expeditionId = createFinishedExpedition(db, {
+    members: [{ userId: 10, contributionAp: 3 }],
+  });
+  const rewardId = Number(db.prepare(`
+    INSERT INTO family_expedition_pending_rewards (
+      expedition_id, user_id, payload_json, created_at
+    ) VALUES (?, 10, ?, 11000)
+  `).run(expeditionId, '{broken-json').lastInsertRowid);
+
+  assert.throws(() => inTx(db, () => claimPendingReward(db, {
+    rewardId,
+    userId: 10,
+    now: 12_000,
+  })), /invalid reward payload/i);
+
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').pluck().get(), 100);
+  assert.equal(db.prepare(`
+    SELECT claimed_at FROM family_expedition_pending_rewards WHERE id = ?
+  `).pluck().get(rewardId), null);
+  assert.equal(listPendingRewards(db, { userId: 10 }).length, 1);
+  db.close();
+});
+
 test('duplicate artifact substitutions keep doubled coin metadata outside final totals', () => {
   const db = rewardDb();
   addUser(db, 10, 0);
