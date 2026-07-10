@@ -37,6 +37,10 @@ const {
   claimPendingReward,
   listPendingRewards,
 } = require('../expeditions/rewards');
+const {
+  acknowledgeMemberEvents,
+  listPendingMemberEvents,
+} = require('../expeditions/memberEvents');
 
 const router = express.Router();
 
@@ -170,21 +174,8 @@ function readSnapshot(expeditionId) {
   const actions = db.prepare(`
     SELECT * FROM family_expedition_actions WHERE expedition_id = ? ORDER BY id
   `).all(expeditionId).map(rowToAction);
-  const memberEvents = db.prepare(`
-    SELECT id, expedition_id, user_id, event_type, payload_json, created_at
-    FROM family_expedition_member_events
-    WHERE expedition_id = ? AND acknowledged_at IS NULL
-    ORDER BY id
-  `).all(expeditionId).map(row => ({
-    id: row.id,
-    expeditionId: row.expedition_id,
-    userId: row.user_id,
-    eventType: row.event_type,
-    payload: parseJson(row.payload_json, {}),
-    createdAt: row.created_at,
-  }));
   const roomEffects = listActiveRoomEffects(db, { expeditionId });
-  return { expedition, rooms, members, actions, roomEffects, memberEvents };
+  return { expedition, rooms, members, actions, roomEffects, memberEvents: [] };
 }
 
 function getUser(req) {
@@ -256,9 +247,11 @@ function existingIdempotentAction(userId, idempotencyKey) {
 }
 
 function serializeFor(user, family, snapshot, canStart = false) {
+  const memberEvents = listPendingMemberEvents(db, { userId: user.id });
   return serializeExpeditionState({
     userId: user.id,
     snapshot,
+    memberEvents,
     familyMembers: family ? getFamilyMembers(family.id) : [],
     artifactInventory: getArtifactInventory(user.id),
     farmInventory: getFarmInventory(user.id),
@@ -362,6 +355,28 @@ router.get('/current', (req, res) => {
   const active = getUnfinishedExpedition(family.id);
   const snapshot = active ? readSnapshot(active.id) : null;
   return res.json(serializeFor(req.currentUser, family, snapshot, !active));
+});
+
+router.post('/events/ack', (req, res) => {
+  const idempotencyKey = requireIdempotencyKey(req, res);
+  if (!idempotencyKey) return;
+
+  try {
+    const result = db.transaction(() => acknowledgeMemberEvents(db, {
+      userId: req.currentUser.id,
+      eventIds: req.body?.eventIds,
+    }))();
+    const personalEvents = listPendingMemberEvents(db, { userId: req.currentUser.id })
+      .map(event => ({
+        id: event.id,
+        type: event.eventType,
+        ...event.payload,
+        createdAt: event.createdAt,
+      }));
+    return res.json({ ...result, personalEvents });
+  } catch (error) {
+    return handleRouteError(res, error);
+  }
 });
 
 router.post('/start', (req, res) => {

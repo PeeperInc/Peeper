@@ -1,5 +1,7 @@
 'use strict';
 
+const { enqueueMemberEvent } = require('./memberEvents');
+
 const ROLE_EFFECT_TYPES = Object.freeze({
   knight: 'knight_shield',
   mage: 'bend_fate',
@@ -239,14 +241,6 @@ function consumeMageRetry(transaction, {
   };
 }
 
-function insertMemberEvent(transaction, { expeditionId, userId, eventType, payload, now }) {
-  transaction.prepare(`
-    INSERT INTO family_expedition_member_events (
-      expedition_id, user_id, event_type, payload_json, created_at
-    ) VALUES (?, ?, ?, ?, ?)
-  `).run(expeditionId, userId, eventType, JSON.stringify(payload || {}), now);
-}
-
 function useClericPrayer(transaction, {
   expeditionId,
   userId,
@@ -283,7 +277,7 @@ function useClericPrayer(transaction, {
         heroRecoverAt: revived ? null : nextRecoverAt,
         revived,
       };
-      insertMemberEvent(transaction, {
+      enqueueMemberEvent(transaction, {
         expeditionId,
         userId: member.userId,
         eventType: event.type,
@@ -300,7 +294,7 @@ function useClericPrayer(transaction, {
       WHERE expedition_id = ? AND user_id = ?
     `).run(heroHp, expeditionId, member.userId);
     const event = { type: 'cleric_heal', placedBy: owner, amount: 1, heroHp };
-    insertMemberEvent(transaction, {
+    enqueueMemberEvent(transaction, {
       expeditionId,
       userId: member.userId,
       eventType: event.type,

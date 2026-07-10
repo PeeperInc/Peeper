@@ -2,6 +2,7 @@
 
 const { ROLES, PROVISIONS, THEME_ID } = require('./catalog');
 const { canFinishExpedition } = require('./engine');
+const { sanitizeMemberEventPayload } = require('./memberEvents');
 
 function clone(value) {
   if (value === undefined) return undefined;
@@ -214,14 +215,16 @@ function serializeAction(action) {
 
 function serializePersonalEvents(memberEvents = [], userId = null) {
   return memberEvents
-    .filter(event => event.userId === userId)
-    .map(event => definedObject([
-      ['id', event.id],
-      ['type', event.eventType],
-      ...Object.entries(stripSensitive(event.payload || {}))
-        .filter(([key]) => key !== 'userId' && key !== 'type'),
-      ['createdAt', event.createdAt],
-    ]));
+    .filter(event => event.userId === undefined || event.userId === userId)
+    .map(event => {
+      const payload = sanitizeMemberEventPayload(event.payload, event.eventType);
+      return definedObject([
+        ['id', event.id],
+        ['type', event.eventType],
+        ...Object.entries(payload).filter(([key]) => key !== 'type'),
+        ['createdAt', event.createdAt],
+      ]);
+    });
 }
 
 function serializeInventory(inventory = []) {
@@ -270,6 +273,7 @@ function serializeProvisions(farmInventory = []) {
 function serializeExpeditionState({
   snapshot = null,
   userId = null,
+  memberEvents = null,
   familyMembers = [],
   artifactInventory = [],
   farmInventory = [],
@@ -291,7 +295,7 @@ function serializeExpeditionState({
     member: serializeMember(member),
     familyMembers: serializeFamilyMembers(familyMembers, members),
     recentActions: (snapshot?.actions || []).slice(-20).map(serializeAction),
-    personalEvents: serializePersonalEvents(snapshot?.memberEvents || [], userId),
+    personalEvents: serializePersonalEvents(memberEvents ?? snapshot?.memberEvents ?? [], userId),
     artifactInventory: serializeInventory(artifactInventory),
     pendingRewards: serializedPendingRewards,
     pendingRewardCount: serializedPendingRewards.length,

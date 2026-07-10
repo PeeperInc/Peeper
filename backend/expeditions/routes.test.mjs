@@ -56,6 +56,7 @@ async function request(method, url, telegramId = 'tg-owner', body = undefined) {
 
 function resetDb() {
   db.exec(`
+    DELETE FROM family_expedition_member_events;
     DELETE FROM family_expedition_pending_rewards;
     DELETE FROM family_expedition_history;
     DELETE FROM family_expedition_actions;
@@ -790,6 +791,73 @@ test('Cleric role ability exposes only a family-safe summary and each viewer own
   assert.equal(clericState.status, 200);
   assert.deepEqual(clericState.body.personalEvents, []);
   assert.equal(JSON.stringify(clericState.body.recentActions).includes('heroHp'), false);
+});
+
+test('member event acknowledgement validates ids, stays user-scoped, and is replay-safe', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-event-ack' });
+  const expeditionId = started.body.expedition.id;
+  const ownEventId = Number(db.prepare(`
+    INSERT INTO family_expedition_member_events (
+      expedition_id, user_id, event_type, payload_json, created_at
+    ) VALUES (?, ?, 'cleric_heal', ?, 1000)
+  `).run(expeditionId, userIds[0], JSON.stringify({
+    type: 'cleric_heal',
+    userId: userIds[0],
+    targetUserId: userIds[0],
+    heroHp: 3,
+    privateState: { token: 'hidden' },
+  })).lastInsertRowid);
+  const foreignEventId = Number(db.prepare(`
+    INSERT INTO family_expedition_member_events (
+      expedition_id, user_id, event_type, payload_json, created_at
+    ) VALUES (?, ?, 'cleric_heal', '{"heroHp":2}', 1001)
+  `).run(expeditionId, userIds[1]).lastInsertRowid);
+
+  const current = await request('GET', '/current', 'tg-owner');
+  assert.equal(current.status, 200);
+  assert.deepEqual(current.body.personalEvents, [{
+    id: ownEventId,
+    type: 'cleric_heal',
+    heroHp: 3,
+    createdAt: 1000,
+  }]);
+  assert.equal(JSON.stringify(current.body).includes('targetUserId'), false);
+  assert.equal(JSON.stringify(current.body).includes('privateState'), false);
+
+  db.prepare('DELETE FROM family_members WHERE user_id = ?').run(userIds[0]);
+  const offlineCurrent = await request('GET', '/current', 'tg-owner');
+  assert.equal(offlineCurrent.status, 200);
+  assert.equal(offlineCurrent.body.expedition, null);
+  assert.deepEqual(offlineCurrent.body.personalEvents, current.body.personalEvents);
+
+  for (const eventIds of [[], [0], ['1'], [ownEventId, ownEventId]]) {
+    const invalid = await request('POST', '/events/ack', 'tg-owner', {
+      idempotencyKey: `invalid-event-ack-${JSON.stringify(eventIds)}`,
+      eventIds,
+    });
+    assert.equal(invalid.status, 400);
+    assert.match(invalid.body.error, /eventIds/i);
+  }
+
+  const acknowledged = await request('POST', '/events/ack', 'tg-owner', {
+    idempotencyKey: 'event-ack-once',
+    eventIds: [ownEventId, foreignEventId],
+  });
+  assert.equal(acknowledged.status, 200);
+  assert.deepEqual(acknowledged.body.acknowledgedEventIds, [ownEventId]);
+  assert.deepEqual(acknowledged.body.personalEvents, []);
+
+  const replay = await request('POST', '/events/ack', 'tg-owner', {
+    idempotencyKey: 'event-ack-once',
+    eventIds: [ownEventId, foreignEventId],
+  });
+  assert.equal(replay.status, 200);
+  assert.deepEqual(replay.body.acknowledgedEventIds, [ownEventId]);
+  assert.equal(
+    db.prepare('SELECT acknowledged_at FROM family_expedition_member_events WHERE id = ?').pluck().get(foreignEventId),
+    null,
+  );
 });
 
 test('shared Mage and Knight effects are consumed by combat and return direct visual events', async () => {
