@@ -46,13 +46,13 @@ function parseClaimableRewardPayload(text) {
 
   const isNonNegativeInteger = value => Number.isInteger(value) && value >= 0;
   const validArtifacts = Array.isArray(payload?.artifacts)
-    && payload.artifacts.every(artifact => (
-      artifact
-      && typeof artifact === 'object'
-      && typeof artifact.artifactId === 'string'
-      && artifact.artifactId.length > 0
-      && (artifact.coins === undefined || isNonNegativeInteger(artifact.coins))
-    ));
+    && payload.artifacts.every(artifact => {
+      if (!artifact || typeof artifact !== 'object' || !ARTIFACTS[artifact.artifactId]) return false;
+      if (artifact.duplicate === true) {
+        return artifact.coins === duplicateSubstitutionCoins(artifact.artifactId);
+      }
+      return artifact.duplicate === undefined && artifact.coins === undefined;
+    });
   const valid = payload
     && typeof payload === 'object'
     && !Array.isArray(payload)
@@ -270,7 +270,7 @@ function buildRewardPayload({
     rng,
   });
   const contributionCoins = member.contributionAp * CONTRIBUTION_COIN_STEP;
-  const finalCoins = finalCoinBase + contributionCoins;
+  const finalCoins = finalCoinBase + contributionCoins + artifactPayload.substitutionCoins;
   const totalCoins = roomCoins + finalCoins;
 
   return {
@@ -282,6 +282,33 @@ function buildRewardPayload({
     expeditionTitle: expeditionTitle(expedition),
     completedAt: expedition.finishedAt,
   };
+}
+
+function enforceContributionCoinFloor(candidates) {
+  const ordered = [...candidates].sort((left, right) => (
+    left.member.contributionAp - right.member.contributionAp
+      || left.member.userId - right.member.userId
+  ));
+  let lowerContributionFloor = 0;
+
+  for (let index = 0; index < ordered.length;) {
+    const contributionAp = ordered[index].member.contributionAp;
+    const group = [];
+    while (index < ordered.length && ordered[index].member.contributionAp === contributionAp) {
+      group.push(ordered[index]);
+      index += 1;
+    }
+    for (const candidate of group) {
+      if (!candidate.payload || candidate.payload.totalCoins >= lowerContributionFloor) continue;
+      const adjustment = lowerContributionFloor - candidate.payload.totalCoins;
+      candidate.payload.finalCoins += adjustment;
+      candidate.payload.totalCoins += adjustment;
+    }
+    lowerContributionFloor = Math.max(
+      lowerContributionFloor,
+      ...group.map(candidate => candidate.payload?.totalCoins || 0),
+    );
+  }
 }
 
 function rewardByExpeditionUser(db, expeditionId, userId) {
@@ -317,24 +344,31 @@ function createPendingRewards(db, {
   const roomCoinPool = rollRoomCoinPool(rooms, rng);
   const finalCoinBase = rollCoins(FINAL_COIN_RANGE, rng);
   const artifactRollCount = roomArtifactRolls(rooms);
-  const rewards = [];
-
-  for (const member of eligibleMembers) {
+  const candidates = eligibleMembers.map(member => {
     const existing = rewardByExpeditionUser(db, expeditionId, member.userId);
+    return {
+      member,
+      existing,
+      payload: existing?.payload || buildRewardPayload({
+        db,
+        expedition: rewardExpedition,
+        member,
+        roomCoinPool,
+        totalContributionAp,
+        artifactRolls: artifactRollCount,
+        finalCoinBase,
+        rng,
+      }),
+    };
+  });
+  enforceContributionCoinFloor(candidates);
+
+  const rewards = [];
+  for (const { member, existing, payload } of candidates) {
     if (existing) {
       rewards.push(existing);
       continue;
     }
-    const payload = buildRewardPayload({
-      db,
-      expedition: rewardExpedition,
-      member,
-      roomCoinPool,
-      totalContributionAp,
-      artifactRolls: artifactRollCount,
-      finalCoinBase,
-      rng,
-    });
     db.prepare(`
       INSERT INTO family_expedition_pending_rewards (
         expedition_id, user_id, payload_json, created_at

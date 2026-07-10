@@ -979,4 +979,19 @@ db.prepare(`
   WHERE item_id = ?
 `).run(HOME_STARTER_WALL_ITEM_ID);
 
+const expeditionRewardsBackfilled = db.prepare(`
+  SELECT 1 FROM app_settings
+  WHERE key = 'expedition_pending_rewards_backfilled_v1'
+`).get();
+if (!expeditionRewardsBackfilled) {
+  const { backfillLegacyRewards } = require('./expeditions/rewards');
+  db.transaction(() => {
+    backfillLegacyRewards(db);
+    db.prepare(`
+      INSERT INTO app_settings (key, value)
+      VALUES ('expedition_pending_rewards_backfilled_v1', '1')
+    `).run();
+  })();
+}
+
 module.exports = db;

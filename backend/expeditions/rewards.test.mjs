@@ -370,7 +370,7 @@ test('malformed pending reward payload cannot be claimed or hidden', () => {
   db.close();
 });
 
-test('duplicate artifact substitutions keep doubled coin metadata outside final totals', () => {
+test('duplicate artifact substitutions are doubled, awarded, and included in final totals', () => {
   const db = rewardDb();
   addUser(db, 10, 0);
   const expeditionId = createFinishedExpedition(db, {
@@ -391,7 +391,47 @@ test('duplicate artifact substitutions keep doubled coin metadata outside final 
     duplicate: true,
     coins: 10,
   }]);
-  assert.equal(reward.payload.finalCoins, 30);
+  assert.equal(reward.payload.finalCoins, 40);
   assert.equal(reward.payload.totalCoins, reward.payload.roomCoins + reward.payload.finalCoins);
+  const claimed = inTx(db, () => claimPendingReward(db, {
+    rewardId: reward.id,
+    userId: 10,
+    now: 12_000,
+  }));
+  assert.equal(claimed.pendingCount, 0);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').pluck().get(), reward.payload.totalCoins);
+  db.close();
+});
+
+test('invalid artifact entries cannot be claimed or hidden', () => {
+  const db = rewardDb();
+  addUser(db, 10, 100);
+  const expeditionId = createFinishedExpedition(db, {
+    members: [{ userId: 10, contributionAp: 3 }],
+  });
+  const payload = {
+    contributionAp: 3,
+    roomCoins: 10,
+    finalCoins: 20,
+    totalCoins: 30,
+    artifacts: [{ artifactId: 'unknown_artifact', duplicate: 'yes', coins: 999 }],
+    expeditionTitle: 'Broken Vault',
+    completedAt: 10_000,
+  };
+  const rewardId = Number(db.prepare(`
+    INSERT INTO family_expedition_pending_rewards (
+      expedition_id, user_id, payload_json, created_at
+    ) VALUES (?, 10, ?, 11000)
+  `).run(expeditionId, JSON.stringify(payload)).lastInsertRowid);
+
+  assert.throws(() => inTx(db, () => claimPendingReward(db, {
+    rewardId,
+    userId: 10,
+    now: 12_000,
+  })), /invalid reward payload/i);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').pluck().get(), 100);
+  assert.equal(db.prepare(`
+    SELECT claimed_at FROM family_expedition_pending_rewards WHERE id = ?
+  `).pluck().get(rewardId), null);
   db.close();
 });
