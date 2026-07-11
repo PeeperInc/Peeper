@@ -36,6 +36,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   const [input, setInput] = useState([]);
   const [feedback, setFeedback] = useState('');
   const [pendingResult, setPendingResult] = useState(null);
+  const [remainingMs, setRemainingMs] = useState(0);
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
   const previewTimersRef = useRef([]);
@@ -58,6 +59,9 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     setInput([]);
     setFeedback('');
     setPendingResult(null);
+    setRemainingMs(initialAttempt?.expiresAt
+      ? Math.max(0, Number(initialAttempt.expiresAt) * 1000 - Date.now())
+      : 0);
     startingRef.current = false;
     finishingRef.current = false;
   }, [room?.key, kind]);
@@ -67,6 +71,20 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
       setAttempt(initialAttempt);
     }
   }, [attempt?.attemptToken, initialAttempt]);
+
+  useEffect(() => {
+    if (!attempt?.expiresAt || ['done', 'submit-error'].includes(phase)) return undefined;
+    const update = () => {
+      const next = Math.max(0, Number(attempt.expiresAt) * 1000 - Date.now());
+      setRemainingMs(next);
+      if (next <= 0 && !finishingRef.current) {
+        resolve({ success: false, score: 0, reason: 'timeout' }).catch(() => {});
+      }
+    };
+    update();
+    const timer = window.setInterval(update, 100);
+    return () => window.clearInterval(timer);
+  }, [attempt?.attemptToken, attempt?.expiresAt, phase]);
 
   useEffect(() => () => {
     previewTimersRef.current.forEach(window.clearTimeout);
@@ -100,6 +118,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
       const nextAttempt = response?.attempt || null;
       if (!nextAttempt) throw new Error('The dungeon did not open the challenge');
       setAttempt(nextAttempt);
+      setRemainingMs(Math.max(0, Number(nextAttempt.expiresAt) * 1000 - Date.now()));
       return nextAttempt;
     } finally {
       startingRef.current = false;
@@ -109,6 +128,9 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   async function resolve(result, sourceAttempt = attempt) {
     if (!sourceAttempt || finishingRef.current) return null;
     finishingRef.current = true;
+    previewTimersRef.current.forEach(window.clearTimeout);
+    previewTimersRef.current = [];
+    setPreviewIndex(-1);
     setPendingResult(result);
     setFeedback('Resolving...');
     try {
@@ -118,6 +140,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
       }
       if (response?.attempt?.retry) {
         setAttempt(response.attempt);
+        setRemainingMs(Math.max(0, Number(response.attempt.expiresAt) * 1000 - Date.now()));
         setRetryKey(value => value + 1);
         setPhase('idle');
         setInput([]);
@@ -182,6 +205,8 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   async function startRunes() {
     const nextAttempt = await begin();
     if (!nextAttempt) return;
+    previewTimersRef.current.forEach(window.clearTimeout);
+    previewTimersRef.current = [];
     const nextSequence = await runeSequence(nextAttempt.seed);
     setSequence(nextSequence);
     setInput([]);
@@ -228,7 +253,10 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
           <span>ROOM MINI-GAME</span>
           <strong>{room?.miniGame?.label || 'Dungeon challenge'}</strong>
         </div>
-        <div className="expedition-minigame__timer"><b>1</b><small>AP</small></div>
+        <div className="expedition-minigame__timer">
+          <b>{attempt ? Math.ceil(remainingMs / 1000) : 1}</b>
+          <small>{attempt ? 'SEC' : 'AP'}</small>
+        </div>
       </header>
 
       {kind === 'rune_sequence' ? (

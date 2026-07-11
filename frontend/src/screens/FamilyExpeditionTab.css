@@ -1233,6 +1233,42 @@ button.expedition-loadout-slot:disabled {
     linear-gradient(90deg, rgba(0, 0, 0, 0.62), transparent 48%);
 }
 
+.expedition-minigame-stage-result {
+  position: absolute;
+  z-index: 11;
+  left: 50%;
+  top: 48%;
+  display: grid;
+  min-width: 150px;
+  gap: 2px;
+  padding: 10px 14px;
+  transform: translate(-50%, -50%);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: #ff9b89;
+  text-align: center;
+  text-transform: uppercase;
+  background: rgba(3, 7, 5, 0.92);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  animation: expedition-fx-scene-in 800ms ease-out both;
+}
+
+.expedition-minigame-stage-result.success {
+  color: var(--accent);
+}
+
+.expedition-minigame-stage-result span {
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.expedition-minigame-stage-result strong {
+  color: currentColor;
+  font-family: var(--font-display);
+  font-size: 22px;
+}
+
 .expedition-room-title {
   position: absolute;
   z-index: 4;

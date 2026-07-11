@@ -1698,6 +1698,12 @@ function RoomPanel({
           memberHp={member?.heroHp}
           onSequenceComplete={onRollFxComplete}
         />
+        {stageAction?.kind === 'minigame' && !stageAction.pending && (
+          <div className={`expedition-minigame-stage-result ${stageAction.minigameSuccess ? 'success' : 'failed'}`}>
+            <span>Room challenge</span>
+            <strong>{stageAction.minigameSuccess ? 'Cleared' : 'Attempt spent'}</strong>
+          </div>
+        )}
         <div className="expedition-room-art-scrim" />
         <div className="expedition-room-title">
           <div className="expedition-kicker">{hidden ? 'Uncharted' : titleize(room.type || 'Room')}</div>
@@ -1964,6 +1970,23 @@ function ExpeditionDashboard({
     }
   }
 
+  async function handleRoomMinigameFinish(roomKey, attempt, result) {
+    setLastRoll({ roomKey, pending: true, kind: 'minigame' });
+    try {
+      const next = await onMinigameFinish(roomKey, attempt, result);
+      setLastRoll({
+        roomKey,
+        kind: 'minigame',
+        minigameSuccess: Boolean(next?.success),
+        events: next?.visualEvents || [],
+      });
+      return next;
+    } catch (error) {
+      setLastRoll(null);
+      throw error;
+    }
+  }
+
   async function handleUseArtifact(artifactId) {
     if (!selectedRoom?.key) return;
     const next = await onUseArtifact(selectedRoom.key, artifactId);
@@ -2054,7 +2077,7 @@ function ExpeditionDashboard({
         onAssist={onAssist}
         onScoutChoice={onScoutChoice}
         onMinigameStart={onMinigameStart}
-        onMinigameFinish={onMinigameFinish}
+        onMinigameFinish={handleRoomMinigameFinish}
         onRoleAbility={onRoleAbility}
         onRollFxComplete={() => setLastRoll(null)}
         currentMinigameAttempt={currentMinigameAttempt}
