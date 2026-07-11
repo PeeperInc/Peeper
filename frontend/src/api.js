@@ -150,24 +150,37 @@ export const prepareExpedition = (expeditionId, { role, provisionId = null, arti
 export const attemptExpeditionRoom = (
   expeditionId,
   roomKey,
-  { actionId, selectedSupport = 0, useRoleAbility = false, useSharedBuff = false, idempotencyKey } = {},
+  { actionId, mechanicChoice = null, selectedSupport = 0, useSharedBuff = false, idempotencyKey } = {},
 ) => post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/attempt`, {
   actionId,
+  mechanicChoice,
   selectedSupport,
-  useRoleAbility,
   useSharedBuff,
   idempotencyKey,
 });
 export const assistExpeditionRoom = (expeditionId, roomKey, idempotencyKey) =>
   post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/assist`, { idempotencyKey });
-export const revealExpeditionRoom = (expeditionId, roomKey, { fromRoomKey, idempotencyKey } = {}) =>
-  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/reveal`, { fromRoomKey, idempotencyKey });
+export const chooseExpeditionScoutRoom = (expeditionId, roomKey, { choiceId, idempotencyKey } = {}) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/scout-choice`, { choiceId, idempotencyKey });
+export const useExpeditionRoleAbility = (expeditionId, roomKey, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/role-ability`, { idempotencyKey });
+export const useExpeditionArtifact = (expeditionId, roomKey, artifactId, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/artifacts/${encodeURIComponent(artifactId)}/use`, { idempotencyKey });
+export const startExpeditionMinigame = (expeditionId, roomKey, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/minigame/start`, { idempotencyKey });
+export const finishExpeditionMinigame = (expeditionId, roomKey, attemptToken, { result, idempotencyKey } = {}) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/minigame/${encodeURIComponent(attemptToken)}/finish`, {
+    result,
+    idempotencyKey,
+  });
 export const equipFoundExpeditionArtifact = (expeditionId, { artifactId, slotIndex, idempotencyKey } = {}) =>
   post(`/expeditions/${expeditionId}/equip-found-artifact`, { artifactId, slotIndex, idempotencyKey });
-export const claimExpeditionBossReward = (expeditionId, idempotencyKey) =>
-  post(`/expeditions/${expeditionId}/claim-boss-reward`, { idempotencyKey });
 export const finishExpedition = (expeditionId, idempotencyKey) =>
   post(`/expeditions/${expeditionId}/finish`, { idempotencyKey });
+export const claimExpeditionReward = (rewardId) =>
+  post(`/expeditions/rewards/${rewardId}/claim`, {});
+export const acknowledgeExpeditionEvents = (eventIds, idempotencyKey) =>
+  post('/expeditions/events/ack', { eventIds, idempotencyKey });
 export const expeditionLog = (expeditionId) => get(`/expeditions/${expeditionId}/log`);
 export const expeditionHistory = () => get('/expeditions/history');
 export const expeditionArtifacts = () => get('/expeditions/artifacts');

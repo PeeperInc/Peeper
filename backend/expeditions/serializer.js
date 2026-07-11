@@ -1,6 +1,11 @@
 'use strict';
 
-const { ROLES, PROVISIONS, THEME_ID } = require('./catalog');
+const {
+  ARTIFACTS,
+  ROLES,
+  PROVISIONS,
+  THEME_ID,
+} = require('./catalog');
 const { canFinishExpedition } = require('./engine');
 const { sanitizeMemberEventPayload } = require('./memberEvents');
 
@@ -235,6 +240,16 @@ function serializeInventory(inventory = []) {
   }));
 }
 
+function serializeArtifactCatalog() {
+  return Object.values(ARTIFACTS).map(artifact => ({
+    id: artifact.id,
+    name: artifact.name,
+    rarity: artifact.rarity,
+    useType: artifact.useType,
+    displayEffect: artifact.displayEffect,
+  }));
+}
+
 function serializePendingReward(reward) {
   if (!reward) return null;
   return definedObject([
@@ -278,6 +293,7 @@ function serializeExpeditionState({
   artifactInventory = [],
   farmInventory = [],
   pendingRewards = [],
+  currentMinigameAttempt = null,
   canStart = false,
 } = {}) {
   const expedition = snapshot?.expedition || null;
@@ -299,9 +315,11 @@ function serializeExpeditionState({
     artifactInventory: serializeInventory(artifactInventory),
     pendingRewards: serializedPendingRewards,
     pendingRewardCount: serializedPendingRewards.length,
+    currentMinigameAttempt: currentMinigameAttempt ? clone(currentMinigameAttempt) : null,
     catalog: {
       roles: clone(ROLES),
       provisions: serializeProvisions(farmInventory),
+      artifacts: serializeArtifactCatalog(),
       theme: { id: expedition?.themeId || THEME_ID },
     },
     permissions: {

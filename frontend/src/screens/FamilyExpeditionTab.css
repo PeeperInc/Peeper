@@ -1,6 +1,17 @@
 .expedition-shell {
-  padding: 10px 12px 28px;
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  overflow-y: auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px calc(env(safe-area-inset-bottom, 0px) + 18px);
   color: var(--text-primary);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(183, 255, 79, 0.12), transparent 30%),
+    radial-gradient(circle at 86% 16%, rgba(217, 167, 67, 0.12), transparent 30%),
+    linear-gradient(90deg, rgba(183, 255, 79, 0.045) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(183, 255, 79, 0.035) 1px, transparent 1px),
+    #050806;
+  background-size: auto, auto, 18px 18px, 18px 18px, auto;
   --dungeon-ink: #050605;
   --dungeon-stone: #10150f;
   --dungeon-stone-2: #192014;
@@ -8,6 +19,73 @@
   --dungeon-bone: #e9dfbd;
   --dungeon-blood: #d6523f;
   --dungeon-venom: #9dce45;
+}
+
+.expedition-entry-topbar,
+.expedition-game-topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.expedition-entry-topbar strong,
+.expedition-game-title strong,
+.expedition-game-title span {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.expedition-entry-topbar strong,
+.expedition-game-title strong {
+  color: var(--dungeon-bone);
+  font-size: 18px;
+}
+
+.expedition-game-title {
+  min-width: 0;
+  flex: 1;
+  text-align: center;
+}
+
+.expedition-game-title span {
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.expedition-game-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 5px;
+}
+
+.expedition-nav-button,
+.expedition-icon-button {
+  min-height: 36px;
+  border: 1px solid rgba(217, 167, 67, 0.34);
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, rgba(233, 223, 189, 0.08), transparent),
+    rgba(5, 13, 9, 0.92);
+  color: var(--dungeon-bone);
+  cursor: pointer;
+  padding: 0 10px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.52);
+}
+
+.expedition-nav-button:disabled,
+.expedition-icon-button:disabled {
+  cursor: default;
+  opacity: 0.52;
 }
 
 .expedition-topbar {
@@ -130,6 +208,12 @@
   border-color: rgba(255, 232, 137, 0.52);
 }
 
+.expedition-ap-chip.danger {
+  color: #ffe2dc;
+  background: linear-gradient(180deg, #9d281f, #42110d);
+  border-color: rgba(255, 155, 137, 0.52);
+}
+
 .expedition-role-grid,
 .expedition-provision-grid,
 .expedition-artifact-grid {
@@ -248,6 +332,103 @@
   border-color: rgba(183, 255, 79, 0.34);
 }
 
+button.expedition-loadout-slot {
+  width: 100%;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.expedition-loadout-slot:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.expedition-pending-rewards {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 9px 12px;
+  color: #f8f3d2;
+  font: inherit;
+  text-align: left;
+  border: 1px solid rgba(255, 211, 92, 0.46);
+  border-radius: 7px;
+  background: linear-gradient(100deg, rgba(94, 64, 10, 0.92), rgba(17, 36, 24, 0.96));
+  box-shadow: inset 3px 0 #ffd35c;
+}
+
+.expedition-pending-rewards span {
+  color: #c7bea0;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.expedition-pending-rewards strong {
+  color: #ffe47f;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.expedition-active-relics {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 1px 0 3px;
+  scrollbar-width: none;
+}
+
+.expedition-active-relics::-webkit-scrollbar {
+  display: none;
+}
+
+.expedition-active-relics > span {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0 8px;
+  color: #9cae98;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-left: 2px solid #ffd35c;
+  background: rgba(5, 15, 10, 0.76);
+}
+
+.expedition-active-relics button {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 4px 8px 4px 4px;
+  color: #edf5e7;
+  font: inherit;
+  border: 1px solid rgba(183, 255, 74, 0.22);
+  border-radius: 4px;
+  background: rgba(7, 22, 15, 0.92);
+}
+
+.expedition-active-relics img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.expedition-active-relics strong {
+  max-width: 110px;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .expedition-artifact-card {
   min-height: 112px;
 }
@@ -281,6 +462,40 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.expedition-command-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: -2px 0 0;
+  padding: 2px 0 4px;
+}
+
+.expedition-command-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.expedition-command-strip span {
+  flex: 0 0 auto;
+  border: 1px solid rgba(217, 167, 67, 0.22);
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg, rgba(233, 223, 189, 0.05), transparent),
+    rgba(2, 8, 5, 0.72);
+  color: rgba(233, 223, 189, 0.7);
+  padding: 6px 8px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.expedition-command-strip b {
+  color: var(--dungeon-gold);
+  font-family: var(--font-display);
+  font-weight: 950;
 }
 
 .expedition-archive-grid {
@@ -812,7 +1027,7 @@
 
 .expedition-room-art {
   position: relative;
-  min-height: 142px;
+  min-height: clamp(230px, 44vh, 360px);
   overflow: hidden;
   border: 1px solid rgba(233, 223, 189, 0.12);
   border-radius: 3px;
@@ -821,29 +1036,206 @@
     #060706;
 }
 
-.expedition-room-art img {
+.expedition-room-bg {
   width: 100%;
-  height: 160px;
+  height: clamp(230px, 44vh, 360px);
   object-fit: cover;
   display: block;
-  filter: saturate(0.9) contrast(1.08) brightness(0.82);
+  filter: saturate(0.95) contrast(1.1) brightness(0.72);
+  transform: scale(1.04);
+}
+
+.expedition-room-foreground {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 3px;
+  width: min(66%, 300px);
+  height: min(88%, 285px);
+  object-fit: contain;
+  transform: translateX(-50%);
+  filter:
+    drop-shadow(0 16px 20px rgba(0, 0, 0, 0.85))
+    drop-shadow(0 0 22px rgba(157, 206, 69, 0.22));
+  animation: expedition-enemy-idle 2.8s ease-in-out infinite;
+}
+
+.expedition-room-foreground.enemy {
+  width: min(58%, 260px);
+  height: min(82%, 235px);
+}
+
+.expedition-room-foreground.boss {
+  bottom: -4px;
+  width: min(88%, 420px);
+  height: min(100%, 340px);
+  animation-name: expedition-boss-idle;
+  animation-duration: 3.2s;
+}
+
+.expedition-room-art.outcome-hit .expedition-room-foreground,
+.expedition-room-art.outcome-strong_hit .expedition-room-foreground,
+.expedition-room-art.outcome-critical_hit .expedition-room-foreground {
+  animation: expedition-enemy-hit 520ms ease-out, expedition-enemy-idle 2.8s ease-in-out 560ms infinite;
+}
+
+.expedition-room-art.outcome-critical_hit .expedition-room-bg,
+.expedition-room-art.outcome-strong_hit .expedition-room-bg {
+  animation: expedition-room-flash 520ms ease-out;
+}
+
+.expedition-room-art.outcome-wounded {
+  animation: expedition-hero-camera-hit 380ms ease-out;
+}
+
+.expedition-enemy-fallback {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 25px;
+  width: 96px;
+  height: 124px;
+  transform: translateX(-50%);
+  border-radius: 45% 45% 12px 12px;
+  background:
+    radial-gradient(circle at 50% 22%, rgba(183, 255, 79, 0.75), transparent 12%),
+    linear-gradient(180deg, rgba(20, 35, 17, 0.95), rgba(0, 0, 0, 0.95));
+  box-shadow:
+    0 18px 32px rgba(0, 0, 0, 0.8),
+    0 0 24px rgba(157, 206, 69, 0.2);
 }
 
 .expedition-room-art > span {
   display: block;
-  height: 150px;
+  height: clamp(230px, 44vh, 360px);
+}
+
+.expedition-enemy-hud {
+  position: absolute;
+  z-index: 4;
+  top: 8px;
+  right: 8px;
+  width: min(180px, 44%);
+  border: 1px solid rgba(217, 167, 67, 0.34);
+  background:
+    linear-gradient(90deg, rgba(214, 82, 63, 0.18), transparent 48%),
+    rgba(3, 5, 4, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+}
+
+.expedition-enemy-hud span,
+.expedition-enemy-hud strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expedition-enemy-hud span {
+  color: rgba(233, 223, 189, 0.68);
+  font-size: 9px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.expedition-enemy-hud strong {
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.expedition-enemy-hud i {
+  display: block;
+  height: 6px;
+  margin-top: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(214, 82, 63, 0.38);
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.expedition-enemy-hud b {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #d6523f, #ffb34d);
+  transition: width 260ms ease;
+}
+
+.expedition-stage-impact,
+.expedition-hero-hurt {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.expedition-stage-impact {
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  animation: expedition-impact-pop 780ms ease-out both;
+}
+
+.expedition-stage-impact strong {
+  color: #fff2a8;
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 950;
+  line-height: 0.9;
+  text-shadow:
+    0 3px 0 #2b1107,
+    0 0 18px rgba(255, 209, 94, 0.7);
+}
+
+.expedition-stage-impact span,
+.expedition-hero-hurt span {
+  color: rgba(233, 223, 189, 0.88);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.expedition-stage-impact.miss strong,
+.expedition-stage-impact.guarded strong {
+  color: rgba(233, 223, 189, 0.88);
+  font-size: 24px;
+  text-shadow: 0 2px 0 #020302;
+}
+
+.expedition-hero-hurt {
+  left: 11px;
+  top: 52%;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 128, 113, 0.45);
+  background: rgba(47, 8, 8, 0.78);
+  animation: expedition-hero-hurt 900ms ease-out both;
+}
+
+.expedition-hero-hurt strong {
+  color: #ff9b89;
+  font-family: var(--font-display);
+  font-size: 16px;
 }
 
 .expedition-room-art-scrim {
   position: absolute;
+  z-index: 3;
   inset: 0;
+  pointer-events: none;
   background:
-    linear-gradient(180deg, transparent 18%, rgba(0, 0, 0, 0.14) 46%, rgba(0, 0, 0, 0.86) 100%),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.65), transparent 48%);
+    linear-gradient(180deg, transparent 12%, rgba(0, 0, 0, 0.08) 46%, rgba(0, 0, 0, 0.82) 100%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.62), transparent 48%);
 }
 
 .expedition-room-title {
   position: absolute;
+  z-index: 4;
   left: 10px;
   right: 10px;
   bottom: 10px;
@@ -933,6 +1325,1167 @@
 .expedition-room-traits .danger {
   border-color: rgba(214, 82, 63, 0.36);
   color: #ff9b89;
+}
+
+.expedition-encounter-director {
+  margin-top: 10px;
+  border: 1px solid rgba(157, 206, 69, 0.24);
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, rgba(157, 206, 69, 0.12), transparent 38%),
+    rgba(3, 8, 5, 0.82);
+  padding: 9px;
+}
+
+.expedition-encounter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.expedition-encounter-row > div,
+.expedition-mechanic-card,
+.expedition-one-roll-main > div,
+.expedition-roll-score {
+  min-width: 0;
+  border: 1px solid rgba(233, 223, 189, 0.1);
+  background: rgba(0, 0, 0, 0.24);
+  padding: 7px;
+}
+
+.expedition-encounter-row span,
+.expedition-encounter-director p,
+.expedition-mechanic-card span,
+.expedition-one-roll-main span,
+.expedition-one-roll-main small,
+.expedition-roll-score span,
+.expedition-threat-meter span {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.expedition-encounter-row strong,
+.expedition-mechanic-card strong,
+.expedition-one-roll-main strong,
+.expedition-roll-score strong,
+.expedition-threat-meter strong {
+  display: block;
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 12px;
+  line-height: 1.08;
+  text-transform: uppercase;
+}
+
+.expedition-encounter-director p {
+  margin: 7px 0 0;
+}
+
+.expedition-mechanic-card {
+  display: grid;
+  gap: 3px;
+  margin-top: 7px;
+  border-color: rgba(217, 167, 67, 0.18);
+  background:
+    radial-gradient(circle at 0 0, rgba(217, 167, 67, 0.18), transparent 34%),
+    rgba(0, 0, 0, 0.26);
+}
+
+.expedition-scout-choice,
+.expedition-event-game {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid rgba(217, 167, 67, 0.3);
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, rgba(217, 167, 67, 0.16), transparent 38%),
+    rgba(3, 8, 5, 0.86);
+  padding: 9px;
+  overflow: hidden;
+}
+
+.expedition-event-game::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, rgba(183, 255, 79, 0.08), transparent),
+    repeating-linear-gradient(0deg, transparent 0 9px, rgba(233, 223, 189, 0.025) 9px 10px);
+  opacity: 0.8;
+}
+
+.expedition-event-result {
+  position: absolute;
+  z-index: 8;
+  inset: 8px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  border: 1px solid rgba(233, 223, 189, 0.22);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(183, 255, 79, 0.24), transparent 42%),
+    rgba(0, 0, 0, 0.72);
+  text-align: center;
+  animation: expedition-event-result-pop 520ms ease-out both;
+}
+
+.expedition-event-result strong,
+.expedition-event-result span {
+  display: block;
+  text-transform: uppercase;
+}
+
+.expedition-event-result strong {
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 950;
+  line-height: 0.95;
+  text-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.75),
+    0 0 22px rgba(183, 255, 79, 0.42);
+}
+
+.expedition-event-result span {
+  margin-top: 6px;
+  color: var(--dungeon-gold);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.expedition-event-result.bad {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(214, 82, 63, 0.22), transparent 42%),
+    rgba(0, 0, 0, 0.72);
+}
+
+.expedition-event-result.bad span {
+  color: #ff9b89;
+}
+
+.expedition-scout-choice.locked {
+  border-color: rgba(157, 206, 69, 0.34);
+  background:
+    linear-gradient(135deg, rgba(157, 206, 69, 0.16), transparent 42%),
+    rgba(3, 8, 5, 0.78);
+}
+
+.expedition-scout-choice strong,
+.expedition-event-game-copy strong {
+  display: block;
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 13px;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.expedition-event-game-copy,
+.expedition-event-track,
+.expedition-trap-challenge,
+.expedition-focus-challenge,
+.expedition-rune-sequence,
+.expedition-event-choice-grid,
+.expedition-memory-cue,
+.expedition-path-preview,
+.expedition-event-actions {
+  position: relative;
+  z-index: 1;
+}
+
+.expedition-scout-choice span,
+.expedition-scout-choice small,
+.expedition-event-game-copy span,
+.expedition-event-game-copy small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.expedition-scout-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.expedition-scout-choice-grid button {
+  min-width: 0;
+  min-height: 86px;
+  border: 1px solid rgba(233, 223, 189, 0.14);
+  border-radius: 3px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(217, 167, 67, 0.16), transparent 44%),
+    rgba(0, 0, 0, 0.34);
+  color: var(--dungeon-bone);
+  cursor: pointer;
+  padding: 7px;
+  text-align: left;
+}
+
+.expedition-scout-choice-grid button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.expedition-scout-choice-grid button:hover:not(:disabled) {
+  border-color: rgba(157, 206, 69, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(157, 206, 69, 0.2);
+}
+
+.expedition-scout-choice-grid button span {
+  color: var(--dungeon-gold);
+}
+
+.expedition-scout-choice-grid button strong {
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.expedition-event-track {
+  position: relative;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid rgba(233, 223, 189, 0.14);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    rgba(0, 0, 0, 0.42);
+  background-size: 12px 100%;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.42);
+}
+
+.expedition-event-track.active {
+  box-shadow: 0 0 20px rgba(157, 206, 69, 0.18);
+}
+
+.expedition-event-track.focus .expedition-event-zone {
+  inset: 4px 62% 4px 72%;
+}
+
+.expedition-event-zone {
+  position: absolute;
+  inset: 4px 38%;
+  border: 1px solid rgba(255, 209, 94, 0.76);
+  background: linear-gradient(180deg, rgba(255, 209, 94, 0.24), rgba(157, 206, 69, 0.2));
+}
+
+.expedition-event-track b {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 4px;
+  transform: translateX(-50%);
+  background: #b7ff4f;
+  box-shadow: 0 0 16px rgba(183, 255, 79, 0.72);
+  transition: left 70ms linear;
+}
+
+.expedition-trap-challenge {
+  display: grid;
+  gap: 6px;
+}
+
+.expedition-trap-lane {
+  position: relative;
+  height: 72px;
+  overflow: hidden;
+  border: 1px solid rgba(233, 223, 189, 0.14);
+  background:
+    linear-gradient(90deg, rgba(214, 82, 63, 0.13), transparent 28%, transparent 72%, rgba(214, 82, 63, 0.13)),
+    repeating-linear-gradient(90deg, rgba(233, 223, 189, 0.04) 0 1px, transparent 1px 13px),
+    linear-gradient(180deg, #12160f, #030503);
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.62);
+}
+
+.expedition-trap-safe-zone {
+  position: absolute;
+  inset: 8px 38%;
+  border: 1px solid rgba(255, 209, 94, 0.76);
+  background:
+    linear-gradient(180deg, rgba(255, 209, 94, 0.16), rgba(183, 255, 79, 0.14)),
+    repeating-linear-gradient(45deg, transparent 0 6px, rgba(255, 209, 94, 0.12) 6px 9px);
+  box-shadow: 0 0 24px rgba(217, 167, 67, 0.16);
+}
+
+.expedition-trap-runner {
+  position: absolute;
+  left: 8px;
+  bottom: 14px;
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(183, 255, 79, 0.72);
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.45), transparent 22%),
+    #9dce45;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  filter: drop-shadow(0 0 10px rgba(183, 255, 79, 0.42));
+}
+
+.expedition-trap-blade {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 28px;
+  transform: translateX(-50%);
+  transition: left 70ms linear;
+}
+
+.expedition-trap-blade i {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, transparent, #e9dfbd 18%, #d6523f 50%, #e9dfbd 82%, transparent);
+  box-shadow:
+    0 0 12px rgba(255, 209, 94, 0.5),
+    0 0 24px rgba(214, 82, 63, 0.4);
+}
+
+.expedition-trap-blade b {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 1px solid rgba(255, 209, 94, 0.78);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 209, 94, 0.35), transparent 36%),
+    rgba(13, 6, 3, 0.92);
+}
+
+.expedition-trap-challenge.active .expedition-trap-blade b {
+  animation: expedition-trap-blade-spin 520ms linear infinite;
+}
+
+.expedition-trap-labels {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  align-items: center;
+  color: rgba(233, 223, 189, 0.56);
+  font-size: 9px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.expedition-trap-labels strong {
+  color: var(--dungeon-gold);
+  font-family: var(--font-display);
+  font-size: 10px;
+}
+
+.expedition-trap-labels span:last-child {
+  text-align: right;
+}
+
+.expedition-focus-challenge {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  border: 1px solid rgba(233, 223, 189, 0.14);
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 209, 94, 0.18), transparent 18%),
+    radial-gradient(circle at 50% 42%, rgba(183, 255, 79, 0.15), transparent 40%),
+    repeating-conic-gradient(from 0deg, rgba(233, 223, 189, 0.055) 0deg 7deg, transparent 7deg 18deg),
+    linear-gradient(180deg, rgba(8, 18, 10, 0.9), rgba(0, 0, 0, 0.5));
+  padding: 10px;
+  overflow: hidden;
+}
+
+.expedition-focus-orb {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 209, 94, 0.42);
+  border-radius: 50%;
+  background:
+    conic-gradient(from -90deg, rgba(183, 255, 79, 0.95) var(--focus-charge), rgba(233, 223, 189, 0.08) 0),
+    radial-gradient(circle at 50% 50%, rgba(217, 167, 67, 0.18), #050705 60%);
+  box-shadow:
+    inset 0 0 0 8px rgba(0, 0, 0, 0.64),
+    inset 0 0 28px rgba(255, 209, 94, 0.12),
+    0 0 34px rgba(183, 255, 79, 0.16);
+}
+
+.expedition-focus-orb b {
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.4), transparent 18%),
+    radial-gradient(circle, rgba(183, 255, 79, 0.48), rgba(20, 48, 21, 0.86));
+}
+
+.expedition-focus-orb span {
+  position: relative;
+  z-index: 1;
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.expedition-focus-challenge.charging .expedition-focus-orb {
+  animation: expedition-focus-pulse 520ms ease-in-out infinite alternate;
+}
+
+.expedition-focus-target {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+  min-width: 58px;
+  border: 1px solid rgba(255, 209, 94, 0.42);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 209, 94, 0.24), transparent 44%),
+    rgba(0, 0, 0, 0.42);
+  padding: 5px 7px;
+  text-align: center;
+}
+
+.expedition-focus-target span,
+.expedition-focus-target strong {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.expedition-focus-target span {
+  color: rgba(233, 223, 189, 0.7);
+  font-size: 8px;
+  letter-spacing: 0.05em;
+}
+
+.expedition-focus-target strong {
+  margin-top: 3px;
+  color: var(--dungeon-gold);
+  font-size: 20px;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.8);
+}
+
+.expedition-focus-meter {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(233, 223, 189, 0.14);
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.expedition-focus-meter > b {
+  position: relative;
+  z-index: 1;
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #3c6b2f, #b7ff4f, #ffd15e, #d6523f);
+  transition: width 70ms linear;
+}
+
+.expedition-focus-sweet {
+  position: absolute;
+  z-index: 2;
+  top: 2px;
+  bottom: 2px;
+  left: calc(var(--focus-target, 72%) - 7%);
+  width: 14%;
+  border: 1px solid rgba(255, 209, 94, 0.86);
+  background: rgba(255, 209, 94, 0.15);
+  box-shadow:
+    inset 0 0 12px rgba(255, 209, 94, 0.24),
+    0 0 16px rgba(255, 209, 94, 0.3);
+}
+
+.expedition-focus-challenge small {
+  color: rgba(233, 223, 189, 0.72);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.expedition-hold-button {
+  touch-action: none;
+  user-select: none;
+}
+
+.expedition-scout-run {
+  --scout-x: 50%;
+  --scout-y: 88%;
+  position: relative;
+  height: 230px;
+  overflow: hidden;
+  border: 1px solid rgba(233, 223, 189, 0.14);
+  background:
+    radial-gradient(circle at var(--scout-x) var(--scout-y), rgba(183, 255, 79, 0.22), transparent 16%),
+    radial-gradient(circle at 50% 0%, rgba(255, 209, 94, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(16, 28, 16, 0.96), rgba(2, 5, 3, 0.98));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.74);
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.expedition-scout-run::before,
+.expedition-shadow-hunt::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, rgba(233, 223, 189, 0.06), transparent),
+    repeating-linear-gradient(0deg, rgba(233, 223, 189, 0.03) 0 1px, transparent 1px 10px);
+  mix-blend-mode: screen;
+}
+
+.expedition-scout-light {
+  position: absolute;
+  z-index: 4;
+  left: var(--scout-x);
+  top: var(--scout-y);
+  width: 28px;
+  height: 28px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 1px solid rgba(255, 236, 151, 0.9);
+  background:
+    radial-gradient(circle at 48% 45%, #fff6a5 0 18%, #b7ff4f 19% 48%, rgba(183, 255, 79, 0.18) 49% 70%, transparent 71%);
+  box-shadow:
+    0 0 20px rgba(183, 255, 79, 0.72),
+    0 0 48px rgba(183, 255, 79, 0.24);
+}
+
+.expedition-scout-light b {
+  position: absolute;
+  inset: -14px;
+  border: 1px solid rgba(183, 255, 79, 0.22);
+  animation: expedition-scout-ping 760ms ease-out infinite;
+}
+
+.expedition-scout-progress {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 8%;
+  bottom: 10%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(183, 255, 79, 0.2), rgba(183, 255, 79, 0.72), rgba(183, 255, 79, 0.2));
+  box-shadow: 0 0 16px rgba(183, 255, 79, 0.24);
+  opacity: 0.55;
+}
+
+.expedition-scout-lane {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  top: var(--lane-y);
+  height: 26px;
+  transform: translateY(-50%);
+  border-block: 1px solid rgba(233, 223, 189, 0.08);
+  background:
+    linear-gradient(90deg, rgba(214, 82, 63, 0.08), transparent 18% 82%, rgba(214, 82, 63, 0.08)),
+    rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+
+.expedition-scout-lane b {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(233, 223, 189, 0.16);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.35em;
+}
+
+.expedition-scout-car {
+  position: absolute;
+  z-index: 3;
+  left: var(--car-x);
+  top: var(--car-y);
+  width: var(--car-width);
+  height: 18px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition:
+    left 50ms linear,
+    top 50ms linear;
+}
+
+.expedition-scout-car i {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(117, 54, 30, 0.95);
+  background:
+    radial-gradient(circle at 20% 50%, rgba(255, 209, 94, 0.2), transparent 22%),
+    repeating-linear-gradient(90deg, rgba(255, 209, 94, 0.12) 0 5px, transparent 5px 12px),
+    linear-gradient(180deg, #62301d, #160807);
+  box-shadow:
+    inset 0 0 10px rgba(0, 0, 0, 0.76),
+    0 0 14px rgba(214, 82, 63, 0.2);
+}
+
+.expedition-scout-gate-row {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: var(--gate-y);
+  height: 26px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.expedition-scout-gate-row i {
+  position: absolute;
+  top: 8px;
+  height: 10px;
+  border: 1px solid rgba(117, 54, 30, 0.9);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 209, 94, 0.12) 0 5px, transparent 5px 12px),
+    linear-gradient(180deg, #532718, #160907);
+  box-shadow:
+    inset 0 0 10px rgba(0, 0, 0, 0.75),
+    0 0 12px rgba(214, 82, 63, 0.16);
+}
+
+.expedition-scout-gate-row .left-root {
+  left: 0;
+  right: calc(var(--gap-right) + var(--gap-width));
+}
+
+.expedition-scout-gate-row .right-root {
+  left: calc(var(--gap-left) + var(--gap-width));
+  right: 0;
+}
+
+.expedition-scout-gate-row b {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: var(--gap-left);
+  width: var(--gap-width);
+  border: 1px solid rgba(183, 255, 79, 0.35);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(183, 255, 79, 0.3), transparent 64%),
+    rgba(183, 255, 79, 0.05);
+  box-shadow: 0 0 18px rgba(183, 255, 79, 0.18);
+}
+
+.expedition-scout-gate-row.passed b {
+  border-color: rgba(255, 209, 94, 0.48);
+  background: rgba(255, 209, 94, 0.1);
+}
+
+.expedition-scout-gate {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 209, 94, 0.32);
+  background: rgba(0, 0, 0, 0.42);
+  color: var(--dungeon-gold);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  padding: 3px 7px;
+}
+
+.expedition-scout-gate.start {
+  bottom: 8px;
+}
+
+.expedition-scout-gate.finish {
+  top: 8px;
+}
+
+.expedition-shadow-hunt {
+  position: relative;
+  height: 230px;
+  overflow: hidden;
+  border: 1px solid rgba(233, 223, 189, 0.14);
+  background:
+    radial-gradient(circle at 50% 35%, rgba(183, 255, 79, 0.1), transparent 24%),
+    radial-gradient(circle at 18% 82%, rgba(87, 35, 135, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(9, 14, 14, 0.98), rgba(0, 0, 0, 0.96));
+  box-shadow: inset 0 0 52px rgba(0, 0, 0, 0.8);
+}
+
+.expedition-shadow-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 5px;
+  color: rgba(233, 223, 189, 0.68);
+  text-align: center;
+}
+
+.expedition-shadow-empty strong {
+  color: var(--dungeon-gold);
+  font-family: var(--font-display);
+  font-size: 16px;
+  text-transform: uppercase;
+}
+
+.expedition-shadow-empty span {
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.expedition-shadow-hunt button {
+  position: absolute;
+  z-index: 2;
+  left: var(--shadow-x);
+  top: var(--shadow-y);
+  width: 44px;
+  height: 58px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.78;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  transition:
+    left 48ms linear,
+    top 48ms linear,
+    opacity 150ms ease,
+    filter 150ms ease;
+}
+
+.expedition-shadow-hunt button:hover,
+.expedition-shadow-hunt button:focus-visible {
+  transform: translate(-50%, -50%);
+}
+
+.expedition-shadow-hunt.watch button.true-shadow {
+  filter:
+    drop-shadow(0 0 6px rgba(183, 255, 79, 0.48))
+    drop-shadow(0 0 16px rgba(183, 255, 79, 0.2));
+  opacity: 1;
+}
+
+.expedition-shadow-hunt button:disabled {
+  cursor: default;
+}
+
+.expedition-shadow-hunt button i {
+  position: absolute;
+  inset: 8px 6px 0;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(233, 223, 189, 0.13), transparent 12%),
+    linear-gradient(180deg, rgba(10, 16, 16, 0.98), rgba(0, 0, 0, 0.98));
+  clip-path: polygon(50% 0, 72% 16%, 84% 52%, 100% 100%, 0 100%, 16% 52%, 28% 16%);
+  filter: blur(0.2px);
+}
+
+.expedition-shadow-hunt button b {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  width: 18px;
+  height: 6px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(183, 255, 79, 0.08);
+}
+
+.expedition-shadow-hunt.watch button.true-shadow b {
+  background: rgba(183, 255, 79, 0.58);
+  box-shadow: 0 0 12px rgba(183, 255, 79, 0.48);
+  animation: expedition-shadow-breathe 420ms ease-in-out infinite alternate;
+}
+
+.expedition-path-preview,
+.expedition-shadow-scanner {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  min-height: 90px;
+  overflow: hidden;
+  border: 1px solid rgba(233, 223, 189, 0.14);
+  background:
+    radial-gradient(circle at var(--path-marker, var(--shadow-marker, 50%)) 50%, rgba(183, 255, 79, 0.14), transparent 24%),
+    linear-gradient(180deg, rgba(14, 25, 14, 0.92), rgba(2, 5, 3, 0.95));
+  padding: 8px;
+  box-shadow: inset 0 0 32px rgba(0, 0, 0, 0.68);
+}
+
+.expedition-path-preview::before,
+.expedition-shadow-scanner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, rgba(233, 223, 189, 0.08), transparent),
+    repeating-linear-gradient(0deg, rgba(233, 223, 189, 0.035) 0 1px, transparent 1px 9px);
+  mix-blend-mode: screen;
+}
+
+.expedition-path-preview > em,
+.expedition-shadow-scanner > em {
+  position: absolute;
+  z-index: 4;
+  top: 6px;
+  bottom: 6px;
+  left: var(--path-marker, var(--shadow-marker, 50%));
+  width: 3px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, transparent, #b7ff4f 18%, #ffd15e 50%, #b7ff4f 82%, transparent);
+  box-shadow:
+    0 0 10px rgba(183, 255, 79, 0.74),
+    0 0 24px rgba(217, 167, 67, 0.36);
+  transition: left 70ms linear;
+}
+
+.expedition-path-preview i,
+.expedition-shadow-scanner i {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(233, 223, 189, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    rgba(2, 10, 7, 0.84);
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  font-style: normal;
+  color: rgba(233, 223, 189, 0.68);
+}
+
+.expedition-path-preview i {
+  min-height: 74px;
+}
+
+.expedition-path-preview i b {
+  width: 78%;
+  height: 16px;
+  border: 1px solid rgba(233, 223, 189, 0.12);
+  background:
+    linear-gradient(90deg, rgba(217, 167, 67, 0.16), transparent 18% 82%, rgba(217, 167, 67, 0.16)),
+    linear-gradient(180deg, #151911, #060806);
+  transform: skewX(-16deg);
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.72);
+}
+
+.expedition-path-preview i span,
+.expedition-shadow-scanner i span {
+  font-size: 9px;
+  font-weight: 950;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.expedition-path-preview i.safe,
+.expedition-shadow-scanner i.safe {
+  border-color: rgba(183, 255, 79, 0.7);
+  color: #dfff9a;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(183, 255, 79, 0.28), transparent 42%),
+    rgba(16, 39, 16, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(183, 255, 79, 0.14), 0 0 18px rgba(183, 255, 79, 0.18);
+}
+
+.expedition-path-preview i.current,
+.expedition-shadow-scanner i.current {
+  border-color: rgba(255, 209, 94, 0.74);
+  transform: translateY(-1px);
+}
+
+.expedition-shadow-scanner {
+  min-height: 106px;
+}
+
+.expedition-shadow-scanner i {
+  min-height: 88px;
+}
+
+.expedition-shadow-scanner i b {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(217, 167, 67, 0.24);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255, 209, 94, 0.18), transparent 26%),
+    radial-gradient(circle, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.72));
+  color: var(--dungeon-gold);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 950;
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.42);
+}
+
+.expedition-event-actions {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 7px;
+}
+
+.expedition-event-actions .btn {
+  min-height: 39px;
+  border-radius: 2px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.expedition-rune-sequence,
+.expedition-event-choice-grid {
+  display: grid;
+  gap: 7px;
+}
+
+.expedition-rune-sequence {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.expedition-rune-sequence i {
+  display: grid;
+  min-height: 38px;
+  place-items: center;
+  border: 1px solid rgba(255, 209, 94, 0.32);
+  background: rgba(255, 209, 94, 0.1);
+  color: var(--dungeon-gold);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.expedition-rune-sequence i.done {
+  border-color: rgba(157, 206, 69, 0.7);
+  background: rgba(157, 206, 69, 0.18);
+  color: var(--dungeon-acid);
+}
+
+.expedition-rune-sequence i.preview {
+  border-color: rgba(255, 236, 151, 0.9);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255, 236, 151, 0.35), transparent 48%),
+    rgba(217, 167, 67, 0.18);
+  color: #fff2a8;
+  transform: translateY(-3px) scale(1.08);
+  box-shadow: 0 0 18px rgba(217, 167, 67, 0.34);
+}
+
+.expedition-rune-sequence i.hidden {
+  border-color: rgba(233, 223, 189, 0.12);
+  background:
+    repeating-linear-gradient(135deg, rgba(233, 223, 189, 0.04) 0 4px, transparent 4px 8px),
+    rgba(0, 0, 0, 0.28);
+  color: rgba(233, 223, 189, 0.34);
+}
+
+.expedition-memory-cue {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(233, 223, 189, 0.12);
+  background:
+    linear-gradient(90deg, rgba(157, 206, 69, 0.13), transparent 45%),
+    rgba(0, 0, 0, 0.26);
+  padding: 7px 8px;
+}
+
+.expedition-memory-cue span,
+.expedition-memory-cue strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expedition-memory-cue span {
+  color: rgba(233, 223, 189, 0.72);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.expedition-memory-cue strong {
+  color: var(--dungeon-gold);
+  font-family: var(--font-display);
+  font-size: 12px;
+  text-transform: uppercase;
+  transition: filter 180ms ease, opacity 180ms ease;
+}
+
+.expedition-memory-cue.is-hidden strong {
+  opacity: 0.55;
+  filter: blur(3px);
+}
+
+.expedition-event-choice-grid {
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+}
+
+.expedition-event-choice-grid button {
+  min-width: 0;
+  min-height: 54px;
+  border: 1px solid rgba(233, 223, 189, 0.16);
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg, rgba(22, 45, 24, 0.92), rgba(4, 12, 7, 0.96));
+  color: var(--dungeon-bone);
+  cursor: pointer;
+  font-family: var(--font-display);
+  padding: 7px 6px;
+  text-align: center;
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.expedition-event-choice-grid button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.expedition-event-choice-grid button:hover:not(:disabled),
+.expedition-event-choice-grid button:focus-visible:not(:disabled) {
+  border-color: rgba(183, 255, 79, 0.72);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(183, 255, 79, 0.18), transparent 44%),
+    linear-gradient(180deg, rgba(22, 45, 24, 0.96), rgba(4, 12, 7, 0.98));
+  box-shadow:
+    inset 0 0 0 1px rgba(183, 255, 79, 0.16),
+    0 0 18px rgba(183, 255, 79, 0.08);
+  transform: translateY(-1px);
+}
+
+.expedition-event-choice-grid button strong,
+.expedition-event-choice-grid button span {
+  display: block;
+}
+
+.expedition-event-choice-grid button strong {
+  color: var(--dungeon-gold);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.expedition-event-choice-grid button.expedition-shadow-choice > strong {
+  display: none;
+}
+
+.expedition-shadow-choice-mark {
+  display: block;
+  color: var(--dungeon-gold);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.expedition-event-choice-grid button span {
+  margin-top: 5px;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.expedition-event-choice-grid button .expedition-shadow-choice-mark {
+  margin-top: 0;
+  color: var(--dungeon-gold);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.expedition-mechanic-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.expedition-mechanic-options button {
+  min-width: 0;
+  min-height: 52px;
+  border: 1px solid rgba(233, 223, 189, 0.12);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--dungeon-bone);
+  cursor: pointer;
+  padding: 7px;
+  text-align: left;
+}
+
+.expedition-mechanic-options button.active {
+  border-color: rgba(157, 206, 69, 0.72);
+  background:
+    linear-gradient(180deg, rgba(157, 206, 69, 0.22), rgba(5, 12, 5, 0.86));
+  box-shadow: inset 0 0 0 1px rgba(157, 206, 69, 0.16);
+}
+
+.expedition-mechanic-options strong,
+.expedition-mechanic-options span {
+  display: block;
+}
+
+.expedition-mechanic-options strong {
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.expedition-mechanic-options span {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.expedition-threat-meter {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.expedition-threat-meter > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.expedition-threat-meter i {
+  display: block;
+  height: 9px;
+  overflow: hidden;
+  border: 1px solid rgba(233, 223, 189, 0.12);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.expedition-threat-meter b {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #9dce45, #d9a743, #d6523f);
 }
 
 .expedition-last-roll {
@@ -1083,6 +2636,74 @@
   margin-top: 10px;
 }
 
+.expedition-one-roll-card {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid rgba(217, 167, 67, 0.42);
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(214, 82, 63, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(217, 167, 67, 0.18), transparent 34%),
+    linear-gradient(180deg, rgba(5, 9, 5, 0.96), rgba(0, 0, 0, 0.76));
+  padding: 9px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.58),
+    0 10px 28px rgba(0, 0, 0, 0.22);
+}
+
+.expedition-one-roll-card.is-rolling {
+  animation: expedition-roll-charge 520ms ease-in-out infinite alternate;
+}
+
+.expedition-one-roll-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px;
+  gap: 8px;
+}
+
+.expedition-one-roll-main strong {
+  margin-top: 3px;
+  color: var(--dungeon-bone);
+  font-size: 16px;
+}
+
+.expedition-one-roll-main small {
+  display: block;
+  margin-top: 3px;
+}
+
+.expedition-roll-score {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-color: rgba(217, 167, 67, 0.54);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255, 224, 139, 0.18), transparent 42%),
+    linear-gradient(135deg, #2a1d0c, #070503);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  text-align: center;
+  box-shadow: 0 7px 0 rgba(0, 0, 0, 0.28);
+}
+
+.expedition-roll-score strong {
+  color: var(--dungeon-gold);
+  font-size: 21px;
+  line-height: 0.9;
+}
+
+.expedition-roll-button {
+  min-height: 48px;
+  border-radius: 2px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.28),
+    0 0 24px rgba(183, 255, 79, 0.16);
+}
+
 .expedition-action-tile {
   min-width: 0;
   border: 1px solid rgba(217, 167, 67, 0.22);
@@ -1114,6 +2735,34 @@
   color: var(--text-secondary);
   font-size: 10px;
   font-weight: 900;
+}
+
+.expedition-roll-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.expedition-roll-preview span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(233, 223, 189, 0.13);
+  background:
+    linear-gradient(90deg, rgba(217, 167, 67, 0.08), transparent 54%),
+    rgba(0, 0, 0, 0.3);
+  color: rgba(233, 223, 189, 0.78);
+  padding: 5px 6px;
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.expedition-roll-preview b {
+  flex-shrink: 0;
+  color: var(--dungeon-gold);
+  font-family: var(--font-display);
+  font-size: 10px;
 }
 
 .expedition-action-tile .btn {
@@ -1249,6 +2898,94 @@
   font-weight: 900;
 }
 
+.expedition-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px calc(env(safe-area-inset-bottom, 0px) + 12px);
+}
+
+.expedition-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.72);
+  cursor: pointer;
+}
+
+.expedition-overlay-panel {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  border: 1px solid rgba(217, 167, 67, 0.34);
+  border-radius: 4px;
+  background:
+    linear-gradient(90deg, rgba(233, 223, 189, 0.035) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(233, 223, 189, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 72% 0%, rgba(217, 167, 67, 0.16), transparent 28%),
+    linear-gradient(180deg, #12180f, #050706);
+  background-size: 14px 14px, 14px 14px, auto, auto;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.66);
+  padding: 12px;
+}
+
+.expedition-overlay-panel.wide {
+  width: min(760px, 100%);
+}
+
+.expedition-overlay-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.expedition-overlay-header h2 {
+  margin: 2px 0 0;
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.expedition-guide-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.expedition-guide-card {
+  border: 1px solid rgba(233, 223, 189, 0.13);
+  border-left: 3px solid rgba(217, 167, 67, 0.68);
+  background: rgba(0, 0, 0, 0.22);
+  padding: 9px;
+}
+
+.expedition-guide-card strong,
+.expedition-guide-card span {
+  display: block;
+}
+
+.expedition-guide-card strong {
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.expedition-guide-card span {
+  margin-top: 4px;
+  color: rgba(233, 223, 189, 0.78);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 @media (max-width: 380px) {
   .expedition-shell {
     padding-inline: 10px;
@@ -1318,14 +3055,41 @@
   }
 
   .expedition-room-art,
-  .expedition-room-art img,
+  .expedition-room-bg,
   .expedition-room-art > span {
-    min-height: 124px;
-    height: 124px;
+    min-height: min(220px, 42vh);
+    height: min(220px, 42vh);
+  }
+
+  .expedition-room-foreground.enemy {
+    width: min(62%, 210px);
+    height: min(84%, 182px);
+  }
+
+  .expedition-room-foreground.boss {
+    width: min(90%, 290px);
+    height: min(100%, 210px);
   }
 
   .expedition-room-title h3 {
     font-size: 18px;
+  }
+
+  .expedition-encounter-director,
+  .expedition-one-roll-card {
+    padding: 7px;
+  }
+
+  .expedition-encounter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .expedition-one-roll-main {
+    grid-template-columns: minmax(0, 1fr) 66px;
+  }
+
+  .expedition-roll-score strong {
+    font-size: 17px;
   }
 
   .expedition-action-tiles {
@@ -1371,8 +3135,229 @@
   }
 }
 
+@keyframes expedition-roll-charge {
+  from {
+    border-color: rgba(217, 167, 67, 0.28);
+    transform: translateY(0);
+  }
+  to {
+    border-color: rgba(157, 206, 69, 0.72);
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes expedition-enemy-idle {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-4px) scale(1.025);
+  }
+}
+
+@keyframes expedition-boss-idle {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-3px) scale(1.015);
+  }
+}
+
+@keyframes expedition-safe-path {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes expedition-event-result-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  24% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes expedition-trap-blade-spin {
+  from {
+    transform: translate(-50%, -50%) rotate(45deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(405deg);
+  }
+}
+
+@keyframes expedition-focus-pulse {
+  from {
+    box-shadow:
+      inset 0 0 0 8px rgba(0, 0, 0, 0.64),
+      inset 0 0 28px rgba(255, 209, 94, 0.12),
+      0 0 24px rgba(183, 255, 79, 0.14);
+  }
+  to {
+    box-shadow:
+      inset 0 0 0 8px rgba(0, 0, 0, 0.64),
+      inset 0 0 36px rgba(255, 209, 94, 0.2),
+      0 0 42px rgba(183, 255, 79, 0.34);
+  }
+}
+
+@keyframes expedition-route-flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+@keyframes expedition-scout-ping {
+  from {
+    opacity: 0.8;
+    transform: scale(0.45);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes expedition-shadow-drift {
+  from {
+    margin-left: -7px;
+    margin-top: 5px;
+    opacity: 0.55;
+  }
+  55% {
+    opacity: 0.92;
+  }
+  to {
+    margin-left: 8px;
+    margin-top: -7px;
+    opacity: 0.7;
+  }
+}
+
+@keyframes expedition-shadow-breathe {
+  from {
+    transform: translateX(-50%) scaleX(0.65);
+    opacity: 0.45;
+  }
+  to {
+    transform: translateX(-50%) scaleX(1.2);
+    opacity: 1;
+  }
+}
+
+@keyframes expedition-impact-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.72) rotate(-4deg);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.18) rotate(2deg);
+  }
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -58%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -72%) scale(0.88);
+  }
+}
+
+@keyframes expedition-enemy-hit {
+  0% {
+    filter:
+      drop-shadow(0 16px 20px rgba(0, 0, 0, 0.85))
+      drop-shadow(0 0 22px rgba(157, 206, 69, 0.22));
+    transform: translateX(-50%) scale(1);
+  }
+  18% {
+    filter:
+      brightness(1.9)
+      drop-shadow(0 16px 20px rgba(0, 0, 0, 0.85))
+      drop-shadow(0 0 28px rgba(255, 209, 94, 0.52));
+    transform: translateX(calc(-50% + 8px)) scale(1.04);
+  }
+  42% {
+    transform: translateX(calc(-50% - 6px)) scale(0.98);
+  }
+  100% {
+    filter:
+      drop-shadow(0 16px 20px rgba(0, 0, 0, 0.85))
+      drop-shadow(0 0 22px rgba(157, 206, 69, 0.22));
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+@keyframes expedition-room-flash {
+  0%,
+  100% {
+    filter: saturate(0.95) contrast(1.1) brightness(0.72);
+  }
+  22% {
+    filter: saturate(1.35) contrast(1.25) brightness(1.14);
+  }
+}
+
+@keyframes expedition-hero-camera-hit {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  18% {
+    transform: translateX(-4px);
+  }
+  36% {
+    transform: translateX(4px);
+  }
+  54% {
+    transform: translateX(-2px);
+  }
+}
+
+@keyframes expedition-hero-hurt {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px) scale(0.92);
+  }
+  20% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(0) scale(0.94);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .expedition-last-roll {
+  .expedition-last-roll,
+  .expedition-one-roll-card.is-rolling,
+  .expedition-room-foreground,
+  .expedition-stage-impact,
+  .expedition-hero-hurt,
+  .expedition-event-result,
+  .expedition-trap-challenge.active .expedition-trap-blade b,
+  .expedition-focus-challenge.charging .expedition-focus-orb {
     animation: none;
   }
 }

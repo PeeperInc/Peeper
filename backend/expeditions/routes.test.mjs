@@ -359,9 +359,11 @@ test('serializer returns stable camelCase state and redacts hidden/private field
     'artifactInventory',
     'pendingRewards',
     'pendingRewardCount',
+    'currentMinigameAttempt',
     'catalog',
     'permissions',
   ]);
+  assert.equal(state.currentMinigameAttempt, null);
   assert.equal(state.expedition.seed, undefined);
   assert.deepEqual(state.map.edges, [{ from: 'camp_0', to: 'vault_1' }]);
   assert.equal(state.map.rooms.find(room => room.key === 'camp_0').actions.length, 1);
@@ -382,6 +384,17 @@ test('serializer returns stable camelCase state and redacts hidden/private field
   assert.deepEqual(state.artifactInventory, [
     { artifactId: 'bent_sword', quantity: 1, charges: 0 },
   ]);
+  assert.equal(state.catalog.artifacts.length, 24);
+  assert.deepEqual(
+    state.catalog.artifacts.find(artifact => artifact.id === 'old_torch'),
+    {
+      id: 'old_torch',
+      name: 'Old Torch',
+      rarity: 'common',
+      useType: 'expedition_passive',
+      displayEffect: '+10% minigame limits and timing windows',
+    },
+  );
   assert.deepEqual(state.pendingRewards, [
     {
       id: 91,
@@ -985,6 +998,16 @@ test('persisted mini-game routes spend AP at start, isolate tokens, and retire t
     'startedAt',
   ]);
   assert.equal(attemptStart.body.member.ap, 4);
+  assert.deepEqual(attemptStart.body.currentMinigameAttempt, {
+    roomKey: eventRow.roomKey,
+    attempt: attemptStart.body.attempt,
+  });
+
+  const resumedCurrent = await request('GET', '/current', 'tg-owner');
+  assert.equal(resumedCurrent.status, 200);
+  assert.deepEqual(resumedCurrent.body.currentMinigameAttempt, attemptStart.body.currentMinigameAttempt);
+  const siblingCurrent = await request('GET', '/current', 'tg-sibling');
+  assert.equal(siblingCurrent.body.currentMinigameAttempt, null);
 
   const immediateStartReplay = await request(
     'POST',
@@ -1559,47 +1582,14 @@ test('Scout role ability chooses once per source room and AP spending recharges 
   assert.equal(attempted.body.member.roleChargeProgress, 0);
 });
 
-test('POST claim-boss-reward enforces contribution threshold and claims once', async () => {
-  const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-low']);
-  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-claim-route' });
-  const expeditionId = started.body.expedition.id;
-  await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
-    idempotencyKey: 'prepare-claim-owner',
-    role: 'scout',
+test('legacy boss chest endpoint is retired in favor of pending expedition rewards', async () => {
+  createFamilyWithMembers(['tg-owner']);
+  const response = await request('POST', '/1/claim-boss-reward', 'tg-owner', {
+    idempotencyKey: 'legacy-boss-chest',
   });
-  await request('POST', `/${expeditionId}/prepare`, 'tg-low', {
-    idempotencyKey: 'prepare-claim-low',
-    role: 'scout',
-  });
-  db.prepare("UPDATE family_expeditions SET status = 'boss_defeated', boss_defeated_at = 2000 WHERE id = ?").run(expeditionId);
-  db.prepare('UPDATE family_expedition_members SET contribution_ap = 3 WHERE expedition_id = ? AND user_id = ?').run(expeditionId, userIds[0]);
-  db.prepare('UPDATE family_expedition_members SET contribution_ap = 2 WHERE expedition_id = ? AND user_id = ?').run(expeditionId, userIds[1]);
 
-  const rejected = await request('POST', `/${expeditionId}/claim-boss-reward`, 'tg-low', {
-    idempotencyKey: 'claim-low-route',
-  });
-  assert.equal(rejected.status, 400);
-  assert.match(rejected.body.error, /3 AP/);
-
-  const originalRandomInt = crypto.randomInt;
-  crypto.randomInt = () => 999_999;
-  try {
-    const claimed = await request('POST', `/${expeditionId}/claim-boss-reward`, 'tg-owner', {
-      idempotencyKey: 'claim-owner-route',
-    });
-    assert.equal(claimed.status, 200);
-    assert.ok(claimed.body.member.bossRewardClaimedAt);
-    assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').get(userIds[0]).coins, 570);
-    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = ?').get(userIds[0]).count, 1);
-
-    const replay = await request('POST', `/${expeditionId}/claim-boss-reward`, 'tg-owner', {
-      idempotencyKey: 'claim-owner-route',
-    });
-    assert.equal(replay.status, 200);
-    assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').get(userIds[0]).coins, 570);
-  } finally {
-    crypto.randomInt = originalRandomInt;
-  }
+  assert.equal(response.status, 410);
+  assert.match(response.body.error, /claim rewards/i);
 });
 
 test('finishing creates pending rewards and a new expedition keeps them visible', async () => {

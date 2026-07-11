@@ -18,7 +18,6 @@ const {
   useRoleAbility,
   useArtifactForMember,
   equipFoundArtifactForMember,
-  claimBossReward,
   finishExpedition,
   regenerateAp,
 } = require('../expeditions/engine');
@@ -32,6 +31,7 @@ const { listActiveRoomEffects } = require('../expeditions/roleEffects');
 const {
   isReservedIdempotencyKey,
   normalizeIdempotencyKey,
+  readUserOpenAttempt,
 } = require('../expeditions/minigameAttempts');
 const {
   claimPendingReward,
@@ -248,6 +248,12 @@ function existingIdempotentAction(userId, idempotencyKey) {
 
 function serializeFor(user, family, snapshot, canStart = false) {
   const memberEvents = listPendingMemberEvents(db, { userId: user.id });
+  const openAttempt = snapshot?.expedition
+    ? readUserOpenAttempt(db, { expeditionId: snapshot.expedition.id, userId: user.id })
+    : null;
+  const attemptRoom = openAttempt
+    ? snapshot.rooms.find(room => room.id === openAttempt.roomId)
+    : null;
   return serializeExpeditionState({
     userId: user.id,
     snapshot,
@@ -256,6 +262,9 @@ function serializeFor(user, family, snapshot, canStart = false) {
     artifactInventory: getArtifactInventory(user.id),
     farmInventory: getFarmInventory(user.id),
     pendingRewards: listPendingRewards(db, { userId: user.id }),
+    currentMinigameAttempt: openAttempt && attemptRoom
+      ? { roomKey: attemptRoom.key, attempt: openAttempt.attempt }
+      : null,
     canStart,
   });
 }
@@ -739,23 +748,7 @@ router.post('/:id/equip-found-artifact', (req, res) => {
 });
 
 router.post('/:id/claim-boss-reward', (req, res) => {
-  const idempotencyKey = requireIdempotencyKey(req, res);
-  if (!idempotencyKey) return;
-  const access = requireExpeditionAccess(req, res);
-  if (!access) return;
-
-  try {
-    const snapshot = db.transaction(() => claimBossReward({
-      transaction: db,
-      idempotencyKey,
-      expeditionId: access.expeditionId,
-      userId: req.currentUser.id,
-      rng: secureRng,
-    }))();
-    return res.json(serializeFor(req.currentUser, access.family, snapshot, false));
-  } catch (error) {
-    return handleRouteError(res, error);
-  }
+  return res.status(410).json({ error: 'Boss chest retired. Use Claim Rewards after the expedition.' });
 });
 
 router.post('/:id/finish', (req, res) => {

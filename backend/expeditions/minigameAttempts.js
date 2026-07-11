@@ -275,6 +275,16 @@ function readOpenAttempt(transaction, { expeditionId, roomId, userId }) {
   return row ? publicAttempt(row) : null;
 }
 
+function readUserOpenAttempt(transaction, { expeditionId, userId }) {
+  const row = transaction.prepare(`
+    SELECT * FROM family_expedition_minigame_attempts
+    WHERE expedition_id = ? AND user_id = ?
+      AND status IN ('ready', 'active', 'retry')
+    ORDER BY id DESC LIMIT 1
+  `).get(expeditionId, userId);
+  return row ? { roomId: row.room_id, attempt: publicAttempt(row) } : null;
+}
+
 function startAttempt(transaction, options) {
   const {
     expeditionId,
@@ -634,6 +644,7 @@ module.exports = {
   normalizeIdempotencyKey,
   readIdempotencyRecord,
   readOpenAttempt,
+  readUserOpenAttempt,
   readFinishReplay,
   readStartReplay,
   startAttempt,

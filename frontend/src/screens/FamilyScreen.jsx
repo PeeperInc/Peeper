@@ -947,7 +947,7 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
       )}
 
       {activeTab === 'expedition' && (
-        <FamilyExpeditionTab onExpeditionChange={load} />
+        <FamilyExpeditionTab onExpeditionChange={load} onClose={() => setActiveTab('members')} />
       )}
 
       {activeTab === 'chat' && (

@@ -1,0 +1,1093 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Expedition Mini-game Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #06120c;
+      --panel: rgba(4, 24, 16, 0.9);
+      --panel-2: rgba(8, 38, 25, 0.92);
+      --line: rgba(188, 255, 113, 0.22);
+      --line-hot: rgba(188, 255, 113, 0.7);
+      --text: #f2ffe6;
+      --muted: #a6b89b;
+      --lime: #a8ff3e;
+      --gold: #ffd064;
+      --bad: #ff6677;
+      --good: #54ff9f;
+      --shadow: #020604;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 18% 8%, rgba(168, 255, 62, 0.12), transparent 28%),
+        radial-gradient(circle at 88% 18%, rgba(255, 208, 100, 0.08), transparent 26%),
+        linear-gradient(180deg, #081b11 0%, #030907 100%);
+      color: var(--text);
+      font-family: "Trebuchet MS", Verdana, sans-serif;
+      padding: 18px;
+    }
+
+    .app {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .hero,
+    .lab,
+    .game-card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .hero {
+      padding: 16px;
+      display: grid;
+      gap: 8px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(26px, 5vw, 44px);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      text-transform: uppercase;
+    }
+
+    .hero p,
+    .caption {
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    button {
+      border: 1px solid rgba(188, 255, 113, 0.28);
+      background: rgba(9, 38, 25, 0.95);
+      color: var(--text);
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+      min-height: 44px;
+      padding: 10px 12px;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    button:hover {
+      border-color: var(--line-hot);
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+      transform: none;
+    }
+
+    .tab.active,
+    .primary {
+      color: #051008;
+      background: linear-gradient(180deg, #ccff5e, #67cf3e);
+      border-color: rgba(255, 255, 255, 0.35);
+    }
+
+    .lab {
+      padding: 14px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .game-card {
+      min-height: 430px;
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .game-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(188, 255, 113, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(188, 255, 113, 0.045) 1px, transparent 1px);
+      background-size: 22px 22px;
+      opacity: 0.8;
+    }
+
+    .game-card > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .label {
+      color: var(--lime);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .score {
+      min-width: 96px;
+      text-align: right;
+      color: var(--gold);
+      font-size: 28px;
+      font-weight: 900;
+      text-shadow: 0 2px 0 #000;
+    }
+
+    .stage {
+      min-height: 220px;
+      border: 1px solid rgba(188, 255, 113, 0.18);
+      background:
+        radial-gradient(circle at 50% 30%, rgba(168, 255, 62, 0.12), transparent 28%),
+        rgba(0, 0, 0, 0.26);
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .meter {
+      width: min(620px, 100%);
+      height: 54px;
+      border: 1px solid rgba(188, 255, 113, 0.26);
+      background: #071009;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .meter::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 42%;
+      width: 16%;
+      background: linear-gradient(90deg, rgba(255, 208, 100, 0.08), rgba(255, 208, 100, 0.38), rgba(255, 208, 100, 0.08));
+      border-left: 1px solid rgba(255, 208, 100, 0.6);
+      border-right: 1px solid rgba(255, 208, 100, 0.6);
+    }
+
+    .marker {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 8px;
+      background: var(--lime);
+      box-shadow: 0 0 18px rgba(168, 255, 62, 0.8);
+      transform: translateX(-50%);
+    }
+
+    .runes,
+    .choice-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      width: min(560px, 100%);
+    }
+
+    .rune,
+    .choice {
+      min-height: 76px;
+      border: 1px solid rgba(188, 255, 113, 0.22);
+      background: rgba(3, 18, 12, 0.92);
+      display: grid;
+      place-items: center;
+      gap: 4px;
+      text-align: center;
+      font-weight: 900;
+    }
+
+    .rune {
+      font-size: 28px;
+      text-shadow: 0 2px 0 #000;
+    }
+
+    .rune.flash,
+    .choice.preview {
+      border-color: var(--gold);
+      background: rgba(255, 208, 100, 0.18);
+      box-shadow: inset 0 0 24px rgba(255, 208, 100, 0.22), 0 0 20px rgba(255, 208, 100, 0.18);
+    }
+
+    .rune.pick,
+    .choice.pick {
+      border-color: var(--lime);
+      box-shadow: inset 0 0 18px rgba(168, 255, 62, 0.18);
+    }
+
+    .path-stage {
+      width: min(560px, 100%);
+      display: grid;
+      gap: 8px;
+    }
+
+    .path-row {
+      position: relative;
+      height: 46px;
+      border: 1px solid rgba(188, 255, 113, 0.18);
+      background: rgba(0, 0, 0, 0.25);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-weight: 900;
+      color: var(--muted);
+    }
+
+    .path-row.safe {
+      color: var(--good);
+      border-color: rgba(84, 255, 159, 0.65);
+      background: rgba(84, 255, 159, 0.08);
+    }
+
+    .scanner {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 12px;
+      background: linear-gradient(90deg, transparent, rgba(168, 255, 62, 0.95), transparent);
+      box-shadow: 0 0 18px rgba(168, 255, 62, 0.8);
+      transform: translateX(-50%);
+    }
+
+    .scout-run {
+      --scout-x: 50%;
+      --scout-y: 88%;
+      position: relative;
+      width: min(560px, 100%);
+      height: 250px;
+      overflow: hidden;
+      border: 1px solid rgba(188, 255, 113, 0.2);
+      background:
+        radial-gradient(circle at var(--scout-x) var(--scout-y), rgba(168, 255, 62, 0.2), transparent 16%),
+        radial-gradient(circle at 50% 0%, rgba(255, 208, 100, 0.1), transparent 32%),
+        linear-gradient(180deg, #132213, #020503);
+      box-shadow: inset 0 0 52px rgba(0, 0, 0, 0.72);
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    .scout-run svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .scout-route-glow {
+      fill: none;
+      stroke: rgba(168, 255, 62, 0.24);
+      stroke-linecap: round;
+      stroke-width: 24;
+    }
+
+    .scout-route-core {
+      fill: none;
+      stroke: rgba(168, 255, 62, 0.9);
+      stroke-dasharray: 2 4;
+      stroke-linecap: round;
+      stroke-width: 4;
+      animation: routeFlow 820ms linear infinite;
+    }
+
+    .snag circle {
+      fill: rgba(77, 32, 20, 0.88);
+      stroke: rgba(255, 208, 100, 0.36);
+      stroke-width: 1;
+    }
+
+    .snag path {
+      stroke: rgba(255, 102, 119, 0.72);
+      stroke-linecap: round;
+      stroke-width: 1.2;
+    }
+
+    .scout-light {
+      position: absolute;
+      left: var(--scout-x);
+      top: var(--scout-y);
+      width: 30px;
+      height: 30px;
+      transform: translate(-50%, -50%) rotate(45deg);
+      border: 1px solid rgba(255, 246, 165, 0.9);
+      background: radial-gradient(circle at 48% 45%, #fff6a5 0 18%, #a8ff3e 19% 48%, rgba(168, 255, 62, 0.18) 49% 70%, transparent 71%);
+      box-shadow: 0 0 22px rgba(168, 255, 62, 0.72), 0 0 52px rgba(168, 255, 62, 0.24);
+    }
+
+    .scout-gate-row {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: var(--gate-y);
+      height: 28px;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .scout-gate-row i {
+      position: absolute;
+      top: 9px;
+      height: 10px;
+      border: 1px solid rgba(117, 54, 30, 0.9);
+      background:
+        repeating-linear-gradient(90deg, rgba(255, 208, 100, 0.12) 0 5px, transparent 5px 12px),
+        linear-gradient(180deg, #532718, #160907);
+      box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.75), 0 0 12px rgba(255, 102, 119, 0.14);
+    }
+
+    .scout-gate-row .left-root {
+      left: 0;
+      right: calc(var(--gap-right) + var(--gap-width));
+    }
+
+    .scout-gate-row .right-root {
+      left: calc(var(--gap-left) + var(--gap-width));
+      right: 0;
+    }
+
+    .scout-gate-row b {
+      position: absolute;
+      top: 3px;
+      bottom: 3px;
+      left: var(--gap-left);
+      width: var(--gap-width);
+      border: 1px solid rgba(168, 255, 62, 0.42);
+      background: radial-gradient(circle at 50% 50%, rgba(168, 255, 62, 0.3), transparent 64%), rgba(168, 255, 62, 0.06);
+      box-shadow: 0 0 18px rgba(168, 255, 62, 0.2);
+    }
+
+    .scout-lane {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: var(--lane-y);
+      height: 26px;
+      transform: translateY(-50%);
+      border-block: 1px solid rgba(255, 255, 255, 0.08);
+      background: linear-gradient(90deg, rgba(255, 102, 119, 0.08), transparent 18% 82%, rgba(255, 102, 119, 0.08)), rgba(0, 0, 0, 0.22);
+      pointer-events: none;
+    }
+
+    .scout-lane b {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: rgba(242, 255, 230, 0.17);
+      font-size: 10px;
+      letter-spacing: 0.35em;
+    }
+
+    .scout-car {
+      position: absolute;
+      left: var(--car-x);
+      top: var(--car-y);
+      width: var(--car-width);
+      height: 18px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      transition: left 50ms linear, top 50ms linear;
+    }
+
+    .scout-car i {
+      position: absolute;
+      inset: 0;
+      border: 1px solid rgba(117, 54, 30, 0.95);
+      background:
+        radial-gradient(circle at 20% 50%, rgba(255, 208, 100, 0.2), transparent 22%),
+        repeating-linear-gradient(90deg, rgba(255, 208, 100, 0.12) 0 5px, transparent 5px 12px),
+        linear-gradient(180deg, #62301d, #160807);
+      box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.76), 0 0 14px rgba(255, 102, 119, 0.2);
+    }
+
+    .focus-ring {
+      width: min(250px, 72vw);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 14px solid rgba(188, 255, 113, 0.16);
+      display: grid;
+      place-items: center;
+      position: relative;
+      background:
+        repeating-conic-gradient(from 0deg, rgba(255, 208, 100, 0.12) 0deg 6deg, transparent 6deg 18deg),
+        radial-gradient(circle, rgba(168, 255, 62, 0.16), transparent 68%);
+      box-shadow: 0 0 44px rgba(168, 255, 62, 0.16), inset 0 0 34px rgba(0, 0, 0, 0.55);
+    }
+
+    .focus-fill {
+      position: absolute;
+      inset: 18px;
+      border-radius: 50%;
+      background: conic-gradient(var(--lime) var(--charge-pct, 0%), rgba(255, 255, 255, 0.06) 0);
+      mask: radial-gradient(circle, transparent 52%, #000 53%);
+    }
+
+    .focus-number {
+      font-size: 42px;
+      font-weight: 900;
+      color: var(--gold);
+      text-shadow: 0 3px 0 #000;
+    }
+
+    .focus-target {
+      position: absolute;
+      right: -6px;
+      top: -8px;
+      min-width: 74px;
+      border: 1px solid rgba(255, 208, 100, 0.54);
+      background: rgba(0, 0, 0, 0.58);
+      color: var(--gold);
+      font-size: 13px;
+      font-weight: 900;
+      padding: 6px 8px;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .focus-target-band {
+      display: none;
+    }
+
+    .shadow-hunt {
+      position: relative;
+      width: min(560px, 100%);
+      height: 250px;
+      overflow: hidden;
+      border: 1px solid rgba(188, 255, 113, 0.2);
+      background:
+        radial-gradient(circle at 50% 35%, rgba(168, 255, 62, 0.12), transparent 24%),
+        radial-gradient(circle at 18% 82%, rgba(87, 35, 135, 0.18), transparent 28%),
+        linear-gradient(180deg, #091010, #000);
+      box-shadow: inset 0 0 58px rgba(0, 0, 0, 0.82);
+    }
+
+    .shadow-hunt::before,
+    .scout-run::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 10px);
+      mix-blend-mode: screen;
+    }
+
+    .shadow-target {
+      position: absolute;
+      left: var(--x);
+      top: var(--y);
+      width: 44px;
+      height: 58px;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      transform: translate(-50%, -50%);
+      transition: left 48ms linear, top 48ms linear, opacity 150ms ease, filter 150ms ease;
+    }
+
+    .shadow-target:hover,
+    .shadow-target:focus-visible {
+      transform: translate(-50%, -50%);
+    }
+
+    .shadow-target:disabled {
+      cursor: default;
+    }
+
+    .shadow-target::before {
+      content: "";
+      position: absolute;
+      inset: 8px 6px 0;
+      background: linear-gradient(180deg, rgba(10, 16, 16, 0.98), rgba(0, 0, 0, 0.98));
+      clip-path: polygon(50% 0, 72% 16%, 84% 52%, 100% 100%, 0 100%, 16% 52%, 28% 16%);
+    }
+
+    .shadow-target::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 18px;
+      width: 20px;
+      height: 6px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: rgba(168, 255, 62, 0.08);
+    }
+
+    .shadow-hunt.watch .shadow-target.real {
+      filter: drop-shadow(0 0 6px rgba(168, 255, 62, 0.48)) drop-shadow(0 0 16px rgba(168, 255, 62, 0.2));
+    }
+
+    .shadow-hunt.watch .shadow-target.real::after {
+      background: rgba(168, 255, 62, 0.58);
+      box-shadow: 0 0 12px rgba(168, 255, 62, 0.48);
+      animation: breathe 420ms ease-in-out infinite alternate;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .result {
+      min-height: 46px;
+      border: 1px solid rgba(188, 255, 113, 0.16);
+      background: rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .result.good {
+      color: var(--good);
+      border-color: rgba(84, 255, 159, 0.5);
+    }
+
+    .result.bad {
+      color: var(--bad);
+      border-color: rgba(255, 102, 119, 0.5);
+    }
+
+    @keyframes routeFlow {
+      to { stroke-dashoffset: -12; }
+    }
+
+    @keyframes shadowDrift {
+      from { margin-left: -7px; margin-top: 5px; opacity: 0.58; }
+      55% { opacity: 0.95; }
+      to { margin-left: 8px; margin-top: -7px; opacity: 0.72; }
+    }
+
+    @keyframes breathe {
+      from { transform: translateX(-50%) scaleX(0.65); opacity: 0.45; }
+      to { transform: translateX(-50%) scaleX(1.2); opacity: 1; }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 10px;
+      }
+
+      .tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .game-card {
+        min-height: 520px;
+        padding: 12px;
+      }
+
+      .header {
+        display: grid;
+      }
+
+      .score {
+        text-align: left;
+      }
+
+      .runes,
+      .choice-grid {
+        gap: 6px;
+      }
+
+      .rune,
+      .choice {
+        min-height: 62px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <div class="label">Expedition sandbox</div>
+      <h1>Mini-game Lab</h1>
+      <p>Standalone test page. It does not call the backend, spend AP, or change expedition progress.</p>
+    </section>
+
+    <section class="lab">
+      <nav class="tabs" id="tabs"></nav>
+      <section class="game-card" id="game"></section>
+    </section>
+  </main>
+
+  <script>
+    const games = [
+      { id: 'timing_window', short: 'Trap', title: 'Timing Window', subtitle: 'Stop the marker inside the gold window.' },
+      { id: 'rune_sequence', short: 'Runes', title: 'Rune Sequence', subtitle: 'Watch three runes, then repeat the order.' },
+      { id: 'path_pick', short: 'Roots', title: 'Root Crossing', subtitle: 'Move one lane at a time and dodge the living roots.' },
+      { id: 'focus_hold', short: 'Focus', title: 'Focus Rite', subtitle: 'Release close to the changing target.' },
+      { id: 'shadow_match', short: 'Shade', title: 'Shade Hunt', subtitle: 'Track one marked pair of eyes among six moving shades.' },
+    ];
+
+    const runes = ['#', 'X', 'O', 'A', 'M', 'V', 'K', 'Z', 'R'];
+    let current = games[0].id;
+    let timer = null;
+    let auxTimer = null;
+    let state = {};
+
+    const tabs = document.getElementById('tabs');
+    const game = document.getElementById('game');
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function clearTimer() {
+      if (timer) window.clearInterval(timer);
+      if (timer) window.clearTimeout(timer);
+      if (auxTimer) window.clearInterval(auxTimer);
+      if (auxTimer) window.clearTimeout(auxTimer);
+      timer = null;
+      auxTimer = null;
+    }
+
+    function setResult(text, kind = '') {
+      const node = document.getElementById('result');
+      if (!node) return;
+      node.className = `result ${kind}`;
+      node.textContent = text;
+    }
+
+    function setScore(score) {
+      const node = document.getElementById('score');
+      if (node) node.textContent = `${score}/100`;
+    }
+
+    function baseHeader(meta) {
+      return `
+        <div class="header">
+          <div>
+            <div class="label">${meta.id}</div>
+            <h2>${meta.title}</h2>
+            <p class="caption">${meta.subtitle}</p>
+          </div>
+          <div class="score" id="score">--/100</div>
+        </div>
+      `;
+    }
+
+    function renderTabs() {
+      tabs.innerHTML = games.map(item => `
+        <button class="tab ${item.id === current ? 'active' : ''}" data-tab="${item.id}">
+          ${item.short}
+        </button>
+      `).join('');
+    }
+
+    tabs.addEventListener('click', event => {
+      const button = event.target.closest('[data-tab]');
+      if (!button) return;
+      current = button.dataset.tab;
+      render();
+    });
+
+    function render() {
+      clearTimer();
+      state = {};
+      renderTabs();
+      const meta = games.find(item => item.id === current);
+      if (current === 'timing_window') return renderTiming(meta);
+      if (current === 'rune_sequence') return renderRunes(meta);
+      if (current === 'path_pick') return renderPath(meta);
+      if (current === 'focus_hold') return renderFocus(meta);
+      return renderShadow(meta);
+    }
+
+    function renderTiming(meta) {
+      state = { pos: 6, dir: 1, running: false };
+      game.innerHTML = `
+        ${baseHeader(meta)}
+        <div class="stage">
+          <div class="meter"><div class="marker" id="marker" style="left:6%"></div></div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="start">Start</button>
+          <button id="stop" disabled>Stop</button>
+        </div>
+        <div class="result" id="result">Press Start, then Stop inside the gold window.</div>
+      `;
+      document.getElementById('start').onclick = () => {
+        state.running = true;
+        document.getElementById('start').disabled = true;
+        document.getElementById('stop').disabled = false;
+        timer = window.setInterval(() => {
+          state.pos += state.dir * 3.8;
+          if (state.pos >= 96 || state.pos <= 4) state.dir *= -1;
+          document.getElementById('marker').style.left = `${state.pos}%`;
+        }, 42);
+      };
+      document.getElementById('stop').onclick = () => {
+        clearTimer();
+        const distance = Math.abs(state.pos - 50);
+        const score = clamp(Math.round(100 - distance * 3.2), 0, 100);
+        setScore(score);
+        setResult(score >= 75 ? 'Clean hit. This would give strong progress.' : 'Bad timing. Try again.', score >= 75 ? 'good' : 'bad');
+        document.getElementById('start').disabled = false;
+        document.getElementById('stop').disabled = true;
+      };
+    }
+
+    function renderRunes(meta) {
+      state = { sequence: [], input: [], showing: false, ready: false };
+      game.innerHTML = `
+        ${baseHeader(meta)}
+        <div class="stage">
+          <div class="runes" id="runes">
+            ${runes.map((rune, index) => `<button class="rune" data-rune="${index}" disabled>${rune}</button>`).join('')}
+          </div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="start">Start sequence</button>
+          <button id="reset">New attempt</button>
+        </div>
+        <div class="result" id="result">Start flashes three random runes. Then tap them in order.</div>
+      `;
+      document.getElementById('start').onclick = startRuneSequence;
+      document.getElementById('reset').onclick = () => renderRunes(meta);
+      document.getElementById('runes').onclick = event => {
+        const button = event.target.closest('[data-rune]');
+        if (!button || !state.ready) return;
+        const picked = Number(button.dataset.rune);
+        state.input.push(picked);
+        button.classList.add('pick');
+        const expected = state.sequence[state.input.length - 1];
+        if (picked !== expected) {
+          state.ready = false;
+          setScore(0);
+          setResult('Wrong rune. No progress.', 'bad');
+          document.querySelectorAll('.rune').forEach(node => { node.disabled = true; });
+          return;
+        }
+        if (state.input.length === state.sequence.length) {
+          state.ready = false;
+          setScore(96);
+          setResult('Correct sequence. Strong progress.', 'good');
+          document.querySelectorAll('.rune').forEach(node => { node.disabled = true; });
+        }
+      };
+    }
+
+    function startRuneSequence() {
+      const start = document.getElementById('start');
+      start.disabled = true;
+      state.sequence = [];
+      while (state.sequence.length < 3) {
+        const next = Math.floor(Math.random() * runes.length);
+        if (!state.sequence.includes(next)) state.sequence.push(next);
+      }
+      state.input = [];
+      setResult('Watch...');
+      let step = 0;
+      const nodes = [...document.querySelectorAll('.rune')];
+      timer = window.setInterval(() => {
+        nodes.forEach(node => node.classList.remove('flash', 'pick'));
+        if (step >= state.sequence.length) {
+          clearTimer();
+          state.ready = true;
+          setResult('Your turn. Tap the three runes in order.');
+          nodes.forEach(node => { node.disabled = false; });
+          return;
+        }
+        nodes[state.sequence[step]].classList.add('flash');
+        step += 1;
+      }, 720);
+    }
+
+    function renderPath(meta) {
+      const laneYs = [74, 60, 46, 32, 18];
+      const obstacles = laneYs.flatMap((y, laneIndex) => {
+        const direction = laneIndex % 2 === 0 ? -1 : 1;
+        const speed = direction * (0.58 + laneIndex * 0.07);
+        return [0, 1].map(carIndex => ({
+          id: `lane-${laneIndex}-root-${carIndex}`,
+          y,
+          x: (laneIndex * 19 + carIndex * 47 + Math.floor(Math.random() * 12)) % 100,
+          width: 16 + ((laneIndex + carIndex * 3) % 8),
+          speed,
+        }));
+      });
+      const rowYs = [90, 74, 60, 46, 32, 18, 6];
+      state = { x: 50, y: rowYs[0], row: 0, score: 0, running: false, moving: false, obstacles, startedAt: 0 };
+      game.innerHTML = `
+        ${baseHeader(meta)}
+        <div class="stage">
+          <div class="scout-run" id="scout" style="--scout-x:${state.x}%; --scout-y:${state.y}%">
+            ${laneYs.map((laneY, index) => `
+              <span class="scout-lane" style="--lane-y:${laneY}%">
+                <b>${index % 2 === 0 ? '<<<' : '>>>'}</b>
+              </span>
+            `).join('')}
+            ${state.obstacles.map(obstacle => `
+              <span class="scout-car" id="${obstacle.id}" style="--car-x:${obstacle.x}%; --car-y:${obstacle.y}%; --car-width:${obstacle.width}%">
+                <i></i>
+              </span>
+            `).join('')}
+            <i class="scout-light"></i>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="start">UP</button>
+          <button id="cash" disabled>DOWN</button>
+          <button id="new">New route</button>
+        </div>
+        <div class="result" id="result">First UP starts the run. Reach the crypt gate before 15 seconds.</div>
+      `;
+      const scout = document.getElementById('scout');
+      const finish = (score, message, kind) => {
+        clearTimer();
+        state.running = false;
+        document.getElementById('cash').disabled = true;
+        document.getElementById('start').disabled = true;
+        setScore(score);
+        setResult(message, kind);
+      };
+      const updateHero = () => {
+        state.y = rowYs[state.row];
+        scout.style.setProperty('--scout-y', `${state.y}%`);
+      };
+      const begin = () => {
+        if (state.running) return;
+        state.running = true;
+        state.startedAt = Date.now();
+        document.getElementById('cash').disabled = false;
+        setResult('Run active. Time each lane before pressing UP.');
+        timer = window.setInterval(() => {
+          state.obstacles = state.obstacles.map(obstacle => {
+            let x = obstacle.x + obstacle.speed;
+            if (x < -18) x = 118;
+            if (x > 118) x = -18;
+            return { ...obstacle, x };
+          });
+          const collided = state.obstacles.some(obstacle => (
+            Math.abs(state.y - obstacle.y) < 5.8
+            && Math.abs(state.x - obstacle.x) < (obstacle.width / 2 + 4.5)
+          ));
+          if (collided) return finish(Math.round(state.row / 6 * 100), 'A living root caught you. Start over.', 'bad');
+          if (Date.now() - state.startedAt >= 15000) return finish(Math.round(state.row / 6 * 100), 'Too slow. The passage closed.', 'bad');
+          state.obstacles.forEach(obstacle => {
+            document.getElementById(obstacle.id)?.style.setProperty('--car-x', `${obstacle.x}%`);
+          });
+          setScore(Math.round(state.row / 6 * 100));
+        }, 50);
+      };
+      document.getElementById('start').onclick = () => {
+        if (state.moving) return;
+        begin();
+        if (!state.running) return;
+        state.moving = true;
+        window.setTimeout(() => { state.moving = false; }, 260);
+        state.row = Math.min(6, state.row + 1);
+        updateHero();
+        if (state.row === 6) finish(100, 'Crypt gate reached.', 'good');
+      };
+      document.getElementById('new').onclick = () => renderPath(meta);
+      document.getElementById('cash').onclick = () => {
+        if (!state.running || state.moving) return;
+        state.moving = true;
+        window.setTimeout(() => { state.moving = false; }, 260);
+        state.row = Math.max(0, state.row - 1);
+        updateHero();
+      };
+    }
+
+    function renderFocus(meta) {
+      state = { charge: 0, charging: false, target: 34 + Math.floor(Math.random() * 49) };
+      game.innerHTML = `
+        ${baseHeader(meta)}
+        <div class="stage">
+          <div class="focus-ring" id="ring" style="--charge-pct:0%; --target-start:${state.target - 7}%; --target-end:${state.target + 7}%">
+            <div class="focus-target">Target ${state.target}</div>
+            <div class="focus-fill"></div>
+            <div class="focus-number" id="charge">0</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="hold">Hold focus</button>
+          <button id="reset">Reset</button>
+        </div>
+        <div class="result" id="result">Hold and release close to Target ${state.target}. Over 96 burns out.</div>
+      `;
+      const hold = document.getElementById('hold');
+      const stop = () => {
+        if (!state.charging) return;
+        state.charging = false;
+        clearTimer();
+        const distance = Math.abs(state.charge - state.target);
+        const score = state.charge >= 96 ? 0 : clamp(Math.round(100 - distance * 2.25), 0, 100);
+        setScore(score);
+        setResult(score >= 70 ? 'Blessing stabilized.' : 'Focus broke.', score >= 70 ? 'good' : 'bad');
+      };
+      hold.onpointerdown = event => {
+        event.preventDefault();
+        state.charge = 0;
+        state.charging = true;
+        timer = window.setInterval(() => {
+          state.charge = clamp(state.charge + 3.2, 0, 100);
+          document.getElementById('ring').style.setProperty('--charge-pct', `${state.charge}%`);
+          document.getElementById('charge').textContent = Math.round(state.charge);
+          if (state.charge >= 100) stop();
+        }, 55);
+      };
+      hold.onpointerup = stop;
+      hold.onpointercancel = stop;
+      hold.onpointerleave = stop;
+      document.getElementById('reset').onclick = () => renderFocus(meta);
+    }
+
+    function renderShadow(meta) {
+      const anchors = [
+        { x: 16, y: 22 }, { x: 50, y: 18 }, { x: 82, y: 24 },
+        { x: 19, y: 70 }, { x: 50, y: 77 }, { x: 81, y: 68 },
+      ];
+      state = {
+        correct: Math.floor(Math.random() * 6),
+        ready: false,
+        startedAt: 0,
+        targets: anchors.map((anchor, index) => ({
+          x: anchor.x + Math.random() * 8 - 4,
+          y: anchor.y + Math.random() * 8 - 4,
+          vx: (0.42 + Math.random() * 0.22) * (index % 2 === 0 ? 1 : -1),
+          vy: (0.32 + Math.random() * 0.2) * (index < 2 ? 1 : -1),
+        })),
+      };
+      game.innerHTML = `
+        ${baseHeader(meta)}
+        <div class="stage">
+          <div class="shadow-hunt" id="hunt">
+            ${state.targets.map((target, index) => `
+              <button
+                class="shadow-target ${index === state.correct ? 'real' : ''}"
+                data-choice="${index}"
+                style="--x:${target.x}%; --y:${target.y}%"
+                disabled
+              >
+              </button>
+            `).join('')}
+          </div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="start">Start hunt</button>
+          <button id="new">New shadow</button>
+        </div>
+        <div class="result" id="result">The marked eyes flash for only 0.3 seconds. Follow that shade.</div>
+      `;
+      auxTimer = window.setInterval(moveShadowTargets, 48);
+      document.getElementById('start').onclick = () => {
+        const hunt = document.getElementById('hunt');
+        document.getElementById('start').disabled = true;
+        hunt.classList.add('watch');
+        setResult('Watch...');
+        window.setTimeout(() => {
+          hunt.classList.remove('watch');
+          hunt.classList.add('hunt');
+          state.ready = true;
+          state.startedAt = Date.now();
+          setResult('Hunt! Tap the real shadow.');
+          document.querySelectorAll('.shadow-target').forEach(node => { node.disabled = false; });
+          state.shadowTimeout = window.setTimeout(() => {
+            state.ready = false;
+            setScore(0);
+            setResult('Too slow. The shadow escaped.', 'bad');
+            document.querySelectorAll('.shadow-target').forEach(node => { node.disabled = true; });
+          }, 8000);
+        }, 300);
+      };
+      document.getElementById('new').onclick = () => renderShadow(meta);
+      document.getElementById('hunt').onclick = event => {
+        const choice = event.target.closest('.shadow-target');
+        if (!choice || !state.ready) return;
+        clearTimer();
+        window.clearTimeout(state.shadowTimeout);
+        const picked = Number(choice.dataset.choice);
+        const elapsed = Date.now() - state.startedAt;
+        const score = picked === state.correct ? clamp(Math.round(104 - elapsed / 42), 62, 100) : 0;
+        setScore(score);
+        setResult(picked === state.correct ? 'True shadow caught.' : 'Fake shadow. No progress.', picked === state.correct ? 'good' : 'bad');
+        state.ready = false;
+        document.querySelectorAll('.shadow-target').forEach(node => { node.disabled = true; });
+      };
+
+      function moveShadowTargets() {
+        state.targets = state.targets.map(target => {
+          let x = target.x + target.vx;
+          let y = target.y + target.vy;
+          let vx = target.vx;
+          let vy = target.vy;
+          if (x < 13 || x > 87) {
+            vx *= -1;
+            x = clamp(x, 13, 87);
+          }
+          if (y < 18 || y > 82) {
+            vy *= -1;
+            y = clamp(y, 18, 82);
+          }
+          return { ...target, x, y, vx, vy };
+        });
+        for (let left = 0; left < state.targets.length; left += 1) {
+          for (let right = left + 1; right < state.targets.length; right += 1) {
+            const a = state.targets[left];
+            const b = state.targets[right];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const distance = Math.max(0.1, Math.hypot(dx, dy));
+            if (distance >= 24) continue;
+            const push = (24 - distance) / 2;
+            const nx = dx / distance;
+            const ny = dy / distance;
+            a.x = clamp(a.x - nx * push, 13, 87);
+            a.y = clamp(a.y - ny * push, 18, 82);
+            b.x = clamp(b.x + nx * push, 13, 87);
+            b.y = clamp(b.y + ny * push, 18, 82);
+          }
+        }
+        document.querySelectorAll('.shadow-target').forEach((node, index) => {
+          const target = state.targets[index];
+          node.style.setProperty('--x', `${target.x}%`);
+          node.style.setProperty('--y', `${target.y}%`);
+        });
+      }
+    }
+
+    render();
+  </script>
+</body>
+</html>

@@ -9,6 +9,7 @@ const {
   finishAttempt,
   readIdempotencyRecord,
   readOpenAttempt,
+  readUserOpenAttempt,
   startAttempt,
 } = require('./minigameAttempts.js');
 
@@ -90,6 +91,11 @@ test('start creates an active opaque attempt with deterministic seed and exact p
   assert.equal(first.retry, false);
   assert.deepEqual(Object.keys(first).sort(), PUBLIC_ATTEMPT_KEYS);
   assert.equal(db.prepare('SELECT ap_spent FROM family_expedition_minigame_attempts').get().ap_spent, 1);
+  assert.deepEqual(readUserOpenAttempt(db, { expeditionId: 10, userId: 30 }), {
+    roomId: 20,
+    attempt: first,
+  });
+  assert.equal(readUserOpenAttempt(db, { expeditionId: 10, userId: 999 }), null);
 });
 
 test('idempotency keys must be non-empty strings no longer than 128 characters', () => {
