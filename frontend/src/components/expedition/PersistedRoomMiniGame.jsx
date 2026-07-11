@@ -39,10 +39,15 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
   const previewTimersRef = useRef([]);
+  const terminalResetTimerRef = useRef(null);
 
   useEffect(() => {
     previewTimersRef.current.forEach(window.clearTimeout);
     previewTimersRef.current = [];
+    if (terminalResetTimerRef.current) {
+      window.clearTimeout(terminalResetTimerRef.current);
+      terminalResetTimerRef.current = null;
+    }
     setAttempt(initialAttempt || null);
     setRetryKey(0);
     setPhase('idle');
@@ -63,7 +68,10 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     }
   }, [attempt?.attemptToken, initialAttempt]);
 
-  useEffect(() => () => previewTimersRef.current.forEach(window.clearTimeout), []);
+  useEffect(() => () => {
+    previewTimersRef.current.forEach(window.clearTimeout);
+    if (terminalResetTimerRef.current) window.clearTimeout(terminalResetTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!['timing', 'focus'].includes(phase)) return undefined;
@@ -119,7 +127,10 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
         setPhase('done');
         setFeedback(response?.success ? 'Room cleared.' : 'Attempt spent. The room remains.');
         if (!response?.success) {
-          window.setTimeout(() => setRetryKey(value => value + 1), 700);
+          terminalResetTimerRef.current = window.setTimeout(() => {
+            terminalResetTimerRef.current = null;
+            setRetryKey(value => value + 1);
+          }, 700);
         }
       }
       setPendingResult(null);
