@@ -2299,7 +2299,7 @@ button.expedition-loadout-slot:disabled {
 
 .expedition-rune-sequence i {
   display: grid;
-  min-height: 38px;
+  min-height: 48px;
   place-items: center;
   border: 1px solid rgba(255, 209, 94, 0.32);
   background: rgba(255, 209, 94, 0.1);
@@ -2308,6 +2308,37 @@ button.expedition-loadout-slot:disabled {
   font-size: 18px;
   font-style: normal;
   font-weight: 950;
+}
+
+.expedition-rune-glyph {
+  width: 30px;
+  height: 30px;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 5px currentColor);
+}
+
+.expedition-rune-choice-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.expedition-rune-choice-grid button {
+  min-height: 66px;
+  padding: 5px;
+}
+
+.expedition-rune-choice-grid button strong {
+  display: grid;
+  place-items: center;
+}
+
+.expedition-rune-choice-grid button .expedition-rune-glyph {
+  width: 28px;
+  height: 28px;
 }
 
 .expedition-rune-sequence i.done {
@@ -2526,6 +2557,8 @@ button.expedition-loadout-slot:disabled {
 
 .expedition-last-roll {
   margin-top: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   padding: 8px;
   border: 1px solid rgba(217, 167, 67, 0.28);
   border-radius: 3px;
@@ -2566,7 +2599,7 @@ button.expedition-loadout-slot:disabled {
 }
 
 .expedition-last-roll-copy {
-  min-width: 0;
+  min-width: min(170px, 100%);
   flex: 1;
 }
 
@@ -2689,7 +2722,7 @@ button.expedition-loadout-slot:disabled {
 }
 
 .expedition-one-roll-card.is-rolling {
-  animation: expedition-roll-charge 520ms ease-in-out infinite alternate;
+  animation: none;
 }
 
 .expedition-one-roll-main {
@@ -3464,8 +3497,8 @@ button.expedition-loadout-slot:disabled {
 .expedition-hud-relics > span {
   position: relative;
   display: grid;
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 52px;
   justify-self: center;
   min-width: 0;
   place-items: center;
@@ -3487,8 +3520,8 @@ button.expedition-loadout-slot:disabled {
 }
 
 .expedition-hud-relics img {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 46px;
   object-fit: contain;
 }
 
@@ -3711,12 +3744,23 @@ button.expedition-loadout-slot:disabled {
 .expedition-guide-accordion details[open] summary i { transform: rotate(45deg); }
 .expedition-guide-accordion p { margin: 0; padding: 0 10px 11px 45px; color: rgba(233,223,189,.78); font-size: 11px; line-height: 1.42; }
 
-.expedition-player-hud { grid-template-columns: 44px 44px 56px minmax(0,1fr); }
+.expedition-player-hud {
+  grid-template-columns: 56px 56px 58px minmax(0, 1fr);
+  min-height: 62px;
+}
 .expedition-hud-role { display: none; }
+.expedition-hud-stat {
+  align-content: center;
+  justify-items: center;
+  padding: 5px 3px;
+  text-align: center;
+}
+.expedition-hud-stat span { font-size: 9px; }
+.expedition-hud-stat strong { margin-top: 5px; font-size: 16px; }
 .expedition-hud-stat span::before { margin-right: 3px; }
 .expedition-hud-stat.hp span::before { content: '❤️'; }
 .expedition-hud-stat.ap span::before { content: '⚡'; }
-.expedition-hud-provision { display: grid; width: 56px; min-width: 0; place-items: center; gap: 0; padding: 3px; border: 0; border-right: 1px solid rgba(233,223,189,.11); background: rgba(0,0,0,.2); color: rgba(233,223,189,.6); }
+.expedition-hud-provision { display: grid; width: 58px; min-width: 0; place-items: center; gap: 0; padding: 3px; border: 0; border-right: 1px solid rgba(233,223,189,.11); background: rgba(0,0,0,.2); color: rgba(233,223,189,.6); }
 .expedition-hud-provision.ready { background: rgba(183,255,79,.12); box-shadow: inset 0 0 0 1px rgba(183,255,79,.35); }
 .expedition-hud-provision img { width: 40px; height: 40px; object-fit: contain; }
 .expedition-hud-provision span { font-size: 0; font-weight: 950; text-transform: uppercase; }
@@ -3727,11 +3771,11 @@ button.expedition-loadout-slot:disabled {
 .expedition-provision-use p { margin: 0; color: rgba(233,223,189,.8); font-size: 13px; line-height: 1.4; }
 
 @media (max-width: 380px) {
-  .expedition-player-hud { grid-template-columns: 42px 42px 52px minmax(0,1fr); }
-  .expedition-hud-relics { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; padding-inline: 6px; }
+  .expedition-player-hud { grid-template-columns: 50px 50px 52px minmax(0,1fr); }
+  .expedition-hud-relics { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 5px; padding-inline: 5px; }
   .expedition-hud-relics > button,
-  .expedition-hud-relics > span { width: 52px; height: 52px; justify-self: center; }
-  .expedition-hud-relics img { width: 46px; height: 46px; }
+  .expedition-hud-relics > span { width: 44px; height: 48px; justify-self: center; }
+  .expedition-hud-relics img { width: 40px; height: 42px; }
   .expedition-hud-provision { width: 52px; }
   .expedition-hud-provision img { width: 40px; height: 40px; }
 }
@@ -3769,11 +3813,18 @@ button.expedition-loadout-slot:disabled {
 .expedition-roll-score span { font-size: 8px; }
 
 .expedition-last-roll-die {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 0;
   transform: none;
-  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.48);
+  background: linear-gradient(145deg, #4c3715, #120d06 72%);
+  box-shadow: inset 0 0 0 2px rgba(255, 220, 128, .2), 0 0 12px rgba(217, 167, 67, .14);
+}
+.expedition-last-roll-die.d20 { clip-path: polygon(50% 0,79% 9%,100% 35%,94% 70%,68% 100%,32% 100%,6% 70%,0 35%,21% 9%); }
+.expedition-last-roll-die.d6 {
+  clip-path: polygon(50% 0,100% 100%,0 100%);
+  background: linear-gradient(145deg, #335c25, #091108 76%);
 }
 
 .expedition-last-roll-die span,
@@ -3793,32 +3844,39 @@ button.expedition-loadout-slot:disabled {
   margin: 0 0 6px;
   font-size: 21px;
 }
+.expedition-last-roll-die.d6 span { margin-top: 13px; }
+.expedition-last-roll-die.d6 strong { margin-bottom: 4px; font-size: 18px; }
 
-.expedition-live-die {
+.expedition-roll-ticker {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 4px;
   min-height: 68px;
   border: 1px solid rgba(217,167,67,.34);
   background: radial-gradient(circle, rgba(183,255,79,.12), rgba(0,0,0,.42) 68%);
 }
-.expedition-live-die i {
+.expedition-roll-ticker > div { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.expedition-roll-ticker i {
   display: grid;
-  width: 48px;
-  height: 48px;
+  width: 50px;
+  height: 50px;
   place-items: center;
-  border: 2px solid var(--dungeon-gold);
-  border-radius: 7px;
   background: linear-gradient(145deg, #1e3324, #071009);
-  box-shadow: 0 0 18px rgba(183,255,79,.24), inset 0 0 12px rgba(255,255,255,.08);
+  box-shadow: 0 0 13px rgba(183,255,79,.16), inset 0 0 10px rgba(255,255,255,.06);
   color: var(--dungeon-bone);
   font-style: normal;
-  animation: expedition-die-tumble .22s linear infinite;
 }
-.expedition-live-die.damage i { border-radius: 4px; border-color: var(--accent); }
-.expedition-live-die i span { font-family: var(--font-display); font-size: 14px; font-weight: 950; text-transform: uppercase; }
-.expedition-live-die strong { font-family: var(--font-display); font-size: 13px; text-transform: uppercase; }
+.expedition-roll-ticker i.d20 { clip-path: polygon(50% 0,79% 9%,100% 35%,94% 70%,68% 100%,32% 100%,6% 70%,0 35%,21% 9%); }
+.expedition-roll-ticker i.d6 { clip-path: polygon(50% 0,100% 100%,0 100%); }
+.expedition-roll-ticker i span,
+.expedition-roll-ticker i strong { grid-area: 1 / 1; font-family: var(--font-display); }
+.expedition-roll-ticker i span { align-self: start; margin-top: 9px; color: var(--dungeon-gold); font-size: 7px; text-transform: uppercase; }
+.expedition-roll-ticker i strong { align-self: end; margin-bottom: 8px; font-size: 20px; }
+.expedition-roll-ticker i.d6 span { margin-top: 15px; }
+.expedition-roll-ticker i.d6 strong { margin-bottom: 4px; font-size: 17px; }
+.expedition-roll-ticker > small { color: rgba(233,223,189,.68); font-size: 9px; font-weight: 950; letter-spacing: .12em; text-transform: uppercase; }
 .expedition-attack-result {
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr);
@@ -3834,8 +3892,10 @@ button.expedition-loadout-slot:disabled {
   width: 50px;
   height: 50px;
   place-content: center;
-  border: 2px solid var(--accent);
-  border-radius: 6px;
+  border: 0;
+  border-radius: 0;
+  clip-path: polygon(50% 0,79% 9%,100% 35%,94% 70%,68% 100%,32% 100%,6% 70%,0 35%,21% 9%);
+  background: linear-gradient(145deg, #315124, #081008 74%);
   color: var(--dungeon-bone);
   font-style: normal;
   text-align: center;
@@ -3846,12 +3906,6 @@ button.expedition-loadout-slot:disabled {
 .expedition-attack-result > div { display: grid; gap: 3px; min-width: 0; }
 .expedition-attack-result > div strong { font-family: var(--font-display); font-size: 14px; text-transform: uppercase; }
 .expedition-attack-result > div span { color: rgba(233,223,189,.72); font-size: 10px; line-height: 1.3; }
-@keyframes expedition-die-tumble {
-  0% { transform: perspective(90px) rotateX(0deg) rotateY(0deg) scale(.88); }
-  50% { transform: perspective(90px) rotateX(180deg) rotateY(125deg) scale(1.08); }
-  100% { transform: perspective(90px) rotateX(360deg) rotateY(250deg) scale(.88); }
-}
-
 @media (max-width: 620px) {
   .expedition-shell {
     padding: calc(env(safe-area-inset-top, 0px) + 6px) 7px calc(env(safe-area-inset-bottom, 0px) + 9px);
@@ -3926,14 +3980,14 @@ button.expedition-loadout-slot:disabled {
 
 @media (max-width: 340px), (max-height: 590px) {
   .expedition-game-title span { display: none; }
-  .expedition-player-hud { grid-template-columns: 39px 39px 48px minmax(0,1fr); }
+  .expedition-player-hud { grid-template-columns: 46px 46px 50px minmax(0,1fr); min-height: 56px; }
   .expedition-hud-stat,
   .expedition-hud-role { padding-inline: 6px; }
   .expedition-hud-relics { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 4px; padding-inline: 4px; }
   .expedition-hud-relics > button,
-  .expedition-hud-relics > span { width: 48px; height: 48px; justify-self: center; }
-  .expedition-hud-relics img { width: 42px; height: 42px; }
-  .expedition-hud-provision { width: 48px; padding-inline: 1px; }
+  .expedition-hud-relics > span { width: 40px; height: 44px; justify-self: center; }
+  .expedition-hud-relics img { width: 36px; height: 38px; }
+  .expedition-hud-provision { width: 50px; padding-inline: 1px; }
   .expedition-hud-provision img { width: 38px; height: 38px; }
 
   .expedition-room-art,

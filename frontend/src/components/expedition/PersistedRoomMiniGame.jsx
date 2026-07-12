@@ -4,15 +4,35 @@ import ShadeHuntGame from './ShadeHuntGame';
 import './ExpeditionMiniGames.css';
 
 const RUNES = ['rune', 'root', 'moon', 'skull', 'crown', 'fang', 'lantern', 'key', 'eye'];
-const RUNE_LABELS = { rune: 'R', root: 'RT', moon: 'M', skull: 'SK', crown: 'CR', fang: 'F', lantern: 'L', key: 'K', eye: 'E' };
 
-async function runeSequence(seed) {
+function RuneGlyph({ symbol }) {
+  const marks = {
+    rune: <><path d="M24 5 11 16l6 7-7 12 14 8 14-8-7-12 6-7Z" /><path d="m17 23 7-8 7 8-7 12Z" /></>,
+    root: <><path d="M24 5v19M24 15 13 10M24 18l10-8M24 23 12 16M24 25l-1 17M24 24l12 15" /><circle cx="24" cy="8" r="3" /></>,
+    moon: <path d="M32 7c-8 3-12 10-10 18 2 7 8 11 16 10-4 6-12 9-19 5C9 35 6 23 12 14 16 8 24 5 32 7Z" />,
+    skull: <><path d="M12 23c0-9 5-15 12-15s12 6 12 15c0 6-3 9-6 11v7H18v-7c-3-2-6-5-6-11Z" /><circle cx="19" cy="23" r="3" /><circle cx="29" cy="23" r="3" /><path d="m24 27-2 5h4ZM20 36v5M24 36v5M28 36v5" /></>,
+    crown: <><path d="m8 15 9 8 7-14 7 14 9-8-4 23H12Z" /><path d="M13 33h22" /></>,
+    fang: <><path d="M15 7c2 9 4 15 9 20 5-5 7-11 9-20 3 14 0 27-9 35-9-8-12-21-9-35Z" /><path d="M24 27v14" /></>,
+    lantern: <><path d="M17 14h14l4 7v17H13V21Z" /><path d="M19 14V9h10v5M17 23h14M20 27c0-4 8-4 8 0v7h-8Z" /></>,
+    key: <><circle cx="17" cy="18" r="9" /><path d="m23 24 16 16M31 32l5-5M35 36l5-5" /></>,
+    eye: <><path d="M5 24c5-9 11-13 19-13s14 4 19 13c-5 9-11 13-19 13S10 33 5 24Z" /><circle cx="24" cy="24" r="6" /><circle cx="24" cy="24" r="2" /></>,
+  };
+  return <svg className="expedition-rune-glyph" viewBox="0 0 48 48" aria-hidden="true">{marks[symbol]}</svg>;
+}
+
+async function runeChallenge(seed) {
   const digest = new Uint8Array(await crypto.subtle.digest(
     'SHA-256',
     new TextEncoder().encode(`runes:${seed}`),
   ));
   const pool = [...RUNES];
-  return [0, 1, 2].map(index => pool.splice(digest[index] % pool.length, 1)[0]);
+  const sequence = [0, 1, 2].map(index => pool.splice(digest[index] % pool.length, 1)[0]);
+  const choices = [...RUNES];
+  for (let index = choices.length - 1; index > 0; index -= 1) {
+    const swapIndex = digest[3 + (RUNES.length - 1 - index)] % (index + 1);
+    [choices[index], choices[swapIndex]] = [choices[swapIndex], choices[index]];
+  }
+  return { sequence, choices };
 }
 
 function gameType(room) {
@@ -32,6 +52,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   const [charge, setCharge] = useState(0);
   const [focusTarget, setFocusTarget] = useState(50);
   const [sequence, setSequence] = useState([]);
+  const [choiceRunes, setChoiceRunes] = useState(RUNES);
   const [previewIndex, setPreviewIndex] = useState(-1);
   const [input, setInput] = useState([]);
   const [feedback, setFeedback] = useState('');
@@ -62,6 +83,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     setDirection(1);
     setCharge(0);
     setSequence([]);
+    setChoiceRunes(RUNES);
     setInput([]);
     setFeedback('');
     setPendingResult(null);
@@ -270,8 +292,9 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     if (!nextAttempt) return;
     previewTimersRef.current.forEach(window.clearTimeout);
     previewTimersRef.current = [];
-    const nextSequence = await runeSequence(nextAttempt.seed);
+    const { sequence: nextSequence, choices } = await runeChallenge(nextAttempt.seed);
     setSequence(nextSequence);
+    setChoiceRunes(choices);
     setInput([]);
     setPhase('preview');
     nextSequence.forEach((_, index) => {
@@ -332,15 +355,15 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
           <div className="expedition-rune-sequence">
             {RUNES.map(symbol => (
               <i key={symbol} className={phase === 'preview' && sequence[previewIndex] === symbol ? 'preview' : 'hidden'}>
-                {RUNE_LABELS[symbol]}
+                <RuneGlyph symbol={symbol} />
               </i>
             ))}
           </div>
           <button type="button" className="btn btn-secondary expedition-minigame-start" onClick={startRunes} disabled={disabled || mutating || !['idle', 'done'].includes(phase)}>Start Runes</button>
-          <div className="expedition-event-choice-grid">
-            {RUNES.map(symbol => (
+          <div className="expedition-event-choice-grid expedition-rune-choice-grid">
+            {choiceRunes.map(symbol => (
               <button type="button" key={symbol} onClick={() => chooseRune(symbol)} disabled={phase !== 'runes' || mutating}>
-                <strong>{RUNE_LABELS[symbol]}</strong><span>{symbol}</span>
+                <strong><RuneGlyph symbol={symbol} /></strong><span>{symbol}</span>
               </button>
             ))}
           </div>

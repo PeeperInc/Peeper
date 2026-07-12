@@ -644,12 +644,12 @@ function LastRollPanel({ action }) {
 
   return (
     <div className="expedition-last-roll">
-      <div className="expedition-last-roll-die">
-        <span>ATTACK</span>
+      <div className="expedition-last-roll-die d20">
+        <span>d20</span>
         <strong>{action.rawRoll ?? '?'}</strong>
       </div>
       {(combatEvent?.damageRolls || []).map((roll, index) => (
-        <div className="expedition-last-roll-die damage" key={`damage-${index}`}>
+        <div className="expedition-last-roll-die damage d6" key={`damage-${index}`}>
           <span>d6</span>
           <strong>{roll}</strong>
         </div>
@@ -1512,6 +1512,7 @@ function RoomPanel({
   const [useSharedBuff, setUseSharedBuff] = useState(false);
   const [showRoomInfo, setShowRoomInfo] = useState(false);
   const [combatReveal, setCombatReveal] = useState({ phase: 'idle', progressBefore: 0, action: null });
+  const [rollingFaces, setRollingFaces] = useState([]);
   const selectedMechanicChoice = null;
   const roomArt = useLazyAsset(roomImages, roomArtFile(room));
   const bossArt = useLazyAsset(bossImages, bossArtFile(room));
@@ -1576,7 +1577,22 @@ function RoomPanel({
     setUseSharedBuff(false);
     setShowRoomInfo(false);
     setCombatReveal({ phase: 'idle', progressBefore: 0, action: null });
+    setRollingFaces([]);
   }, [room?.key]);
+
+  function animateRollNumbers(sides, count = 1) {
+    setRollingFaces(Array.from({ length: count }, () => 1 + Math.floor(Math.random() * sides)));
+    return new Promise(resolve => {
+      const ticker = window.setInterval(() => {
+        setRollingFaces(Array.from({ length: count }, () => 1 + Math.floor(Math.random() * sides)));
+      }, 45);
+      window.setTimeout(() => {
+        window.clearInterval(ticker);
+        setRollingFaces([]);
+        resolve();
+      }, 500);
+    });
+  }
 
   async function runAttackRoll() {
     const progressBefore = Number(room?.progress || 0);
@@ -1588,7 +1604,7 @@ function RoomPanel({
           mechanicChoice: selectedMechanicChoice,
           useSharedBuff,
         }),
-        new Promise(resolve => setTimeout(resolve, 1000)),
+        animateRollNumbers(20, 1),
       ]);
       const combatEvent = (action?.events || action?.modifiers?.events || [])
         .find(event => event.type === 'combat_roll');
@@ -1605,7 +1621,7 @@ function RoomPanel({
 
   async function runDamageRoll() {
     setCombatReveal(current => ({ ...current, phase: 'rolling-damage' }));
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await animateRollNumbers(6, Math.max(1, revealDamageDice));
     setCombatReveal(current => ({ ...current, phase: 'resolved' }));
   }
 
@@ -1802,9 +1818,16 @@ function RoomPanel({
                   {primaryAction ? (
                     <div className={`expedition-one-roll-card${mutating ? ' is-rolling' : ''}`}>
                       {['rolling-attack', 'rolling-damage'].includes(combatReveal.phase) && (
-                        <div className={`expedition-live-die ${combatReveal.phase === 'rolling-damage' ? 'damage' : 'attack'}`}>
-                          <i><span>{combatReveal.phase === 'rolling-damage' ? 'd6' : 'd20'}</span></i>
-                          <strong>{combatReveal.phase === 'rolling-damage' ? 'Rolling damage' : 'Rolling attack'}</strong>
+                        <div className={`expedition-roll-ticker ${combatReveal.phase === 'rolling-damage' ? 'damage' : 'attack'}`} role="status">
+                          <div>
+                            {(rollingFaces.length ? rollingFaces : [1]).map((face, index) => (
+                              <i className={combatReveal.phase === 'rolling-damage' ? 'd6' : 'd20'} key={`${combatReveal.phase}-${index}`}>
+                                <span>{combatReveal.phase === 'rolling-damage' ? 'd6' : 'd20'}</span>
+                                <strong>{face}</strong>
+                              </i>
+                            ))}
+                          </div>
+                          <small>{combatReveal.phase === 'rolling-damage' ? 'Damage' : 'Attack'}</small>
                         </div>
                       )}
                       {combatReveal.phase === 'awaiting-damage' && revealCombatEvent && (
