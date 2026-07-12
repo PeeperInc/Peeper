@@ -39,6 +39,11 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   const [remainingMs, setRemainingMs] = useState(0);
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
+  const phaseRef = useRef('idle');
+  const chargeRef = useRef(0);
+  const focusTargetRef = useRef(50);
+  const focusHeldRef = useRef(false);
+  const focusAttemptRef = useRef(null);
   const previewTimersRef = useRef([]);
   const terminalResetTimerRef = useRef(null);
 
@@ -64,7 +69,20 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
       : 0);
     startingRef.current = false;
     finishingRef.current = false;
+    phaseRef.current = 'idle';
+    chargeRef.current = 0;
+    focusTargetRef.current = 50;
+    focusHeldRef.current = false;
+    focusAttemptRef.current = null;
   }, [room?.key, kind]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    chargeRef.current = charge;
+  }, [charge]);
 
   useEffect(() => {
     if (initialAttempt?.attemptToken && attempt?.attemptToken !== initialAttempt.attemptToken) {
@@ -102,7 +120,11 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
           return next;
         });
       } else {
-        setCharge(value => Math.min(100, value + 3));
+        setCharge(value => {
+          const next = Math.min(100, value + 3);
+          chargeRef.current = next;
+          return next;
+        });
       }
     }, 45);
     return () => window.clearInterval(timer);
@@ -143,11 +165,13 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
         setRemainingMs(Math.max(0, Number(response.attempt.expiresAt) * 1000 - Date.now()));
         setRetryKey(value => value + 1);
         setPhase('idle');
+        phaseRef.current = 'idle';
         setInput([]);
         setFeedback('Bend Fate grants another chance.');
       } else {
         setAttempt(null);
         setPhase('done');
+        phaseRef.current = 'done';
         setFeedback(response?.success ? 'Room cleared.' : 'Attempt spent. The room remains.');
         if (!response?.success) {
           terminalResetTimerRef.current = window.setTimeout(() => {
@@ -184,21 +208,49 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     } catch {}
   }
 
-  async function startFocus() {
+  async function startFocus(event) {
+    event?.preventDefault?.();
+    if (!['idle', 'done'].includes(phaseRef.current) || focusHeldRef.current) return;
+    focusHeldRef.current = true;
+    if (event?.pointerId !== undefined) event.currentTarget?.setPointerCapture?.(event.pointerId);
     const nextAttempt = await begin();
-    if (!nextAttempt) return;
+    if (!nextAttempt) {
+      focusHeldRef.current = false;
+      return;
+    }
+    focusAttemptRef.current = nextAttempt;
     const seedTotal = [...String(nextAttempt.seed)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-    setFocusTarget(34 + (seedTotal % 49));
+    const nextTarget = 34 + (seedTotal % 49);
+    setFocusTarget(nextTarget);
+    focusTargetRef.current = nextTarget;
     setCharge(0);
+    chargeRef.current = 0;
     setPhase('focus');
+    phaseRef.current = 'focus';
+    if (!focusHeldRef.current) {
+      setPhase('resolving');
+      phaseRef.current = 'resolving';
+      try {
+        await resolve({ success: false, score: 0, reason: 'focus_released_early' }, nextAttempt);
+      } catch {}
+    }
   }
 
-  async function releaseFocus() {
-    if (phase !== 'focus') return;
+  async function releaseFocus(event) {
+    event?.preventDefault?.();
+    focusHeldRef.current = false;
+    if (phaseRef.current !== 'focus') return;
     setPhase('resolving');
-    const score = charge >= 99 ? 0 : Math.max(0, Math.round(100 - Math.abs(charge - focusTarget) * 2.25));
+    phaseRef.current = 'resolving';
+    const currentCharge = chargeRef.current;
+    const score = currentCharge >= 99
+      ? 0
+      : Math.max(0, Math.round(100 - Math.abs(currentCharge - focusTargetRef.current) * 2.25));
     try {
-      await resolve({ success: score >= 60, score, reason: 'focus_release' });
+      await resolve(
+        { success: score >= 60, score, reason: 'focus_release' },
+        focusAttemptRef.current || attempt,
+      );
     } catch {}
   }
 
@@ -234,6 +286,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   }
 
   const sharedProps = {
+    seed: room?.key || 'root-crossing',
     retryKey,
     disabled: (disabled && !attempt) || mutating,
     onStart: async () => {
@@ -288,10 +341,23 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
             <div className="expedition-focus-orb"><b /><span>{Math.round(charge)}</span></div>
             <div className="expedition-focus-meter"><i className="expedition-focus-sweet" /><b style={{ width: `${charge}%` }} /></div>
           </div>
-          <div className="expedition-event-actions">
-            <button type="button" className="btn btn-secondary" onClick={startFocus} disabled={disabled || mutating || !['idle', 'done'].includes(phase)}>Start Focus</button>
-            <button type="button" className="btn btn-primary" onClick={releaseFocus} disabled={phase !== 'focus' || mutating}>Release</button>
-          </div>
+          <button
+            type="button"
+            className={`btn btn-primary expedition-focus-hold${phase === 'focus' ? ' is-holding' : ''}`}
+            onPointerDown={startFocus}
+            onPointerUp={releaseFocus}
+            onPointerCancel={releaseFocus}
+            onKeyDown={(event) => {
+              if (!event.repeat && ['Enter', ' '].includes(event.key)) void startFocus(event);
+            }}
+            onKeyUp={(event) => {
+              if (['Enter', ' '].includes(event.key)) void releaseFocus(event);
+            }}
+            disabled={disabled || (mutating && phase !== 'focus') || !['idle', 'done', 'focus'].includes(phase)}
+          >
+            <strong>{phase === 'focus' ? 'KEEP HOLDING' : 'HOLD TO FOCUS'}</strong>
+            <span>{phase === 'focus' ? 'Release when the charge reaches the target' : 'Press and hold · costs 1 AP'}</span>
+          </button>
         </>
       ) : (
         <>

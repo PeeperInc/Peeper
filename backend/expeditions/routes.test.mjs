@@ -1277,7 +1277,7 @@ test('stale mini-game timeout commits even when replacement start is rejected', 
     SELECT hero_hp AS heroHp, hero_recover_at AS heroRecoverAt
     FROM family_expedition_members WHERE expedition_id = ? AND user_id = ?
   `).get(expeditionId, userIds[0]);
-  assert.equal(member.heroHp, 1);
+  assert.equal(member.heroHp, 2);
   assert.equal(member.heroRecoverAt, null);
 });
 
@@ -1445,7 +1445,7 @@ test('client cannot reserve the internal timeout key or block stale resolution',
   `).pluck().get(first.body.attempt.attemptToken), 'expired');
 });
 
-test('persisted mini-game routes apply Mage retry, knockout recovery, and Knight shield', async () => {
+test('persisted mini-game routes apply Mage retry without HP damage or consuming Knight shield', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-helper']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-route-effects' });
   const expeditionId = started.body.expedition.id;
@@ -1501,8 +1501,8 @@ test('persisted mini-game routes apply Mage retry, knockout recovery, and Knight
     { idempotencyKey: 'finish-route-knockout', result: { success: false, score: 0 } },
   );
   assert.equal(knockout.status, 200);
-  assert.equal(knockout.body.member.heroHp, 0);
-  assert.ok(knockout.body.member.heroRecoverAt > Math.floor(Date.now() / 1000));
+  assert.equal(knockout.body.member.heroHp, 1);
+  assert.equal(knockout.body.member.heroRecoverAt, null);
 
   db.prepare(`
     UPDATE family_expedition_members SET hero_hp = 3, hero_recover_at = NULL
@@ -1525,8 +1525,11 @@ test('persisted mini-game routes apply Mage retry, knockout recovery, and Knight
   );
   assert.equal(shielded.status, 200);
   assert.equal(shielded.body.member.heroHp, 3);
-  assert.equal(shielded.body.visualEvents[0].type, 'shield_blocked');
-  assert.deepEqual(shielded.body.map.rooms.find(item => item.key === room.roomKey).activeEffects, []);
+  assert.deepEqual(shielded.body.visualEvents, []);
+  assert.equal(
+    shielded.body.map.rooms.find(item => item.key === room.roomKey).activeEffects[0].effectType,
+    'knight_shield',
+  );
 });
 
 test('Scout role ability chooses once per source room and AP spending recharges the role', async () => {

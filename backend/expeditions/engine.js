@@ -2312,52 +2312,21 @@ function applyMinigameFailure({ transaction, expeditionId, room, userId, idempot
   }
   assertExpeditionNotFinished(snapshot);
   const memberState = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
-  const shield = consumeRoomEffect(transaction, {
-    expeditionId,
-    roomId: room.id,
-    effectType: ROLE_EFFECT_TYPES.knight,
-    now,
-  });
-  if (shield) {
-    insertAction(transaction, {
-      idempotencyKey,
-      expeditionId,
-      roomId: room.id,
-      userId,
-      actionType: 'event_minigame_failure',
-      modifiers: { events: [shield.event] },
-      intent: { roomKey: room.key, outcome: 'failure' },
-      now,
-    });
-    return { heroHp: memberState.heroHp, visualEvents: [shield.event] };
-  }
-
-  const visualEvents = [];
-  const damage = applyWearerDamageProtection({
-    member: memberState,
-    expeditionId,
-    roomKey: room.key,
-    damage: 1,
-    damageSource: 'minigame',
-    events: visualEvents,
-  });
-  const heroHp = Math.max(0, Number(memberState.heroHp ?? 3) - damage);
-  const heroRecoverAt = heroHp === 0 ? now + HERO_RECOVERY_SECONDS : null;
-  const nextMember = { ...memberState, heroHp, heroRecoverAt };
-  updateMember(transaction, expeditionId, nextMember);
-  if (damage > 0) visualEvents.push({ type: 'hero_damaged', amount: damage, heroHp });
-  if (heroRecoverAt) visualEvents.push({ type: 'hero_recovering', heroRecoverAt });
   insertAction(transaction, {
     idempotencyKey,
     expeditionId,
     roomId: room.id,
     userId,
     actionType: 'event_minigame_failure',
-    modifiers: { events: visualEvents },
+    modifiers: { events: [] },
     intent: { roomKey: room.key, outcome: 'failure' },
     now,
   });
-  return { heroHp, heroRecoverAt, visualEvents };
+  return {
+    heroHp: memberState.heroHp,
+    heroRecoverAt: memberState.heroRecoverAt || null,
+    visualEvents: [],
+  };
 }
 
 function applyMinigameSuccess({

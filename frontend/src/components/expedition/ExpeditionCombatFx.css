@@ -32,7 +32,7 @@
   height: 30px;
   place-items: center;
   color: var(--effect-color);
-  font-size: 9px;
+  font-size: 17px;
   font-weight: 950;
   letter-spacing: -0.04em;
   border: 1px solid color-mix(in srgb, var(--effect-color) 45%, transparent);

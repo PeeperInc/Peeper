@@ -29,12 +29,12 @@ function buildLanes(seed) {
   const random = mulberry32(hashSeed(seed));
   return Array.from({ length: LANE_COUNT }, (_, laneIndex) => {
     const direction = laneIndex % 2 === 0 ? 1 : -1;
-    const speed = 9.5 + random() * 6.5 + laneIndex * 0.45;
-    const hazardCount = laneIndex < 2 ? 2 : 3;
+    const speed = 8.5 + random() * 5.5 + laneIndex * 0.4;
+    const hazardCount = laneIndex < 4 ? 2 : 3;
     const hazards = Array.from({ length: hazardCount }, (_, hazardIndex) => ({
       id: `${laneIndex}-${hazardIndex}`,
       offset: (random() * 100 + hazardIndex * (100 / hazardCount)) % 100,
-      width: 13 + random() * 6,
+      width: 10 + random() * 5,
       variant: Math.floor(random() * 3),
     }));
     return { direction, speed, hazards };
@@ -56,7 +56,7 @@ function laneProgress(row) {
 
 /**
  * Persisted mini-game contract:
- * - seed: public deterministic seed returned by the server.
+ * - seed: stable visual seed; it must not change when AP is spent.
  * - retryKey: change this to reset the playfield for a Mage retry; do not change attemptToken upstream.
  * - onStart(): awaited before the first UP move. It may return { seed, expiresAt }.
  * - onFinish(result): called once with { success, score, reason, seed, rowsCrossed }.
@@ -77,6 +77,7 @@ export default function RootCrossingGame({
   const [moving, setMoving] = useState(false);
   const [error, setError] = useState('');
   const startEpochRef = useRef(0);
+  const motionEpochRef = useRef(Date.now());
   const endEpochRef = useRef(0);
   const moveLockRef = useRef(false);
   const lastResultRef = useRef(null);
@@ -101,6 +102,7 @@ export default function RootCrossingGame({
     startingRef.current = false;
     finishSentRef.current = false;
     startEpochRef.current = 0;
+    motionEpochRef.current = Date.now();
     endEpochRef.current = 0;
     moveLockRef.current = false;
     lastResultRef.current = null;
@@ -133,22 +135,22 @@ export default function RootCrossingGame({
   }
 
   useEffect(() => {
-    if (phase !== 'active') return undefined;
+    if (!['idle', 'active'].includes(phase)) return undefined;
     let frameId = 0;
 
     const tick = () => {
-      const elapsed = Math.max(0, Date.now() - startEpochRef.current);
-      setElapsedMs(elapsed);
+      const motionElapsed = Math.max(0, Date.now() - motionEpochRef.current);
+      setElapsedMs(motionElapsed);
 
-      if (Date.now() >= endEpochRef.current) {
+      if (phase === 'active' && Date.now() >= endEpochRef.current) {
         finish(false, 'timeout');
         return;
       }
 
       const currentRow = rowRef.current;
-      if (currentRow > 0 && currentRow <= LANE_COUNT) {
+      if (phase === 'active' && currentRow > 0 && currentRow <= LANE_COUNT) {
         const lane = lanes[currentRow - 1];
-        const elapsedSeconds = elapsed / 1000;
+        const elapsedSeconds = motionElapsed / 1000;
         const collided = lane.hazards.some(hazard => {
           const x = hazardX(hazard, lane, elapsedSeconds);
           return PLAYER_X + 3.8 >= x && PLAYER_X - 3.8 <= x + hazard.width;
@@ -175,8 +177,6 @@ export default function RootCrossingGame({
     try {
       const response = await onStart?.();
       const serverAttempt = response?.attempt || response;
-      const serverSeed = serverAttempt?.seed;
-      if (serverSeed) setEffectiveSeed(serverSeed);
       startEpochRef.current = Number(serverAttempt?.startedAt || Math.floor(Date.now() / 1000)) * 1000;
       endEpochRef.current = Number(serverAttempt?.expiresAt || 0) * 1000
         || startEpochRef.current + durationMs;
@@ -257,11 +257,11 @@ export default function RootCrossingGame({
         <div className="root-crossing-start"><span>START</span></div>
         <div className="root-crossing-hero" style={{ bottom: `${playerBottom}%` }} aria-label={`Row ${row} of ${LANE_COUNT}`}>
           <i className="root-crossing-hero__aura" />
-          <span>H</span>
+          <span>🐸</span>
         </div>
-        {phase === 'idle' && <div className="root-crossing-callout">First UP starts the run and spends 1 AP</div>}
+        {phase === 'idle' && <div className="root-crossing-callout">Watch the roots. First UP starts the run and spends 1 AP.</div>}
         {phase === 'success' && <div className="expedition-minigame__result success"><b>PASSAGE CLEARED</b><span>The roots close behind you.</span></div>}
-        {phase === 'failed' && <div className="expedition-minigame__result failed"><b>{elapsedMs >= durationMs ? 'TOO SLOW' : 'ROOT STRIKE'}</b><span>Retry from the entrance.</span></div>}
+        {phase === 'failed' && <div className="expedition-minigame__result failed"><b>{lastResultRef.current?.reason === 'timeout' ? 'TOO SLOW' : 'ROOT STRIKE'}</b><span>Retry from the entrance.</span></div>}
         {phase === 'submit-error' && (
           <div className="expedition-minigame__result failed">
             <b>SYNC INTERRUPTED</b>

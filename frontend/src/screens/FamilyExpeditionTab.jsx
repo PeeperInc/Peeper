@@ -36,8 +36,6 @@ const enemyImages = import.meta.glob('../assets/expeditions/root-king/enemies/*.
   import: 'default',
 });
 
-const MAX_ROOM_SUPPORT = 6;
-
 function makeIdempotencyKey(prefix) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `${prefix}:${crypto.randomUUID()}`;
@@ -665,12 +663,12 @@ function ExpeditionGuidePanel() {
         <span>Treasure is paid when the room is cleared, not on every roll. Criticals and some relics can still create bonus luck.</span>
       </div>
       <div className="expedition-guide-card">
-        <strong>4. Support is teamwork</strong>
-        <span>Assist stores family support on the current room. The next hero can spend it as a direct roll bonus.</span>
+        <strong>4. Mini-games cost AP, not HP</strong>
+        <span>A failed room challenge spends its 1 AP attempt, but it never wounds your hero or consumes a shield.</span>
       </div>
       <div className="expedition-guide-card">
         <strong>5. Scout pathing</strong>
-        <span>The map hides future rooms. Scouts are the pathfinders: their ability opens the next unknown route when the family needs a choice.</span>
+        <span>Future rooms stay hidden. Scouts are the pathfinders: their ability chooses the next encounter from three unknown routes.</span>
       </div>
       <div className="expedition-guide-card">
         <strong>6. Roles still matter</strong>
@@ -750,23 +748,6 @@ function RoleAbilityControl({ member, room, mutating, onUse }) {
       <strong>{copy[0]}</strong>
       <span>{alreadyActive ? 'Already active in this room.' : ready ? copy[1] : `Recharge ${member.roleChargeProgress || 0}/3 AP`}</span>
     </button>
-  );
-}
-
-function SupportPicker({ support, selected, onChange }) {
-  const max = Math.max(0, Number(support || 0));
-  if (max <= 0) return null;
-
-  return (
-    <div className="expedition-support-picker">
-      <span>Use support</span>
-      <div>
-        <button type="button" onClick={() => onChange(Math.max(0, selected - 1))} disabled={selected <= 0}>-</button>
-        <strong>+{selected}</strong>
-        <button type="button" onClick={() => onChange(Math.min(max, selected + 1))} disabled={selected >= max}>+</button>
-        <button type="button" onClick={() => onChange(max)} disabled={selected >= max}>Max</button>
-      </div>
-    </div>
   );
 }
 
@@ -1563,7 +1544,6 @@ function RoomPanel({
   mutating,
   lastRoll,
   onAttempt,
-  onAssist,
   onScoutChoice,
   onMinigameStart,
   onMinigameFinish,
@@ -1571,7 +1551,6 @@ function RoomPanel({
   onRollFxComplete,
   currentMinigameAttempt,
 }) {
-  const [selectedSupport, setSelectedSupport] = useState(0);
   const [useSharedBuff, setUseSharedBuff] = useState(false);
   const [showRoomInfo, setShowRoomInfo] = useState(false);
   const selectedMechanicChoice = null;
@@ -1580,7 +1559,6 @@ function RoomPanel({
   const enemyArt = useLazyAsset(enemyImages, enemyArtFile(room));
   const rollBonus = expedition?.sharedBuffs?.rollBonus;
   const canUseSharedBuff = Boolean(rollBonus && (rollBonus.uses ?? 0) > 0 && isActionableRoom(room));
-  const canAssist = isActionableRoom(room) && (member?.ap || 0) > 0 && (room?.support || 0) < MAX_ROOM_SUPPORT;
   const primaryAction = useMemo(() => primaryActionForRoom(room, member, roles), [room, member, roles]);
   const weakRoleLabels = (room?.weakRoles || []).map(role => roles?.[role]?.name || titleize(role));
   const mechanic = roomRuleCopy(room);
@@ -1621,30 +1599,14 @@ function RoomPanel({
   const roleActionBonus = roleMeta?.stat === primaryAction?.stat ? Number(roleMeta.bonus || 0) : 0;
   const totalRollModifier = Number(primaryAction?.modifier || 0)
     + roleActionBonus
-    + Number(selectedSupport || 0)
     + sharedBuffAmount;
   const heroRecoverAt = Number(member?.heroRecoverAt || 0);
   const heroRecovering = heroRecoverAt > Math.floor(Date.now() / 1000) || Number(member?.heroHp ?? 3) <= 0;
   const heroRecoverLabel = heroRecoverAt > 0 ? `Recovering until ${formatTime(heroRecoverAt)}` : 'Hero is recovering';
-  const assistReason = room?.state === 'cleared'
-    ? 'Room cleared'
-    : heroRecovering
-      ? 'Hero recovering'
-    : (member?.ap || 0) <= 0
-      ? 'No AP'
-      : (room?.support || 0) >= MAX_ROOM_SUPPORT
-        ? 'Support capped'
-        : 'Add family support';
-
   useEffect(() => {
-    setSelectedSupport(0);
     setUseSharedBuff(false);
     setShowRoomInfo(false);
   }, [room?.key]);
-
-  useEffect(() => {
-    setSelectedSupport(value => Math.min(value, room?.support || 0));
-  }, [room?.support]);
 
   if (!room) {
     return (
@@ -1723,7 +1685,7 @@ function RoomPanel({
         <>
           <div className="expedition-room-meter">
             <div>
-              <span>Progress · Support +{room?.support || 0}</span>
+              <span>Progress</span>
               <strong>{room.progress || 0}/{progressTarget}</strong>
               <button
                 type="button"
@@ -1767,7 +1729,7 @@ function RoomPanel({
                     primaryAction,
                     member,
                     roleMeta,
-                    selectedSupport,
+                    0,
                     sharedBuffAmount,
                   )).map(item => (
                     <span key={item.roll}>
@@ -1783,9 +1745,12 @@ function RoomPanel({
           <LastRollPanel action={lastRoll} />
 
           {heroRecovering && (
-            <div className="expedition-room-locked expedition-hero-recovery">
-              <strong>Hero knocked out.</strong>
-              <span>{heroRecoverLabel}. Expedition actions unlock after recovery.</span>
+            <div className="expedition-room-locked expedition-hero-recovery" role="status">
+              <i aria-hidden="true">☠️</i>
+              <div>
+                <strong>Hero knocked out</strong>
+                <span>{heroRecoverLabel}. Expedition actions unlock after recovery.</span>
+              </div>
             </div>
           )}
 
@@ -1810,8 +1775,6 @@ function RoomPanel({
                 />
               ) : (
                 <>
-                  <SupportPicker support={room.support || 0} selected={selectedSupport} onChange={setSelectedSupport} />
-
                   <div className="expedition-power-grid">
                     <RoleAbilityControl
                       member={member}
@@ -1851,7 +1814,7 @@ function RoomPanel({
                         type="button"
                         className="btn btn-primary expedition-roll-button"
                         onClick={() => onAttempt(room.key, null, {
-                          selectedSupport,
+                          selectedSupport: 0,
                           mechanicChoice: selectedMechanicChoice,
                           useSharedBuff,
                         })}
@@ -1876,15 +1839,6 @@ function RoomPanel({
             </div>
           )}
 
-          <button
-            type="button"
-            className="expedition-assist-button"
-            onClick={() => onAssist(room.key)}
-            disabled={mutating || !canAssist || heroRecovering}
-          >
-            Assist +support <span>{assistReason}</span>
-          </button>
-
         </>
       )}
     </div>
@@ -1896,7 +1850,6 @@ function ExpeditionDashboard({
   archive,
   mutating,
   onAttempt,
-  onAssist,
   onScoutChoice,
   onMinigameStart,
   onMinigameFinish,
@@ -1912,7 +1865,6 @@ function ExpeditionDashboard({
   ), [state.familyMembers]);
   const [selectedRoomKey, setSelectedRoomKey] = useState(null);
   const [lastRoll, setLastRoll] = useState(null);
-  const [showMap, setShowMap] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -1926,20 +1878,14 @@ function ExpeditionDashboard({
   }, { total: 0 });
   const member = state.member;
   const roleMeta = state.catalog?.roles?.[member?.role] || {};
-  const loadout = (member?.loadout || [])
-    .map(artifactIdFromLoadoutSlot)
-    .filter(Boolean);
   const provision = member?.provisionId ? provisions.get(member.provisionId) : null;
   const selectedRoom = rooms.find(room => room.key === selectedRoomKey) || null;
-  const activeLoadout = (member?.loadout || [])
-    .map((slot, slotIndex) => {
-      const artifactId = artifactIdFromLoadoutSlot(slot);
-      const meta = artifacts.get(artifactId);
-      return artifactId && meta?.useType === 'active'
-        ? { artifactId, slotIndex, meta }
-        : null;
-    })
-    .filter(Boolean);
+  const equippedRelics = Array.from({ length: 3 }, (_, slotIndex) => {
+    const slot = member?.loadout?.[slotIndex] || null;
+    const artifactId = artifactIdFromLoadoutSlot(slot);
+    const meta = artifacts.get(artifactId);
+    return artifactId && meta ? { artifactId, slotIndex, meta } : null;
+  });
   const heroRecoverAt = Number(member?.heroRecoverAt || 0);
   const heroRecovering = heroRecoverAt > Math.floor(Date.now() / 1000) || Number(member?.heroHp ?? 3) <= 0;
   const currentMinigameAttempt = state.currentMinigameAttempt || null;
@@ -2009,8 +1955,10 @@ function ExpeditionDashboard({
     if (next) setArtifactUseId(null);
   }
 
-  const artifactUse = activeLoadout.find(item => item.artifactId === artifactUseId);
-  const artifactUseDisabledReason = !selectedRoom
+  const artifactUse = equippedRelics.find(item => item?.artifactId === artifactUseId);
+  const artifactUseDisabledReason = artifactUse?.meta?.useType !== 'active'
+    ? ''
+    : !selectedRoom
     ? 'Select an open room first.'
     : selectedRoom.state !== 'unlocked'
       ? 'Active artifacts can only be used in the current open room.'
@@ -2027,7 +1975,6 @@ function ExpeditionDashboard({
           <strong>Root King</strong>
         </div>
         <div className="expedition-game-actions">
-          <button type="button" className="expedition-nav-button" onClick={() => setShowMap(true)}>Map</button>
           <button type="button" className="expedition-nav-button" onClick={() => setShowMenu(true)}>Menu</button>
         </div>
       </div>
@@ -2043,39 +1990,40 @@ function ExpeditionDashboard({
         </div>
         <div className="expedition-hud-role">
           <span>{titleize(member?.role || 'Hero')}</span>
-          <small>{loadout.length}/3 relics</small>
+          <small>Class</small>
         </div>
-        {state.permissions?.canFinish && (
-          <div className="expedition-hud-finish">
+        <div className="expedition-hud-relics" aria-label="Equipped relics">
+          {equippedRelics.map((item, slotIndex) => item ? (
             <button
               type="button"
-              className="btn btn-primary expedition-finish-button"
-              onClick={onFinish}
-              disabled={mutating}
+              key={`${item.artifactId}-${slotIndex}`}
+              className={`rarity-${item.meta.rarity || 'common'}`}
+              onClick={() => setArtifactUseId(item.artifactId)}
+              aria-label={`${item.meta.name || titleize(item.artifactId)} relic`}
             >
-              {mutating ? 'Sealing...' : 'Finish Expedition'}
+              {artifactImage(item.artifactId)
+                ? <img src={artifactImage(item.artifactId)} alt="" />
+                : <span>R</span>}
+              {item.meta.useType === 'active' && <i aria-hidden="true" />}
             </button>
-          </div>
-        )}
-      </div>
-
-      {finishMessage && <p className="expedition-finish-hint">Expedition archived. History will show the final family record.</p>}
-
-      {activeLoadout.length > 0 && (
-        <div className="expedition-active-relics" aria-label="Active artifacts">
-          <span>Ready relics</span>
-          {activeLoadout.map(({ artifactId, slotIndex, meta }) => (
-            <button
-              type="button"
-              key={`${artifactId}-${slotIndex}`}
-              onClick={() => setArtifactUseId(artifactId)}
-            >
-              {artifactImage(artifactId) && <img src={artifactImage(artifactId)} alt="" />}
-              <strong>{meta.name || titleize(artifactId)}</strong>
-            </button>
+          ) : (
+            <span key={`empty-relic-${slotIndex}`} aria-label="Empty relic slot" />
           ))}
         </div>
+      </div>
+
+      {state.permissions?.canFinish && (
+        <button
+          type="button"
+          className="btn btn-primary expedition-finish-button expedition-finish-wide"
+          onClick={onFinish}
+          disabled={mutating}
+        >
+          {mutating ? 'Sealing...' : 'Finish Expedition'}
+        </button>
       )}
+
+      {finishMessage && <p className="expedition-finish-hint">Expedition archived. History will show the final family record.</p>}
 
       <RoomPanel
         room={selectedRoom}
@@ -2088,7 +2036,6 @@ function ExpeditionDashboard({
         mutating={mutating}
         lastRoll={lastRoll}
         onAttempt={handleAttempt}
-        onAssist={onAssist}
         onScoutChoice={onScoutChoice}
         onMinigameStart={onMinigameStart}
         onMinigameFinish={handleRoomMinigameFinish}
@@ -2096,20 +2043,6 @@ function ExpeditionDashboard({
         onRollFxComplete={() => setLastRoll(null)}
         currentMinigameAttempt={currentMinigameAttempt}
       />
-
-      {showMap && (
-        <ExpeditionOverlay title="Dungeon Map" kicker="Navigation" onClose={() => setShowMap(false)} wide>
-          <DungeonMap
-            rooms={rooms}
-            edges={edges}
-            selectedKey={selectedRoomKey}
-            onSelect={key => {
-              setSelectedRoomKey(key);
-              setShowMap(false);
-            }}
-          />
-        </ExpeditionOverlay>
-      )}
 
       {showMenu && (
         <ExpeditionOverlay title="Expedition Menu" kicker="Records & rules" onClose={() => setShowMenu(false)}>
@@ -2180,7 +2113,7 @@ function ExpeditionDashboard({
             image: artifactImage(artifactUse.artifactId),
             quantity: 1,
           }}
-          mode="use"
+          mode={artifactUse.meta.useType === 'active' ? 'use' : 'inspect'}
           disabledReason={artifactUseDisabledReason}
           onConfirm={() => handleUseArtifact(artifactUse.artifactId)}
           onClose={() => setArtifactUseId(null)}
@@ -2292,7 +2225,6 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   const prepareIdempotencyKeyRef = useRef(null);
   const finishIdempotencyKeyRef = useRef(null);
   const attemptIdempotencyKeysRef = useRef(new Map());
-  const assistIdempotencyKeysRef = useRef(new Map());
   const scoutChoiceIdempotencyKeysRef = useRef(new Map());
   const minigameStartIdempotencyKeysRef = useRef(new Map());
   const minigameFinishIdempotencyKeysRef = useRef(new Map());
@@ -2463,17 +2395,6 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
       idempotencyKey: getPendingMutationKey(attemptIdempotencyKeysRef, signature, 'expedition-attempt'),
     }), 'Could not attempt room');
     if (next) clearPendingMutationKey(attemptIdempotencyKeysRef, signature);
-    return next;
-  }
-
-  async function handleAssistRoom(roomKey) {
-    const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, roomKey });
-    const next = await mutateExpedition(expeditionId => api.assistExpeditionRoom(
-      expeditionId,
-      roomKey,
-      getPendingMutationKey(assistIdempotencyKeysRef, signature, 'expedition-assist'),
-    ), 'Could not assist room');
-    if (next) clearPendingMutationKey(assistIdempotencyKeysRef, signature);
     return next;
   }
 
@@ -2722,7 +2643,6 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
             archive={archive}
             mutating={mutating}
             onAttempt={handleAttemptRoom}
-            onAssist={handleAssistRoom}
             onScoutChoice={handleScoutChoice}
             onMinigameStart={handleMinigameStart}
             onMinigameFinish={handleMinigameFinish}
@@ -2741,7 +2661,6 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
           archive={archive}
           mutating={mutating}
           onAttempt={handleAttemptRoom}
-          onAssist={handleAssistRoom}
           onScoutChoice={handleScoutChoice}
           onMinigameStart={handleMinigameStart}
           onMinigameFinish={handleMinigameFinish}

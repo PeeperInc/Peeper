@@ -2418,7 +2418,7 @@ test('finishing consumes reserved passives and returns unused active copies', ()
   db.close();
 });
 
-test('Wooden Shield blocks one failed minigame hit in its room with persisted state and visuals', () => {
+test('failed minigames preserve HP and do not consume an armed Wooden Shield', () => {
   const scenario = minigameArtifactScenario({ userId: 31, artifactIds: ['wooden_shield'] });
   inTx(scenario.db, () => useArtifactForMember({
     transaction: scenario.db,
@@ -2433,18 +2433,18 @@ test('Wooden Shield blocks one failed minigame hit in its room with persisted st
   const first = failMinigameAttempt(scenario, 'wooden-shield-first', 2_000);
   const firstMember = first.snapshot.members.find(member => member.userId === scenario.userId);
   assert.equal(firstMember.heroHp, 3);
-  assert.deepEqual(first.visualEvents, [
-    { type: 'artifact_damage_prevented', artifactId: 'wooden_shield' },
-  ]);
-  assert.equal(firstMember.triggerHistory.some(entry => entry.artifactId === 'wooden_shield'), false);
+  assert.deepEqual(first.visualEvents, []);
+  assert.equal(firstMember.triggerHistory.some(entry => entry.artifactId === 'wooden_shield'), true);
 
   const second = failMinigameAttempt(scenario, 'wooden-shield-second', 2_010);
-  assert.equal(second.snapshot.members.find(member => member.userId === scenario.userId).heroHp, 2);
-  assert.deepEqual(second.visualEvents, [{ type: 'hero_damaged', amount: 1, heroHp: 2 }]);
+  const secondMember = second.snapshot.members.find(member => member.userId === scenario.userId);
+  assert.equal(secondMember.heroHp, 3);
+  assert.deepEqual(second.visualEvents, []);
+  assert.equal(secondMember.triggerHistory.some(entry => entry.artifactId === 'wooden_shield'), true);
   scenario.db.close();
 });
 
-test('Last Stand blocks only the first lethal minigame hit while Rabbit Foot remains combat-only', () => {
+test('failed minigames preserve HP and personal damage passives for combat', () => {
   const lastStand = minigameArtifactScenario({
     userId: 32,
     artifactIds: ['last_stand_banner'],
@@ -2453,23 +2453,20 @@ test('Last Stand blocks only the first lethal minigame hit while Rabbit Foot rem
   const first = failMinigameAttempt(lastStand, 'last-stand-first', 2_000);
   const firstMember = first.snapshot.members.find(member => member.userId === lastStand.userId);
   assert.equal(firstMember.heroHp, 1);
-  assert.deepEqual(first.visualEvents, [
-    { type: 'artifact_damage_prevented', artifactId: 'last_stand_banner' },
-  ]);
-  assert.equal(firstMember.triggerHistory.filter(entry => entry.artifactId === 'last_stand_banner').length, 1);
+  assert.deepEqual(first.visualEvents, []);
+  assert.equal(firstMember.triggerHistory.filter(entry => entry.artifactId === 'last_stand_banner').length, 0);
 
   const second = failMinigameAttempt(lastStand, 'last-stand-second', 2_010);
   const secondMember = second.snapshot.members.find(member => member.userId === lastStand.userId);
-  assert.equal(secondMember.heroHp, 0);
-  assert.equal(second.visualEvents.some(event => event.type === 'hero_damaged'), true);
-  assert.equal(second.visualEvents.some(event => event.type === 'hero_recovering'), true);
+  assert.equal(secondMember.heroHp, 1);
+  assert.deepEqual(second.visualEvents, []);
   lastStand.db.close();
 
   const rabbit = minigameArtifactScenario({ userId: 33, artifactIds: ['rabbit_foot'] });
   const rabbitFailure = failMinigameAttempt(rabbit, 'rabbit-foot', 2_000);
   const rabbitMember = rabbitFailure.snapshot.members.find(member => member.userId === rabbit.userId);
-  assert.equal(rabbitMember.heroHp, 2);
-  assert.deepEqual(rabbitFailure.visualEvents, [{ type: 'hero_damaged', amount: 1, heroHp: 2 }]);
+  assert.equal(rabbitMember.heroHp, 3);
+  assert.deepEqual(rabbitFailure.visualEvents, []);
   assert.equal(rabbitMember.triggerHistory.some(entry => entry.artifactId === 'rabbit_foot'), false);
   rabbit.db.close();
 });

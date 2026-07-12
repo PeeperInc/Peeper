@@ -30,8 +30,8 @@ function effectOwner(effect) {
 }
 
 const EFFECT_COPY = Object.freeze({
-  knight_shield: { icon: 'SH', label: 'Knight shield ready', tone: 'shield' },
-  bend_fate: { icon: 'D20', label: 'Bend Fate ready', tone: 'fate' },
+  knight_shield: { icon: '🛡️', label: 'Knight shield ready', tone: 'shield' },
+  bend_fate: { icon: '🎲', label: 'Bend Fate ready', tone: 'fate' },
 });
 
 export default function RoomEffectsBar({ effects = [], className = '' }) {
@@ -64,4 +64,3 @@ export default function RoomEffectsBar({ effects = [], className = '' }) {
     </aside>
   );
 }
-
