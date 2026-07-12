@@ -954,21 +954,12 @@ test('cursed combat bypasses all armed and passive personal damage protection', 
   assert.equal(eligible.events.some(event => event.type === 'artifact_damage_prevented'), true);
 });
 
-test('provisions grant AP, prevent debuffs, and protect minimum progress', () => {
-  assert.equal(prepareMemberLoadout({
+test('provisions stay carried until explicitly used and one-shot roll effects still resolve', () => {
+  const prepared = prepareMemberLoadout({
     member: member({ ap: 2, provisionId: 'carrot_rations' }),
-  }).ap, 3);
-
-  const prevented = resolveAttempt({
-    expedition: { id: 58, status: 'active' },
-    member: member({ provisionState: { preventDebuff: { uses: 1 } } }),
-    room: { ...hall, complication: 'frightened' },
-    action: hall.actions[0],
-    roll: 1,
-    now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(prevented.member.debuff, null);
-  assert.equal(prevented.member.provisionState.preventDebuff.uses, 0);
+  assert.equal(prepared.ap, 2);
+  assert.deepEqual(prepared.provisionState, { available: true, used: false });
 
   const minimum = resolveAttempt({
     expedition: { id: 58, status: 'active' },
@@ -991,25 +982,6 @@ test('provisions grant AP, prevent debuffs, and protect minimum progress', () =>
   assert.equal(raised.modifiedRoll, 10);
   assert.equal(raised.progressAwarded, 1);
   assert.equal(raised.member.provisionState.raiseModifiedRoll.uses, 0);
-});
-
-test('role restoration provisions recharge the new role charge once in the matching room', () => {
-  const restored = resolveAttempt({
-    expedition: { id: 58, status: 'active' },
-    member: member({
-      roleCharge: 0,
-      roleChargeProgress: 2,
-      provisionState: { restoreRoleAbility: { uses: 1, roomType: 'camp' } },
-    }),
-    room: { ...hall, type: 'camp', progress: 0 },
-    action: hall.actions[0],
-    roll: 8,
-    now: Date.UTC(2026, 5, 23),
-  });
-
-  assert.equal(restored.member.roleCharge, 1);
-  assert.equal(restored.member.roleChargeProgress, 0);
-  assert.equal(restored.member.provisionState.restoreRoleAbility.uses, 0);
 });
 
 test('assist costs one AP and adds capped support, with exhausted debuff reducing the grant for one action', () => {

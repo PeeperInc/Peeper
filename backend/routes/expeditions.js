@@ -16,6 +16,7 @@ const {
   startMinigameAttempt,
   finishMinigameAttempt,
   useRoleAbility,
+  useProvisionForMember,
   useArtifactForMember,
   equipFoundArtifactForMember,
   finishExpedition,
@@ -108,7 +109,13 @@ function rowToMember(row) {
   const loadoutState = parseLoadoutState(row.loadout_json);
   const debuff = parseJson(row.debuff_json, null);
   const heroRecoverAt = row.hero_recover_at ?? null;
-  const recovered = heroRecoverAt && heroRecoverAt <= Math.floor(Date.now() / 1000);
+  const now = Math.floor(Date.now() / 1000);
+  const recovered = heroRecoverAt && heroRecoverAt <= now;
+  const roleChargeReadyAt = row.role_charge_ready_at ?? 0;
+  const timedRoleReady = ['knight', 'cleric'].includes(row.role)
+    && Number(row.role_charge ?? 1) < 1
+    && roleChargeReadyAt > 0
+    && roleChargeReadyAt <= now;
   const regeneratedAp = regenerateAp({
     ap: row.ap,
     apRegenDay: row.ap_regen_day,
@@ -125,8 +132,9 @@ function rowToMember(row) {
     heroRecoverAt: recovered ? null : heroRecoverAt,
     roleAbilityDay: row.role_ability_day,
     roleAbilityUsed: Boolean(row.role_ability_used),
-    roleCharge: row.role_charge ?? 1,
+    roleCharge: timedRoleReady ? 1 : (row.role_charge ?? 1),
     roleChargeProgress: row.role_charge_progress ?? 0,
+    roleChargeReadyAt: timedRoleReady ? 0 : roleChargeReadyAt,
     provisionId: row.provision_id,
     provisionState: parseJson(row.provision_state_json, {}),
     loadout: loadoutState.slots,
@@ -553,6 +561,29 @@ router.post('/:id/rooms/:roomKey/role-ability', (req, res) => {
       userId: req.currentUser.id,
       roomKey: req.params.roomKey,
       choiceId: req.body?.choiceId || null,
+    }))();
+    return res.json({
+      ...serializeFor(req.currentUser, access.family, result.snapshot, false),
+      visualEvents: result.visualEvents,
+    });
+  } catch (error) {
+    return handleRouteError(res, error);
+  }
+});
+
+router.post('/:id/rooms/:roomKey/provision/use', (req, res) => {
+  const idempotencyKey = requireIdempotencyKey(req, res);
+  if (!idempotencyKey) return;
+  const access = requireExpeditionAccess(req, res);
+  if (!access) return;
+
+  try {
+    const result = db.transaction(() => useProvisionForMember({
+      transaction: db,
+      idempotencyKey,
+      expeditionId: access.expeditionId,
+      userId: req.currentUser.id,
+      roomKey: req.params.roomKey,
     }))();
     return res.json({
       ...serializeFor(req.currentUser, access.family, result.snapshot, false),

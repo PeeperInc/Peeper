@@ -14,7 +14,8 @@ const ROLE_EFFECT_EVENTS = Object.freeze({
 
 const MAX_ROLE_CHARGE = 1;
 const DEFAULT_RECHARGE_THRESHOLD = 3;
-const CLERIC_RECOVERY_REDUCTION_SECONDS = 2 * 60 * 60;
+const TIMED_ROLE_COOLDOWN_SECONDS = 3 * 60 * 60;
+const TIMED_ROLES = new Set(['knight', 'cleric']);
 
 function parseJson(text, fallback = {}) {
   if (!text) return JSON.parse(JSON.stringify(fallback));
@@ -45,30 +46,54 @@ function advanceRoleCharge(member = {}, apSpent = 1, threshold = DEFAULT_RECHARG
   return { roleCharge: 0, roleChargeProgress: nextProgress };
 }
 
-function memberChargeRow(transaction, expeditionId, userId) {
+function hasReadyAtColumn(transaction) {
+  return transaction.prepare('PRAGMA table_info(family_expedition_members)').all()
+    .some(column => column.name === 'role_charge_ready_at');
+}
+
+function memberChargeRow(transaction, expeditionId, userId, now = Math.floor(Date.now() / 1000)) {
+  const readySelect = hasReadyAtColumn(transaction)
+    ? ', role_charge_ready_at AS roleChargeReadyAt'
+    : ', 0 AS roleChargeReadyAt';
   const row = transaction.prepare(`
-    SELECT role, role_charge AS roleCharge, role_charge_progress AS roleChargeProgress
+    SELECT role, role_charge AS roleCharge, role_charge_progress AS roleChargeProgress ${readySelect}
     FROM family_expedition_members
     WHERE expedition_id = ? AND user_id = ?
   `).get(expeditionId, userId);
   if (!row) throw new RangeError('member is not prepared');
+  if (TIMED_ROLES.has(row.role) && row.roleCharge < 1 && row.roleChargeReadyAt > 0 && row.roleChargeReadyAt <= now) {
+    transaction.prepare(`
+      UPDATE family_expedition_members
+      SET role_charge = 1, role_charge_progress = 0, role_charge_ready_at = 0
+      WHERE expedition_id = ? AND user_id = ?
+    `).run(expeditionId, userId);
+    return { ...row, roleCharge: 1, roleChargeProgress: 0, roleChargeReadyAt: 0 };
+  }
   return row;
 }
 
-function consumeRoleCharge(transaction, { expeditionId, userId, expectedRole = null }) {
-  const member = memberChargeRow(transaction, expeditionId, userId);
+function consumeRoleCharge(transaction, { expeditionId, userId, expectedRole = null, now = Math.floor(Date.now() / 1000) }) {
+  const member = memberChargeRow(transaction, expeditionId, userId, now);
   if (expectedRole && member.role !== expectedRole) {
     throw new RangeError(`only ${expectedRole}s can use this ability`);
   }
   if (normalizeCharge(member.roleCharge) < 1) {
     throw new RangeError('role ability is not charged');
   }
-  transaction.prepare(`
-    UPDATE family_expedition_members
-    SET role_charge = 0, role_charge_progress = 0
-    WHERE expedition_id = ? AND user_id = ?
-  `).run(expeditionId, userId);
-  return { roleCharge: 0, roleChargeProgress: 0 };
+  const readyAt = TIMED_ROLES.has(member.role) ? now + TIMED_ROLE_COOLDOWN_SECONDS : 0;
+  if (hasReadyAtColumn(transaction)) {
+    transaction.prepare(`
+      UPDATE family_expedition_members
+      SET role_charge = 0, role_charge_progress = 0, role_charge_ready_at = ?
+      WHERE expedition_id = ? AND user_id = ?
+    `).run(readyAt, expeditionId, userId);
+  } else {
+    transaction.prepare(`
+      UPDATE family_expedition_members SET role_charge = 0, role_charge_progress = 0
+      WHERE expedition_id = ? AND user_id = ?
+    `).run(expeditionId, userId);
+  }
+  return { roleCharge: 0, roleChargeProgress: 0, roleChargeReadyAt: readyAt };
 }
 
 function ownerFromRow(row) {
@@ -141,7 +166,7 @@ function placeRoleEffect(transaction, {
   `).get(expeditionId, roomId, effectType);
   if (duplicate) throw new RangeError(`${effectType} is already active in this room`);
 
-  consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: role });
+  consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: role, now });
   const info = transaction.prepare(`
     INSERT INTO family_expedition_room_effects (
       expedition_id, room_id, effect_type, placed_by, remaining_uses, payload_json, created_at
@@ -246,7 +271,7 @@ function useClericPrayer(transaction, {
   userId,
   now = Math.floor(Date.now() / 1000),
 }) {
-  consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'cleric' });
+  consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'cleric', now });
   const owner = transaction.prepare(`
     SELECT id AS userId, first_name AS firstName, username
     FROM users WHERE id = ?
@@ -261,32 +286,7 @@ function useClericPrayer(transaction, {
   let recoveryReducedCount = 0;
 
   for (const member of members) {
-    if (member.heroRecoverAt) {
-      const nextRecoverAt = Math.max(now, member.heroRecoverAt - CLERIC_RECOVERY_REDUCTION_SECONDS);
-      const revived = nextRecoverAt <= now;
-      transaction.prepare(`
-        UPDATE family_expedition_members
-        SET hero_hp = ?, hero_recover_at = ?
-        WHERE expedition_id = ? AND user_id = ?
-      `).run(revived ? 3 : member.heroHp, revived ? null : nextRecoverAt, expeditionId, member.userId);
-      const event = {
-        type: 'cleric_recovery_reduced',
-        placedBy: owner,
-        amountSeconds: CLERIC_RECOVERY_REDUCTION_SECONDS,
-        heroHp: revived ? 3 : member.heroHp,
-        heroRecoverAt: revived ? null : nextRecoverAt,
-        revived,
-      };
-      enqueueMemberEvent(transaction, {
-        expeditionId,
-        userId: member.userId,
-        eventType: event.type,
-        payload: event,
-        now,
-      });
-      recoveryReducedCount += 1;
-      continue;
-    }
+    if (member.heroRecoverAt) continue;
     if (member.heroHp <= 0 || member.heroHp >= 3) continue;
     const heroHp = Math.min(3, member.heroHp + 1);
     transaction.prepare(`

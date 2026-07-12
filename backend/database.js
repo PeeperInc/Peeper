@@ -413,6 +413,7 @@ db.exec(`
     role_ability_used INTEGER NOT NULL DEFAULT 0,
     role_charge INTEGER NOT NULL DEFAULT 1,
     role_charge_progress INTEGER NOT NULL DEFAULT 0,
+    role_charge_ready_at INTEGER NOT NULL DEFAULT 0,
     room_coins_earned INTEGER NOT NULL DEFAULT 0,
     provision_id TEXT,
     provision_state_json TEXT NOT NULL DEFAULT '{}',
@@ -574,6 +575,7 @@ addColumnIfMissing('family_expedition_members', 'hero_hp', 'INTEGER NOT NULL DEF
 addColumnIfMissing('family_expedition_members', 'hero_recover_at', 'INTEGER');
 addColumnIfMissing('family_expedition_members', 'role_charge', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('family_expedition_members', 'role_charge_progress', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('family_expedition_members', 'role_charge_ready_at', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('family_expedition_members', 'room_coins_earned', 'INTEGER NOT NULL DEFAULT 0');
 
 const CURATED_ARTIFACTS_BY_RARITY = Object.freeze({

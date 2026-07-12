@@ -289,6 +289,13 @@ function formatTime(ts) {
   return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.ceil(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.ceil((total % 3600) / 60);
+  return hours > 0 ? `${hours}h ${minutes}m` : `${Math.max(1, minutes)}m`;
+}
+
 function describeAction(action, memberNameById) {
   const who = memberNameById.get(action.userId) || 'Someone';
   const verb = titleize(action.actionType || 'acted').toLowerCase();
@@ -390,166 +397,122 @@ function PreparationFlow({ state, loading, onPrepare }) {
   const provisionEntries = normalizeEntries(state.catalog?.provisions);
   const [role, setRole] = useState(() => roleEntries[0]?.[0] || 'knight');
   const [provisionId, setProvisionId] = useState(null);
-  const [artifactIds, setArtifactIds] = useState([]);
+  const [artifactIds, setArtifactIds] = useState([null, null, null]);
+  const [picker, setPicker] = useState(null);
   const [artifactDetailId, setArtifactDetailId] = useState(null);
-
-  useEffect(() => {
-    if (!roleEntries.some(([id]) => id === role)) setRole(roleEntries[0]?.[0] || 'knight');
-    if (provisionId && !provisionEntries.some(([id]) => id === provisionId)) setProvisionId(null);
-  }, [provisionEntries, provisionId, role, roleEntries]);
-
-  function addArtifact(id) {
-    setArtifactIds(prev => (prev.length >= 3 ? prev : [...prev, id]));
-    setArtifactDetailId(null);
-  }
-
+  const [artifactSlot, setArtifactSlot] = useState(0);
   const inventory = state.artifactInventory || [];
+  const roleCopy = {
+    knight: ['🛡️', 'Shield the family', 'Place a shield in the current battle. It blocks the next hit against any family hero. Recharges after 3 hours.'],
+    scout: ['🧭', 'Choose the road', 'Once per expedition, reveal three possible next rooms and choose the family path. Warm Milk or a relic can restore it.'],
+    mage: ['✨', 'Empower the party', 'Once per expedition, grant every prepared hero +3 on one roll in the next combat. Warm Milk or a relic can restore it.'],
+    cleric: ['💚', 'Heal the wounded', 'Restore 1 HP to every wounded conscious hero. Knocked-out heroes still need their recovery time. Recharges after 3 hours.'],
+  };
+  const provisionCopy = {
+    carrot_rations: 'Drink during the run to restore 1 AP.',
+    tomato_soup: 'Restore 1 HP to your wounded hero.',
+    hearty_potato_meal: 'Your next failed progress roll still adds at least 1 progress.',
+    lucky_breakfast: 'Gain +2 on every d20 roll in the current room.',
+    warm_milk: 'Immediately restore your class ability.',
+    truffle_treat: 'Upgrade the rarity table of your next artifact reward.',
+    magic_squash_pie: 'Your next modified roll below 10 becomes 10.',
+  };
+
+  const selectedRole = roleEntries.find(([id]) => id === role)?.[1] || {};
+  const selectedProvision = provisionEntries.find(([id]) => id === provisionId)?.[1] || null;
   const detailInventoryItem = inventory.find(item => item.artifactId === artifactDetailId);
   const detailMeta = artifactDetailId ? artifacts.get(artifactDetailId) : null;
   const detailSelectedCount = artifactIds.filter(id => id === artifactDetailId).length;
-  const detailDisabledReason = artifactIds.length >= 3
-    ? 'All three expedition slots are filled.'
-    : detailInventoryItem && detailSelectedCount >= Number(detailInventoryItem.quantity || 0)
-      ? 'Every owned copy is already in your loadout.'
-      : '';
+  const detailDisabledReason = detailInventoryItem && detailSelectedCount >= Number(detailInventoryItem.quantity || 0)
+    ? 'Every owned copy is already in your loadout.'
+    : '';
+
+  function equipArtifact(id) {
+    setArtifactIds(previous => previous.map((value, index) => (index === artifactSlot ? id : value)));
+    setArtifactDetailId(null);
+    setPicker(null);
+  }
 
   return (
-    <div className="expedition-prep">
+    <div className="expedition-prep expedition-prep-compact">
       <div className="expedition-card expedition-prep-header">
-        <div>
-          <div className="expedition-kicker">Preparation</div>
-          <h2>Choose your kit</h2>
-        </div>
-        <div className="expedition-ap-chip">3 slots</div>
+        <div><div className="expedition-kicker">Preparation</div><h2>Pack for the dungeon</h2></div>
+        <div className="expedition-ap-chip">Tap to choose</div>
       </div>
 
-      <section>
-        <div className="expedition-section-title">Role</div>
-        <div className="expedition-role-grid">
-          {roleEntries.map(([id, meta]) => (
-            <button
-              type="button"
-              key={id}
-              className={`expedition-choice expedition-role-card${role === id ? ' selected' : ''}`}
-              onClick={() => setRole(id)}
-            >
-              {roleImage(id) && <img src={roleImage(id)} alt="" />}
-              <strong>{titleize(id)}</strong>
-              <span>{titleize(meta?.stat)} +{meta?.bonus ?? 0}</span>
-              <small>{titleize(meta?.ability)}</small>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <div className="expedition-section-title">Provision</div>
-        <div className="expedition-provision-grid">
-          <button
-            type="button"
-            className={`expedition-choice expedition-provision-card${!provisionId ? ' selected' : ''}`}
-            onClick={() => setProvisionId(null)}
-          >
-            <span className="expedition-provision-empty">None</span>
-            <strong>Travel Light</strong>
-            <small>No provision</small>
-          </button>
-          {provisionEntries.map(([id, meta]) => {
-            const named = provisionNames.get(id);
-            const image = assetById(provisionImages, id);
-            const recipe = meta?.recipe;
-            const unavailable = Boolean(recipe && meta.available === false);
-            const recipeLabel = recipe
-              ? `${meta.ownedQuantity || 0}/${recipe.quantity} ${titleize(recipe.productId)}`
-              : titleize(meta?.effect?.type || 'provision');
-            return (
-              <button
-                type="button"
-                key={id}
-                className={`expedition-choice expedition-provision-card${provisionId === id ? ' selected' : ''}${unavailable ? ' unavailable' : ''}`}
-                onClick={() => setProvisionId(id)}
-                disabled={unavailable}
-              >
-                {image && <img src={image} alt="" />}
-                <strong>{meta?.name || named?.name || titleize(id)}</strong>
-                <span>{recipeLabel}</span>
-                <small>{unavailable ? 'Missing farm product' : titleize(meta?.effect?.type || 'provision')}</small>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section>
-        <div className="expedition-section-title">Artifacts</div>
-        <div className="expedition-loadout-slots">
-          {[0, 1, 2].map(index => {
-            const id = artifactIds[index];
-            const item = id ? artifacts.get(id) : null;
-            return (
-              <button
-                type="button"
-                key={index}
-                className={`expedition-loadout-slot${id ? ' filled' : ''}`}
-                onClick={() => id && setArtifactIds(prev => prev.filter((_, slotIndex) => slotIndex !== index))}
-                disabled={!id}
-                aria-label={id ? `Remove ${item?.name || titleize(id)} from slot ${index + 1}` : `Empty slot ${index + 1}`}
-              >
-                {id ? item?.name || titleize(id) : `Slot ${index + 1}`}
-              </button>
-            );
-          })}
-        </div>
-        {inventory.length > 0 ? (
-          <div className="expedition-artifact-grid">
-            {inventory.map(item => {
-              const id = item.artifactId;
-              const meta = artifacts.get(id);
-              const selectedCount = artifactIds.filter(selectedId => selectedId === id).length;
-              const selected = selectedCount > 0;
-              const image = assetById(artifactImages, id);
+      <div className="expedition-prep-selectors">
+        <button type="button" className="expedition-prep-selector" onClick={() => setPicker('role')}>
+          <span>{roleCopy[role]?.[0] || '⚔️'}</span>
+          <div><small>Class</small><strong>{titleize(role)}</strong><em>{roleCopy[role]?.[1]}</em></div>
+          <b>Change</b>
+        </button>
+        <button type="button" className="expedition-prep-selector" onClick={() => setPicker('provision')}>
+          <span>🍲</span>
+          <div><small>Provision</small><strong>{selectedProvision?.name || provisionNames.get(provisionId)?.name || 'Travel Light'}</strong><em>{provisionId ? provisionCopy[provisionId] : 'Enter without a consumable meal.'}</em></div>
+          <b>Choose</b>
+        </button>
+        <div className="expedition-prep-artifact-block">
+          <div><small>Artifacts</small><strong>Three expedition slots</strong></div>
+          <div className="expedition-prep-artifact-slots">
+            {artifactIds.map((id, index) => {
+              const meta = id ? artifacts.get(id) : null;
               return (
-                <button
-                  type="button"
-                  key={id}
-                  className={`expedition-choice expedition-artifact-card rarity-${meta?.rarity || 'common'}${selected ? ' selected' : ''}`}
-                  onClick={() => setArtifactDetailId(id)}
-                >
-                  {image && <img src={image} alt="" />}
-                  <strong>{meta?.name || titleize(id)}</strong>
-                  <small>{meta?.displayEffect || meta?.effect || `Owned x${item.quantity || 1}`}</small>
-                  {selectedCount > 0 && <span>Equipped x{selectedCount}</span>}
+                <button type="button" key={index} onClick={() => { setArtifactSlot(index); setPicker('artifact'); }}>
+                  {id && artifactImage(id) ? <img src={artifactImage(id)} alt="" /> : <span>+</span>}
+                  <small>{meta?.name || `Slot ${index + 1}`}</small>
                 </button>
               );
             })}
           </div>
-        ) : (
-          <div className="expedition-empty">No artifacts found yet. You can prepare without them.</div>
-        )}
-      </section>
+        </div>
+      </div>
 
-      <button
-        type="button"
-        className="btn btn-primary btn-full expedition-cta"
-        onClick={() => onPrepare({ role, provisionId, artifactIds })}
-        disabled={loading || !role}
-      >
-        {loading ? 'Preparing...' : 'Lock In Preparation'}
+      <button type="button" className="btn btn-primary btn-full expedition-cta" onClick={() => onPrepare({ role, provisionId, artifactIds: artifactIds.filter(Boolean) })} disabled={loading || !role}>
+        {loading ? 'Preparing...' : 'Enter Expedition'}
       </button>
 
+      {picker === 'role' && (
+        <ExpeditionOverlay title="Choose Class" kicker="Your expedition role" onClose={() => setPicker(null)}>
+          <div className="expedition-picker-list">
+            {roleEntries.map(([id, meta]) => (
+              <button type="button" key={id} className={role === id ? 'selected' : ''} onClick={() => { setRole(id); setPicker(null); }}>
+                {roleImage(id) ? <img src={roleImage(id)} alt="" /> : <span>{roleCopy[id]?.[0]}</span>}
+                <div><strong>{titleize(id)}</strong><small>{titleize(meta?.stat)} +{meta?.bonus ?? 0}</small><p>{roleCopy[id]?.[2]}</p></div>
+              </button>
+            ))}
+          </div>
+        </ExpeditionOverlay>
+      )}
+      {picker === 'provision' && (
+        <ExpeditionOverlay title="Choose Provision" kicker="One manual-use meal" onClose={() => setPicker(null)}>
+          <div className="expedition-picker-list expedition-provision-picker">
+            <button type="button" className={!provisionId ? 'selected' : ''} onClick={() => { setProvisionId(null); setPicker(null); }}><span>🎒</span><div><strong>Travel Light</strong><p>No provision is consumed.</p></div></button>
+            {provisionEntries.map(([id, meta]) => {
+              const recipe = meta?.recipe;
+              const unavailable = Boolean(recipe && meta.available === false);
+              return (
+                <button type="button" key={id} className={provisionId === id ? 'selected' : ''} disabled={unavailable} onClick={() => { setProvisionId(id); setPicker(null); }}>
+                  {assetById(provisionImages, id) ? <img src={assetById(provisionImages, id)} alt="" /> : <span>🍲</span>}
+                  <div><strong>{meta?.name || titleize(id)}</strong><small>{recipe ? `${meta.ownedQuantity || 0}/${recipe.quantity} ${titleize(recipe.productId)}` : ''}</small><p>{unavailable ? 'You need more farm products.' : provisionCopy[id]}</p></div>
+                </button>
+              );
+            })}
+          </div>
+        </ExpeditionOverlay>
+      )}
+      {picker === 'artifact' && (
+        <ExpeditionOverlay title={`Artifact Slot ${artifactSlot + 1}`} kicker="Choose a relic" onClose={() => setPicker(null)}>
+          <div className="expedition-picker-list expedition-artifact-picker">
+            <button type="button" onClick={() => { setArtifactIds(previous => previous.map((value, index) => index === artifactSlot ? null : value)); setPicker(null); }}><span>×</span><div><strong>Leave Empty</strong><p>Save this slot for an artifact found during the run.</p></div></button>
+            {inventory.map(item => {
+              const meta = artifacts.get(item.artifactId);
+              return <button type="button" key={item.artifactId} onClick={() => setArtifactDetailId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<div><strong>{meta?.name || titleize(item.artifactId)}</strong><small>{titleize(meta?.rarity || 'common')} · owned {item.quantity || 1}</small><p>{meta?.displayEffect || meta?.effect}</p></div></button>;
+            })}
+          </div>
+        </ExpeditionOverlay>
+      )}
       {artifactDetailId && detailMeta && (
-        <ArtifactDetailSheet
-          artifact={{
-            ...detailMeta,
-            image: artifactImage(artifactDetailId),
-            quantity: detailInventoryItem?.quantity || 0,
-            selectedQuantity: detailSelectedCount,
-          }}
-          mode="take"
-          disabledReason={detailDisabledReason}
-          onConfirm={() => addArtifact(artifactDetailId)}
-          onClose={() => setArtifactDetailId(null)}
-        />
+        <ArtifactDetailSheet artifact={{ ...detailMeta, image: artifactImage(artifactDetailId), quantity: detailInventoryItem?.quantity || 0, selectedQuantity: detailSelectedCount }} mode="take" disabledReason={detailDisabledReason} onConfirm={() => equipArtifact(artifactDetailId)} onClose={() => setArtifactDetailId(null)} />
       )}
     </div>
   );
@@ -648,32 +611,25 @@ function ExpeditionOverlay({ title, kicker, onClose, children, wide = false }) {
 }
 
 function ExpeditionGuidePanel() {
+  const sections = [
+    ['Getting started', 'Every family member chooses a class, one provision and up to three artifacts. You can join and help at your own pace; an expedition never fails because the family is slow.'],
+    ['AP and returning to play', 'Actions cost 1 AP. You can hold up to 5 AP and recover 1 AP every 3 hours. More active family members move the expedition faster, and active heroes receive a larger final reward.'],
+    ['Combat and the d20', 'Combat uses one d20. A result of 1-4 wounds you, 5-7 changes nothing, 8-15 deals 1 damage, 16-19 deals 2, and a natural 20 deals 3. A class favored by that enemy receives its class bonus.'],
+    ['Room mini-games', 'Non-combat rooms replace the d20 with a skill challenge. Starting an attempt spends 1 AP. Failing costs that AP, but never removes HP. If the room still needs progress, you can begin another attempt immediately.'],
+    ['HP and knockout', 'Heroes have 3 HP. HP does not refill between rooms. At 0 HP your hero is knocked out for 6 hours, then returns with 3 HP. A Knight shield can prevent a hit; a Cleric heals conscious wounded heroes.'],
+    ['Class abilities', 'Scout chooses one future path per expedition. Mage grants every prepared hero +3 on one roll in the next combat. Knight blocks the next family hit and Cleric restores 1 HP; Knight and Cleric recharge after 3 hours.'],
+    ['Provisions', 'Your chosen meal appears beside your relics. Tap it when you want to consume it. Meals are single-use: some heal or restore AP, while others empower one roll, one room, one reward, or restore your class ability.'],
+    ['Artifacts', 'Only the three equipped slots work. Tap a relic in the top bar to read its exact effect and use it when allowed. Active relics disappear when used; expedition-long relics are consumed when the expedition ends.'],
+    ['Scout paths and rewards', 'Future rooms remain hidden. A Scout can choose the next encounter from three paths once per expedition. Rooms pay rewards when cleared, and the final reward favors heroes who spent more AP helping the family.'],
+  ];
   return (
-    <div className="expedition-guide-grid">
-      <div className="expedition-guide-card">
-        <strong>1. Rooms are checks</strong>
-        <span>Every roll costs 1 AP. The final d20 result adds progress to the current room. More family members means more daily AP, so the dungeon moves faster.</span>
-      </div>
-      <div className="expedition-guide-card">
-        <strong>2. Combat rolls</strong>
-        <span>Mob rooms use one clean d20: 1-4 wounds your hero, 5-7 misses, 8-15 deals 1, 16-19 deals 2, and 20 deals 3.</span>
-      </div>
-      <div className="expedition-guide-card">
-        <strong>3. Rewards open on clear</strong>
-        <span>Treasure is paid when the room is cleared, not on every roll. Criticals and some relics can still create bonus luck.</span>
-      </div>
-      <div className="expedition-guide-card">
-        <strong>4. Mini-games cost AP, not HP</strong>
-        <span>A failed room challenge spends its 1 AP attempt, but it never wounds your hero or consumes a shield.</span>
-      </div>
-      <div className="expedition-guide-card">
-        <strong>5. Scout pathing</strong>
-        <span>Future rooms stay hidden. Scouts are the pathfinders: their ability chooses the next encounter from three unknown routes.</span>
-      </div>
-      <div className="expedition-guide-card">
-        <strong>6. Roles still matter</strong>
-        <span>Each room highlights best roles. Anyone can roll, but the matching hero gets the cleanest modifier.</span>
-      </div>
+    <div className="expedition-guide-accordion">
+      {sections.map(([title, copy], index) => (
+        <details key={title} open={index === 0}>
+          <summary><span>{String(index + 1).padStart(2, '0')}</span><strong>{title}</strong><i>+</i></summary>
+          <p>{copy}</p>
+        </details>
+      ))}
     </div>
   );
 }
@@ -729,13 +685,13 @@ function LastRollPanel({ action }) {
 function RoleAbilityControl({ member, room, mutating, onUse }) {
   if (!member?.role || member.role === 'scout' || !isActionableRoom(room)) return null;
   const copy = {
-    mage: ['Place Bend Fate', 'Family advantage or one free mini-game retry.'],
+    mage: ['Cast Battle Spark', 'Every prepared hero gets +3 on one roll in the next combat.'],
     knight: ['Place Knight Shield', 'Blocks the next family hit in this room.'],
-    cleric: ['Family Prayer', 'Heal wounded heroes and shorten recovery.'],
+    cleric: ['Healing Prayer', 'Restores 1 HP to every conscious wounded hero.'],
   }[member.role];
   if (!copy) return null;
   const ready = Number(member.roleCharge || 0) > 0;
-  const effectType = member.role === 'knight' ? 'knight_shield' : member.role === 'mage' ? 'bend_fate' : null;
+  const effectType = member.role === 'knight' ? 'knight_shield' : null;
   const alreadyActive = effectType && (room.activeEffects || []).some(effect => effect.effectType === effectType);
 
   return (
@@ -746,7 +702,7 @@ function RoleAbilityControl({ member, room, mutating, onUse }) {
       disabled={!ready || mutating || alreadyActive}
     >
       <strong>{copy[0]}</strong>
-      <span>{alreadyActive ? 'Already active in this room.' : ready ? copy[1] : `Recharge ${member.roleChargeProgress || 0}/3 AP`}</span>
+      <span>{alreadyActive ? 'Already active in this room.' : ready ? copy[1] : member.roleChargeReadyAt ? `Ready in ${formatDuration(Math.max(0, member.roleChargeReadyAt - Math.floor(Date.now() / 1000)))}` : 'Used for this expedition'}</span>
     </button>
   );
 }
@@ -772,13 +728,12 @@ function ScoutChoicePanel({ room, member, roles, mutating, onScoutChoice }) {
       <div className="expedition-scout-choice-head">
         <div>
           <strong>Scout the next room</strong>
-          <span>Pick one future encounter. Other scouts cannot change this room after that.</span>
+          <span>Pick one of three future encounters. This spends your one Scout choice for the expedition.</span>
         </div>
       </div>
       <div className="expedition-scout-choice-grid">
         {choices.map(choice => {
           const choiceRoom = choice.room || {};
-          const bestRoles = (choiceRoom.weakRoles || []).map(role => roles?.[role]?.name || titleize(role)).join(' / ') || 'Any hero';
           return (
             <button
               type="button"
@@ -788,7 +743,7 @@ function ScoutChoicePanel({ room, member, roles, mutating, onScoutChoice }) {
             >
               <span>{titleize(choiceRoom.type || 'room')}</span>
               <strong>{choice.label || choiceRoom.name || titleize(choiceRoom.type || 'Path')}</strong>
-              <small>Best: {bestRoles}</small>
+              <small>The path locks for the whole family</small>
             </button>
           );
         })}
@@ -1854,6 +1809,7 @@ function ExpeditionDashboard({
   onMinigameStart,
   onMinigameFinish,
   onUseArtifact,
+  onUseProvision,
   onRoleAbility,
   onFinish,
   finishMessage,
@@ -1869,6 +1825,7 @@ function ExpeditionDashboard({
   const [showGuide, setShowGuide] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [artifactUseId, setArtifactUseId] = useState(null);
+  const [showProvision, setShowProvision] = useState(false);
   const rooms = state.map?.rooms || [];
   const edges = state.map?.edges || [];
   const roomCounts = rooms.reduce((counts, room) => {
@@ -1879,6 +1836,7 @@ function ExpeditionDashboard({
   const member = state.member;
   const roleMeta = state.catalog?.roles?.[member?.role] || {};
   const provision = member?.provisionId ? provisions.get(member.provisionId) : null;
+  const provisionAvailable = Boolean(member?.provisionId && member?.provisionState?.available && !member?.provisionState?.used);
   const selectedRoom = rooms.find(room => room.key === selectedRoomKey) || null;
   const equippedRelics = Array.from({ length: 3 }, (_, slotIndex) => {
     const slot = member?.loadout?.[slotIndex] || null;
@@ -1895,22 +1853,9 @@ function ExpeditionDashboard({
       setSelectedRoomKey(currentMinigameAttempt.roomKey);
       return;
     }
-    if (lastRoll) return;
     const preferred = nextPreferredRoomKey(rooms, selectedRoomKey);
     if (preferred !== selectedRoomKey) setSelectedRoomKey(preferred);
-  }, [rooms, selectedRoomKey, lastRoll, currentMinigameAttempt?.roomKey]);
-
-  useEffect(() => {
-    setLastRoll(null);
-  }, [selectedRoomKey]);
-
-  useEffect(() => {
-    if (!lastRoll || lastRoll.pending) return undefined;
-    const events = lastRoll.events || lastRoll.modifiers?.events || [];
-    const hasSequencedFx = events.some(event => ['mage_advantage', 'shield_blocked'].includes(event?.type));
-    const timer = window.setTimeout(() => setLastRoll(null), hasSequencedFx ? 4200 : 800);
-    return () => window.clearTimeout(timer);
-  }, [lastRoll]);
+  }, [rooms, selectedRoomKey, currentMinigameAttempt?.roomKey]);
 
   async function handleAttempt(roomKey, actionId, options) {
     setLastRoll({ roomKey, pending: true });
@@ -1989,9 +1934,13 @@ function ExpeditionDashboard({
           <strong>{member?.ap ?? 0}/5</strong>
         </div>
         <div className="expedition-hud-role">
-          <span>{titleize(member?.role || 'Hero')}</span>
+          <span>⚔️ {titleize(member?.role || 'Hero')}</span>
           <small>Class</small>
         </div>
+        <button type="button" className={`expedition-hud-provision${provisionAvailable ? ' ready' : ''}`} onClick={() => setShowProvision(true)} disabled={!member?.provisionId}>
+          {member?.provisionId && assetById(provisionImages, member.provisionId) ? <img src={assetById(provisionImages, member.provisionId)} alt="" /> : <span>🍲</span>}
+          <small>Food</small>
+        </button>
         <div className="expedition-hud-relics" aria-label="Equipped relics">
           {equippedRelics.map((item, slotIndex) => item ? (
             <button
@@ -2040,7 +1989,7 @@ function ExpeditionDashboard({
         onMinigameStart={onMinigameStart}
         onMinigameFinish={handleRoomMinigameFinish}
         onRoleAbility={onRoleAbility}
-        onRollFxComplete={() => setLastRoll(null)}
+        onRollFxComplete={() => {}}
         currentMinigameAttempt={currentMinigameAttempt}
       />
 
@@ -2118,6 +2067,19 @@ function ExpeditionDashboard({
           onConfirm={() => handleUseArtifact(artifactUse.artifactId)}
           onClose={() => setArtifactUseId(null)}
         />
+      )}
+      {showProvision && member?.provisionId && (
+        <ExpeditionOverlay title={provision?.name || titleize(member.provisionId)} kicker="Expedition provision" onClose={() => setShowProvision(false)}>
+          <div className="expedition-provision-use">
+            {assetById(provisionImages, member.provisionId) && <img src={assetById(provisionImages, member.provisionId)} alt="" />}
+            <p>{{
+              carrot_rations: 'Restore 1 AP now.', tomato_soup: 'Restore 1 HP now.', hearty_potato_meal: 'Guarantee at least 1 progress on your next failed roll.', lucky_breakfast: 'Gain +2 on every d20 roll in this room.', warm_milk: 'Restore your class ability immediately.', truffle_treat: 'Upgrade your next artifact reward.', magic_squash_pie: 'Raise your next low modified roll to 10.',
+            }[member.provisionId]}</p>
+            <button type="button" className="btn btn-primary btn-full" disabled={!provisionAvailable || mutating || !selectedRoom || selectedRoom.state !== 'unlocked'} onClick={async () => { const next = await onUseProvision(selectedRoom.key); if (next) setShowProvision(false); }}>
+              {provisionAvailable ? 'Use Provision' : 'Already Used'}
+            </button>
+          </div>
+        </ExpeditionOverlay>
       )}
     </div>
   );
@@ -2230,6 +2192,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   const minigameFinishIdempotencyKeysRef = useRef(new Map());
   const artifactUseIdempotencyKeysRef = useRef(new Map());
   const roleAbilityIdempotencyKeysRef = useRef(new Map());
+  const provisionUseIdempotencyKeysRef = useRef(new Map());
   const eventAckIdempotencyKeysRef = useRef(new Map());
   const pendingRewards = state?.pendingRewards || [];
   const pendingRewardCount = Number(state?.pendingRewardCount ?? pendingRewards.length);
@@ -2492,6 +2455,17 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
     return next;
   }
 
+  async function handleUseProvision(roomKey) {
+    const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, roomKey, provisionId: state?.member?.provisionId });
+    const next = await mutateExpedition(expeditionId => api.useExpeditionProvision(
+      expeditionId,
+      roomKey,
+      getPendingMutationKey(provisionUseIdempotencyKeysRef, signature, 'expedition-provision'),
+    ), 'Could not use provision');
+    if (next) clearPendingMutationKey(provisionUseIdempotencyKeysRef, signature);
+    return next;
+  }
+
   async function handlePersonalFxComplete({ source, eventId }) {
     if (source !== 'personal' || !eventId) return;
     const signature = String(eventId);
@@ -2647,6 +2621,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
             onMinigameStart={handleMinigameStart}
             onMinigameFinish={handleMinigameFinish}
             onUseArtifact={handleUseArtifact}
+            onUseProvision={handleUseProvision}
             onRoleAbility={handleRoleAbility}
             onFinish={handleFinishExpedition}
             finishMessage={finishMessage}
@@ -2665,6 +2640,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
           onMinigameStart={handleMinigameStart}
           onMinigameFinish={handleMinigameFinish}
           onUseArtifact={handleUseArtifact}
+          onUseProvision={handleUseProvision}
           onRoleAbility={handleRoleAbility}
           onFinish={handleFinishExpedition}
           finishMessage={finishMessage}

@@ -46,6 +46,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   const focusAttemptRef = useRef(null);
   const previewTimersRef = useRef([]);
   const terminalResetTimerRef = useRef(null);
+  const timingStartedAtRef = useRef(0);
 
   useEffect(() => {
     previewTimersRef.current.forEach(window.clearTimeout);
@@ -74,7 +75,16 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     focusTargetRef.current = 50;
     focusHeldRef.current = false;
     focusAttemptRef.current = null;
+    timingStartedAtRef.current = 0;
   }, [room?.key, kind]);
+
+  useEffect(() => {
+    const source = `${room?.key || 'focus'}:${retryKey}`;
+    const hash = [...source].reduce((total, char) => ((total * 33) ^ char.charCodeAt(0)) >>> 0, 5381);
+    const nextTarget = 34 + (hash % 49);
+    setFocusTarget(nextTarget);
+    focusTargetRef.current = nextTarget;
+  }, [retryKey, room?.key]);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -114,7 +124,10 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     const timer = window.setInterval(() => {
       if (phase === 'timing') {
         setMarker(value => {
-          const next = value + direction * 5;
+          const elapsed = Math.max(0, Date.now() - timingStartedAtRef.current);
+          const wave = (Math.sin(elapsed / 430) + 1) / 2;
+          const speed = 1.8 + (wave * wave * 5.2);
+          const next = value + direction * speed;
           if (next >= 96) { setDirection(-1); return 96; }
           if (next <= 4) { setDirection(1); return 4; }
           return next;
@@ -173,12 +186,13 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
         setPhase('done');
         phaseRef.current = 'done';
         setFeedback(response?.success ? 'Room cleared.' : 'Attempt spent. The room remains.');
-        if (!response?.success) {
-          terminalResetTimerRef.current = window.setTimeout(() => {
-            terminalResetTimerRef.current = null;
-            setRetryKey(value => value + 1);
-          }, 700);
-        }
+        terminalResetTimerRef.current = window.setTimeout(() => {
+          terminalResetTimerRef.current = null;
+          setRetryKey(value => value + 1);
+          setPhase('idle');
+          phaseRef.current = 'idle';
+          setFeedback('');
+        }, response?.success ? 900 : 700);
       }
       setPendingResult(null);
       return response;
@@ -196,6 +210,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     if (!nextAttempt) return;
     setMarker(8);
     setDirection(1);
+    timingStartedAtRef.current = Date.now();
     setPhase('timing');
   }
 
@@ -219,10 +234,6 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
       return;
     }
     focusAttemptRef.current = nextAttempt;
-    const seedTotal = [...String(nextAttempt.seed)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-    const nextTarget = 34 + (seedTotal % 49);
-    setFocusTarget(nextTarget);
-    focusTargetRef.current = nextTarget;
     setCharge(0);
     chargeRef.current = 0;
     setPhase('focus');
@@ -339,7 +350,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
           <div className="expedition-focus-challenge" style={{ '--focus-charge': `${charge}%`, '--focus-target': `${focusTarget}%` }}>
             <div className="expedition-focus-target"><span>Target</span><strong>{focusTarget}</strong></div>
             <div className="expedition-focus-orb"><b /><span>{Math.round(charge)}</span></div>
-            <div className="expedition-focus-meter"><i className="expedition-focus-sweet" /><b style={{ width: `${charge}%` }} /></div>
+            <div className="expedition-focus-meter"><b style={{ width: `${charge}%` }} /></div>
           </div>
           <button
             type="button"

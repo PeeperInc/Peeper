@@ -30,6 +30,7 @@ function createDb() {
       role TEXT NOT NULL,
       role_charge INTEGER NOT NULL DEFAULT 1,
       role_charge_progress INTEGER NOT NULL DEFAULT 0,
+      role_charge_ready_at INTEGER NOT NULL DEFAULT 0,
       hero_hp INTEGER NOT NULL DEFAULT 3,
       hero_recover_at INTEGER,
       prepared_at INTEGER NOT NULL DEFAULT 1,
@@ -193,7 +194,7 @@ test('Bend Fate exposes a one-shot free mini-game retry for the attempt state ma
   db.close();
 });
 
-test('Cleric prayer heals active heroes, shortens recovery, and persists personal events', () => {
+test('Cleric prayer only heals conscious wounded heroes and persists personal events', () => {
   const db = createDb();
   addMember(db, { userId: 10, role: 'cleric' });
   addMember(db, { userId: 11, role: 'mage', hp: 2 });
@@ -207,22 +208,22 @@ test('Cleric prayer heals active heroes, shortens recovery, and persists persona
   assert.equal(result.events.length, 1);
   assert.equal(db.prepare('SELECT hero_hp FROM family_expedition_members WHERE user_id = 11').pluck().get(), 3);
   assert.equal(db.prepare('SELECT hero_hp FROM family_expedition_members WHERE user_id = 12').pluck().get(), 0);
-  assert.equal(db.prepare('SELECT hero_recover_at FROM family_expedition_members WHERE user_id = 12').pluck().get(), 2800);
+  assert.equal(db.prepare('SELECT hero_recover_at FROM family_expedition_members WHERE user_id = 12').pluck().get(), 10000);
   assert.deepEqual(
     db.prepare('SELECT event_type FROM family_expedition_member_events ORDER BY user_id').pluck().all(),
-    ['cleric_heal', 'cleric_recovery_reduced'],
+    ['cleric_heal'],
   );
   assert.equal(db.prepare('SELECT role_charge FROM family_expedition_members WHERE user_id = 10').pluck().get(), 0);
   assert.deepEqual(result.events, [{
     type: 'cleric_prayer',
     placedBy: { userId: 10, firstName: 'Nora', username: 'nora' },
     healedCount: 1,
-    recoveryReducedCount: 1,
+    recoveryReducedCount: 0,
   }]);
   db.close();
 });
 
-test('Scout charge is consumed once and unavailable until AP recharge completes', () => {
+test('Scout charge is consumed once and does not recharge from AP spending', () => {
   const db = createDb();
   addMember(db, { userId: 10, role: 'scout' });
 
@@ -230,11 +231,37 @@ test('Scout charge is consumed once and unavailable until AP recharge completes'
     expeditionId: 1,
     userId: 10,
     expectedRole: 'scout',
-  }), { roleCharge: 0, roleChargeProgress: 0 });
+  }), { roleCharge: 0, roleChargeProgress: 0, roleChargeReadyAt: 0 });
   assert.throws(() => consumeRoleCharge(db, {
     expeditionId: 1,
     userId: 10,
     expectedRole: 'scout',
   }), /not charged/i);
+  db.close();
+});
+
+test('Knight and Cleric abilities recover after a three-hour cooldown', () => {
+  const db = createDb();
+  addMember(db, { userId: 10, role: 'knight' });
+  const consumed = consumeRoleCharge(db, {
+    expeditionId: 1,
+    userId: 10,
+    expectedRole: 'knight',
+    now: 1000,
+  });
+  assert.equal(consumed.roleChargeReadyAt, 1000 + (3 * 60 * 60));
+  assert.throws(() => consumeRoleCharge(db, {
+    expeditionId: 1,
+    userId: 10,
+    expectedRole: 'knight',
+    now: consumed.roleChargeReadyAt - 1,
+  }), /not charged/i);
+  const recovered = consumeRoleCharge(db, {
+    expeditionId: 1,
+    userId: 10,
+    expectedRole: 'knight',
+    now: consumed.roleChargeReadyAt,
+  });
+  assert.equal(recovered.roleChargeReadyAt, consumed.roleChargeReadyAt + (3 * 60 * 60));
   db.close();
 });

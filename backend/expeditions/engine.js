@@ -202,24 +202,7 @@ function threatStateFor(threat, threatMax = 5) {
 }
 
 function provisionStateFor(provisionId) {
-  const provision = PROVISIONS[provisionId];
-  if (!provision) return {};
-  const { type, config } = provision.effect;
-  if (type === 'prevent_debuff') return { preventDebuff: { uses: config.uses } };
-  if (type === 'minimum_progress') {
-    return { minimumProgress: { uses: config.uses, from: config.from, to: config.to } };
-  }
-  if (type === 'roll_bonus') return { rollBonus: { uses: config.uses, amount: config.amount } };
-  if (type === 'restore_role_ability') {
-    return { restoreRoleAbility: { uses: config.uses, roomType: config.roomType } };
-  }
-  if (type === 'upgrade_loot_rarity') {
-    return { upgradeLootRarity: { uses: config.uses, tiers: config.tiers } };
-  }
-  if (type === 'raise_modified_roll') {
-    return { raiseModifiedRoll: { uses: config.uses, below: config.below, value: config.value } };
-  }
-  return {};
+  return PROVISIONS[provisionId] ? { available: true, used: false } : {};
 }
 
 function applyRoleChargeRestoration(member, room) {
@@ -420,11 +403,6 @@ function prepareMemberLoadout({ member, inventory = [], artifactIds = null } = {
   prepared.provisionState = clone(prepared.provisionState || {});
   if (prepared.provisionId && Object.keys(prepared.provisionState).length === 0) {
     prepared.provisionState = provisionStateFor(prepared.provisionId);
-    if (PROVISIONS[prepared.provisionId]?.effect.type === 'grant_ap') {
-      const amount = PROVISIONS[prepared.provisionId].effect.config.amount;
-      prepared.ap = Math.min(MAX_AP, (prepared.ap ?? DAILY_AP) + amount);
-      prepared.provisionState.grantAp = { used: true, amount };
-    }
   }
   if (Array.isArray(artifactIds)) {
     if (artifactIds.length > 3) throw new RangeError('loadout cannot exceed three slots');
@@ -511,7 +489,7 @@ function buildRollModifiers({
   addPart(parts, `mechanic:${mechanicChoice}`, mechanicEffect.rollBonus);
 
   const provision = workingMember.provisionState?.rollBonus;
-  if ((provision?.uses ?? 0) > 0) {
+  if ((provision?.uses ?? 0) > 0 && (!provision.roomKey || provision.roomKey === workingRoom.key)) {
     total += provision.amount;
     addPart(parts, 'provision', provision.amount);
   }
@@ -596,7 +574,6 @@ function resolveAttempt({
   if (['hidden', 'locked'].includes(room?.state)) throw new RangeError('room is not unlocked');
 
   const nextRoom = clone(room || {});
-  applyRoleChargeRestoration(nextMember, nextRoom);
   const artifactsDisabledForAction = nextMember.debuff?.type === 'cursed';
   applyArtifactRechargeThreshold(nextMember, artifactsDisabledForAction);
   const nextExpedition = clone(expedition || {});
@@ -635,6 +612,21 @@ function resolveAttempt({
   });
   nextMember.loadout = modifiers.loadout;
   nextMember.triggerHistory = modifiers.triggerHistory;
+
+  const mageBlessing = nextExpedition.sharedBuffs.mageBlessing;
+  if (
+    combatRoom
+    && mageBlessing
+    && (!mageBlessing.roomKey || mageBlessing.roomKey === nextRoom.key)
+    && (mageBlessing.eligibleUserIds || []).includes(nextMember.userId)
+    && !(mageBlessing.usedUserIds || []).includes(nextMember.userId)
+  ) {
+    mageBlessing.roomKey ||= nextRoom.key;
+    mageBlessing.usedUserIds = [...(mageBlessing.usedUserIds || []), nextMember.userId];
+    modifiers.total += mageBlessing.amount || 3;
+    modifiers.parts.push({ source: 'mage_blessing', amount: mageBlessing.amount || 3 });
+    events.push({ type: 'mage_blessing_used', amount: mageBlessing.amount || 3, placedBy: mageBlessing.placedBy });
+  }
 
   if (useSharedBuff && (nextExpedition.sharedBuffs.rollBonus?.uses ?? 0) > 0) {
     const shared = nextExpedition.sharedBuffs.rollBonus;
@@ -756,7 +748,9 @@ function resolveAttempt({
   nextMember.triggerHistory = beforeProgress.triggerHistory;
 
   nextMember.ap -= 1;
-  if (nextMember.provisionState?.rollBonus?.uses > 0) nextMember.provisionState.rollBonus.uses -= 1;
+  if (nextMember.provisionState?.rollBonus?.uses > 0 && !nextMember.provisionState.rollBonus.roomKey) {
+    nextMember.provisionState.rollBonus.uses -= 1;
+  }
   nextMember.debuff = null;
   nextRoom.support = Math.max(0, (nextRoom.support || 0) - modifiers.supportApplied);
 
@@ -783,6 +777,9 @@ function resolveAttempt({
   } else if (nextRoom.progress >= nextRoom.progressTarget) {
     nextRoom.state = 'cleared';
     nextRoom.clearedAt = currentTime;
+  }
+  if (nextRoom.state === 'cleared' && nextExpedition.sharedBuffs.mageBlessing?.roomKey === nextRoom.key) {
+    delete nextExpedition.sharedBuffs.mageBlessing;
   }
 
   if (nextRoom.state === 'cleared') {
@@ -1110,6 +1107,11 @@ function rowToRoom(row) {
 function rowToMember(row) {
   const loadoutState = parseLoadoutState(row.loadout_json);
   const heroRecoverAt = row.hero_recover_at ?? null;
+  const roleChargeReadyAt = row.role_charge_ready_at ?? 0;
+  const timedRoleReady = ['knight', 'cleric'].includes(row.role)
+    && Number(row.role_charge ?? 1) < 1
+    && roleChargeReadyAt > 0
+    && roleChargeReadyAt <= Math.floor(Date.now() / 1000);
   return {
     expeditionId: row.expedition_id,
     userId: row.user_id,
@@ -1121,8 +1123,9 @@ function rowToMember(row) {
     heroRecoverAt,
     roleAbilityDay: row.role_ability_day,
     roleAbilityUsed: Boolean(row.role_ability_used),
-    roleCharge: row.role_charge ?? 1,
+    roleCharge: timedRoleReady ? 1 : (row.role_charge ?? 1),
     roleChargeProgress: row.role_charge_progress ?? 0,
+    roleChargeReadyAt: timedRoleReady ? 0 : roleChargeReadyAt,
     provisionId: row.provision_id,
     provisionState: parseJson(row.provision_state_json, {}),
     loadout: loadoutState.slots,
@@ -1342,14 +1345,11 @@ function mapWithRoomStates(map, rooms) {
 }
 
 function updateMember(transaction, expeditionId, memberResult, contribution = {}) {
-  const apSpent = Math.max(0, Math.floor(Number(contribution.ap) || 0));
-  const rechargeThreshold = Math.max(1, Math.floor(Number(memberResult.roleRechargeThreshold) || 3));
-  const charge = apSpent > 0
-    ? advanceRoleCharge(memberResult, apSpent, rechargeThreshold)
-    : {
-        roleCharge: memberResult.roleCharge ?? 1,
-        roleChargeProgress: memberResult.roleChargeProgress ?? 0,
-      };
+  const charge = {
+    roleCharge: memberResult.roleCharge ?? 1,
+    roleChargeProgress: memberResult.roleChargeProgress ?? 0,
+    roleChargeReadyAt: memberResult.roleChargeReadyAt ?? 0,
+  };
   transaction.prepare(`
     UPDATE family_expedition_members SET
       ap = ?,
@@ -1382,11 +1382,19 @@ function updateMember(transaction, expeditionId, memberResult, contribution = {}
     memberResult.userId,
   );
   if (memberTableHasColumn(transaction, 'role_charge')) {
-    transaction.prepare(`
-      UPDATE family_expedition_members
-      SET role_charge = ?, role_charge_progress = ?
-      WHERE expedition_id = ? AND user_id = ?
-    `).run(charge.roleCharge, charge.roleChargeProgress, expeditionId, memberResult.userId);
+    if (memberTableHasColumn(transaction, 'role_charge_ready_at')) {
+      transaction.prepare(`
+        UPDATE family_expedition_members
+        SET role_charge = ?, role_charge_progress = ?, role_charge_ready_at = ?
+        WHERE expedition_id = ? AND user_id = ?
+      `).run(charge.roleCharge, charge.roleChargeProgress, charge.roleChargeReadyAt, expeditionId, memberResult.userId);
+    } else {
+      transaction.prepare(`
+        UPDATE family_expedition_members
+        SET role_charge = ?, role_charge_progress = ?
+        WHERE expedition_id = ? AND user_id = ?
+      `).run(charge.roleCharge, charge.roleChargeProgress, expeditionId, memberResult.userId);
+    }
   }
 }
 
@@ -1681,14 +1689,6 @@ function attemptRoom(options) {
   if (room.state === 'cleared') throw new RangeError('room is already cleared');
   const encounterType = room.encounterType || room.type;
   const combatRoom = room.type === 'boss' || ['combat', 'boss'].includes(encounterType);
-  const mageRoll = combatRoom && Number.isInteger(reroll)
-    ? resolveMageRoll(transaction, {
-        expeditionId,
-        roomId: room.id,
-        rolls: [roll, reroll],
-        now,
-      })
-    : null;
   let result = clone(resolveAttempt({
     expedition: {
       id: expeditionId,
@@ -1701,13 +1701,12 @@ function attemptRoom(options) {
     action,
     selectedSupport,
     mechanicChoice: normalizedMechanicChoice,
-    roll: mageRoll?.chosen ?? roll,
+    roll,
     reroll,
     rng,
     now,
     useSharedBuff,
   }));
-  if (mageRoll) result.events.unshift(mageRoll.event);
 
   const incomingDamage = Math.max(0, Number(memberState.heroHp ?? 3) - Number(result.member.heroHp ?? 3));
   if (incomingDamage > 0) {
@@ -1860,7 +1859,7 @@ function chooseScoutRoom(options) {
     : armedEffect(scout, 'scout_choice', fromRoomKey);
   if (!compassEffect) {
     if (scout.role !== 'scout') throw new RangeError('only scouts can choose the next room');
-    consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout' });
+    consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout', now });
   }
 
   const targetKey = choice.targetKey || choice.room?.key;
@@ -1888,6 +1887,7 @@ function chooseScoutRoom(options) {
   } else {
     scout.roleCharge = 0;
     scout.roleChargeProgress = 0;
+    scout.roleChargeReadyAt = 0;
   }
   scout.debuff = null;
 
@@ -1961,6 +1961,21 @@ function useRoleAbility(options) {
   let visualEvents;
   if (member.role === 'cleric') {
     visualEvents = useClericPrayer(transaction, { expeditionId, userId, now }).events;
+  } else if (member.role === 'mage') {
+    consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'mage', now });
+    const sharedBuffs = clone(snapshot.expedition.sharedBuffs || {});
+    if (sharedBuffs.mageBlessing) throw new RangeError('mage blessing is already waiting for combat');
+    sharedBuffs.mageBlessing = {
+      amount: 3,
+      eligibleUserIds: snapshot.members.map(candidate => candidate.userId),
+      usedUserIds: [],
+      placedBy: userId,
+      createdAt: now,
+    };
+    transaction.prepare(`
+      UPDATE family_expeditions SET shared_buffs_json = ? WHERE id = ?
+    `).run(stringifyJson(sharedBuffs), expeditionId);
+    visualEvents = [{ type: 'mage_blessing_placed', amount: 3, placedBy: userId }];
   } else if (ROLE_EFFECT_TYPES[member.role]) {
     const effect = placeRoleEffect(transaction, {
       expeditionId,
@@ -1980,6 +1995,83 @@ function useRoleAbility(options) {
     roomId: room.id,
     userId,
     actionType: 'role_ability',
+    modifiers: { events: visualEvents },
+    intent,
+    now,
+  });
+  return { snapshot: readSnapshot(transaction, expeditionId), visualEvents };
+}
+
+function useProvisionForMember(options) {
+  assertMutationInput(options);
+  const {
+    transaction,
+    idempotencyKey,
+    expeditionId,
+    userId,
+    roomKey,
+    now = Math.floor(Date.now() / 1000),
+  } = options;
+  const intent = { expeditionId, userId, roomKey };
+  const replay = findIdempotentAction(transaction, {
+    userId,
+    idempotencyKey,
+    expectedActionType: 'use_provision',
+    expectedExpeditionId: expeditionId,
+    expectedIntent: intent,
+  });
+  if (replay) return readSnapshot(transaction, replay.expeditionId);
+
+  const snapshot = readSnapshot(transaction, expeditionId);
+  assertExpeditionNotFinished(snapshot);
+  const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
+  if (room.state !== 'unlocked') throw new RangeError('provision requires the current open room');
+  const member = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
+  assertHeroCanAct(member, now);
+  if (!member.provisionId || !member.provisionState?.available || member.provisionState?.used) {
+    throw new RangeError('provision is already used');
+  }
+
+  const state = { available: false, used: true, usedAt: now, roomKey };
+  switch (member.provisionId) {
+    case 'carrot_rations':
+      if (member.ap >= MAX_AP) throw new RangeError('AP is already full');
+      member.ap = Math.min(MAX_AP, member.ap + 1);
+      break;
+    case 'tomato_soup':
+      if (member.heroHp >= 3) throw new RangeError('HP is already full');
+      member.heroHp = Math.min(3, member.heroHp + 1);
+      break;
+    case 'hearty_potato_meal':
+      state.minimumProgress = { uses: 1, from: 0, to: 1 };
+      break;
+    case 'lucky_breakfast':
+      state.rollBonus = { uses: 999, amount: 2, roomKey };
+      break;
+    case 'warm_milk':
+      if (member.roleCharge >= 1) throw new RangeError('role ability is already ready');
+      member.roleCharge = 1;
+      member.roleChargeProgress = 0;
+      member.roleChargeReadyAt = 0;
+      break;
+    case 'truffle_treat':
+      state.upgradeLootRarity = { uses: 1, tiers: 1 };
+      break;
+    case 'magic_squash_pie':
+      state.raiseModifiedRoll = { uses: 1, below: 10, value: 10 };
+      break;
+    default:
+      throw new RangeError('unknown provision');
+  }
+  member.provisionState = state;
+  updateMember(transaction, expeditionId, member);
+  const visualEvents = [{ type: 'provision_used', provisionId: member.provisionId, userId }];
+  insertAction(transaction, {
+    idempotencyKey,
+    expeditionId,
+    roomId: room.id,
+    userId,
+    actionType: 'use_provision',
     modifiers: { events: visualEvents },
     intent,
     now,
@@ -2590,6 +2682,7 @@ function useArtifactForMember(options) {
     maxAp: MAX_AP,
     roleCharge: member.roleCharge,
     roleChargeProgress: member.roleChargeProgress,
+    roleChargeReadyAt: member.roleChargeReadyAt,
     roomShield: roomEffects.some(effect => effect.effectType === ROLE_EFFECT_TYPES.knight),
     roomRetry: roomEffects.some(effect => effect.effectType === ROLE_EFFECT_TYPES.mage),
     scoutChoices: (room.scoutChoices || []).map(choice => choice.id),
@@ -2603,6 +2696,7 @@ function useArtifactForMember(options) {
   member.ap = applied.state.ap ?? member.ap;
   member.roleCharge = applied.state.roleCharge ?? member.roleCharge;
   member.roleChargeProgress = applied.state.roleChargeProgress ?? member.roleChargeProgress;
+  member.roleChargeReadyAt = applied.state.roleChargeReadyAt ?? member.roleChargeReadyAt;
   room.progress = applied.state.roomProgress ?? room.progress;
 
   if (applied.state.placeRoomShield || applied.state.placeRoomRetry) {
@@ -2800,6 +2894,7 @@ module.exports = {
   assistRoom,
   chooseScoutRoom,
   useRoleAbility,
+  useProvisionForMember,
   completeEventRoom,
   expireStaleMinigameAttempt,
   readMinigameStartHttpReplay,

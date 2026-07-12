@@ -50,9 +50,10 @@ export default function RoomEffectsBar({ effects = [], className = '' }) {
       {visibleEffects.map(({ effect, copy }, index) => {
         const id = readField(effect, 'id', 'effectId', 'effect_id')
           || `${effectIdentity(effect)}-${index}`;
+        const icon = effectIdentity(effect) === 'knight_shield' ? '\uD83D\uDEE1\uFE0F' : '\uD83C\uDFB2';
         return (
           <div className={`expedition-room-effect is-${copy.tone}`} key={id}>
-            <span className="expedition-room-effect-icon" aria-hidden="true">{copy.icon}</span>
+            <span className="expedition-room-effect-icon" aria-hidden="true">{icon}</span>
             <span className="expedition-room-effect-copy">
               <strong>{copy.label}</strong>
               <small>Placed by {effectOwner(effect)}</small>

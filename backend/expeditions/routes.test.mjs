@@ -631,6 +631,30 @@ test('POST prepare consumes selected farm provision recipe', async () => {
   assert.equal(replay.status, 200);
 });
 
+test('prepared provisions are manually consumed once from the current room', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-manual-provision' });
+  const expeditionId = started.body.expedition.id;
+  db.prepare(`INSERT INTO farm_inventory (user_id, product_id, quantity, updated_at) VALUES (?, 'carrot', 20, 1000)`).run(userIds[0]);
+  const prepared = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-manual-provision', role: 'scout', provisionId: 'carrot_rations',
+  });
+  const room = prepared.body.map.rooms.find(candidate => candidate.state === 'unlocked');
+  db.prepare('UPDATE family_expedition_members SET ap = 4 WHERE expedition_id = ? AND user_id = ?').run(expeditionId, userIds[0]);
+
+  const used = await request('POST', `/${expeditionId}/rooms/${room.key}/provision/use`, 'tg-owner', {
+    idempotencyKey: 'use-manual-provision',
+  });
+  assert.equal(used.status, 200);
+  assert.equal(used.body.member.ap, 5);
+  assert.equal(used.body.member.provisionState.used, true);
+  const repeated = await request('POST', `/${expeditionId}/rooms/${room.key}/provision/use`, 'tg-owner', {
+    idempotencyKey: 'use-manual-provision-again',
+  });
+  assert.equal(repeated.status, 400);
+  assert.match(repeated.body.error, /already used/i);
+});
+
 test('legacy room attempts cannot activate daily role powers and legacy reveal is gone', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-no-legacy-role' });
@@ -873,7 +897,7 @@ test('member event acknowledgement validates ids, stays user-scoped, and is repl
   );
 });
 
-test('shared Mage and Knight effects are consumed by combat and return direct visual events', async () => {
+test('Mage grants a shared +3 combat roll and Knight blocks one family hit', async () => {
   createFamilyWithMembers(['tg-owner', 'tg-mage', 'tg-actor']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-combat-effects' });
   const expeditionId = started.body.expedition.id;
@@ -919,16 +943,15 @@ test('shared Mage and Knight effects are consumed by combat and return direct vi
 
   const originalRandomInt = crypto.randomInt;
   try {
-    const mageSequence = [0, 15];
-    crypto.randomInt = max => mageSequence.length > 0 ? mageSequence.shift() : Math.min(1, max - 1);
+    crypto.randomInt = () => 8;
     const advantaged = await request(
       'POST', `/${expeditionId}/rooms/${combatRow.roomKey}/attempt`, 'tg-actor',
       { idempotencyKey: 'combat-mage-roll', actionId: 'test_strike' },
     );
     assert.equal(advantaged.status, 200);
-    const mageEvent = advantaged.body.visualEvents.find(event => event.type === 'mage_advantage');
-    assert.deepEqual(mageEvent.rolls, [1, 16]);
-    assert.equal(mageEvent.chosen, 16);
+    const mageEvent = advantaged.body.visualEvents.find(event => event.type === 'mage_blessing_used');
+    assert.equal(mageEvent.amount, 3);
+    assert.equal(advantaged.body.recentActions.at(-1).modifiers.parts.some(part => part.source === 'mage_blessing'), true);
 
     crypto.randomInt = () => 0;
     const blocked = await request(
@@ -1532,7 +1555,7 @@ test('persisted mini-game routes apply Mage retry without HP damage or consuming
   );
 });
 
-test('Scout role ability chooses once per source room and AP spending recharges the role', async () => {
+test('Scout role ability chooses once per expedition and AP spending does not recharge it', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-scout-charge' });
   const expeditionId = started.body.expedition.id;
@@ -1573,7 +1596,7 @@ test('Scout role ability chooses once per source room and AP spending recharges 
 
   db.prepare(`
     UPDATE family_expedition_members
-    SET role_charge = 0, role_charge_progress = 2
+    SET role_charge = 0, role_charge_progress = 0
     WHERE expedition_id = ? AND user_id = ?
   `).run(expeditionId, userIds[0]);
   const attempted = await request(
@@ -1581,7 +1604,7 @@ test('Scout role ability chooses once per source room and AP spending recharges 
     { idempotencyKey: 'recharge-scout-with-ap', actionId: source.actions[0].id },
   );
   assert.equal(attempted.status, 200);
-  assert.equal(attempted.body.member.roleCharge, 1);
+  assert.equal(attempted.body.member.roleCharge, 0);
   assert.equal(attempted.body.member.roleChargeProgress, 0);
 });
 

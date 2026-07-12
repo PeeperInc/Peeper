@@ -157,6 +157,7 @@ function serializeMember(member) {
     ['roleAbilityUsed', member.roleAbilityUsed],
     ['roleCharge', member.roleCharge],
     ['roleChargeProgress', member.roleChargeProgress],
+    ['roleChargeReadyAt', member.roleChargeReadyAt || 0],
     ['provisionId', member.provisionId],
     ['provisionState', stripSensitive(member.provisionState || {})],
     ['loadout', stripSensitive(member.loadout || [])],

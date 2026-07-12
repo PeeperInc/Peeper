@@ -87,6 +87,7 @@ const ACTIVE_EFFECT_HANDLERS = Object.freeze({
     if (!roomIsCurrent(state) || (state.roleCharge ?? 0) >= 1) return false;
     state.roleCharge = 1;
     state.roleChargeProgress = 0;
+    state.roleChargeReadyAt = 0;
     return true;
   },
   revive_self(state, effect) {

@@ -386,6 +386,7 @@ test('expedition schema exposes required columns, foreign keys, and indexes', ()
         column('role_ability_used', 'INTEGER', 1, '0'),
         column('role_charge', 'INTEGER', 1, '1'),
         column('role_charge_progress', 'INTEGER', 1, '0'),
+        column('role_charge_ready_at', 'INTEGER', 1, '0'),
         column('room_coins_earned', 'INTEGER', 1, '0'),
         column('provision_id', 'TEXT', 0),
         column('provision_state_json', 'TEXT', 1, "'{}'"),
