@@ -2322,7 +2322,7 @@ button.expedition-loadout-slot:disabled {
   filter: drop-shadow(0 0 5px currentColor);
 }
 
-.expedition-rune-choice-grid {
+.expedition-event-choice-grid.expedition-rune-choice-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
