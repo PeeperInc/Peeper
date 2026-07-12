@@ -12,10 +12,10 @@ function deepFreeze(value) {
 }
 
 const ROLES = deepFreeze({
-  knight: { stat: 'might', bonus: 3, ability: 'shield_wall' },
-  scout: { stat: 'agility', bonus: 3, ability: 'reveal_room' },
-  mage: { stat: 'arcana', bonus: 3, ability: 'reroll' },
-  cleric: { stat: 'spirit', bonus: 3, ability: 'blessing' },
+  knight: { ability: 'shield_wall' },
+  scout: { ability: 'reveal_room' },
+  mage: { ability: 'damage_boost' },
+  cleric: { ability: 'blessing' },
 });
 
 const PROVISIONS = deepFreeze({
@@ -47,9 +47,9 @@ const PROVISIONS = deepFreeze({
     id: 'lucky_breakfast',
     name: 'Lucky Breakfast',
     recipe: { productId: 'egg', quantity: 10 },
-    effect: { type: 'roll_bonus', config: { uses: 1, amount: 2 } },
-    manualEffect: 'room_roll_bonus',
-    description: 'Gain +2 on every d20 roll in the room where it is eaten.',
+    effect: { type: 'damage_bonus', config: { uses: 1, amount: 1 } },
+    manualEffect: 'room_damage_bonus',
+    description: 'Add +1 damage to every successful attack in the current room.',
   },
   warm_milk: {
     id: 'warm_milk',
@@ -73,13 +73,18 @@ const PROVISIONS = deepFreeze({
     recipe: { productId: 'magic_squash', quantity: 1 },
     effect: { type: 'raise_modified_roll', config: { uses: 1, below: 10, value: 10 } },
     manualEffect: 'raise_modified_roll',
-    description: 'Your next modified roll below 10 becomes 10.',
+    description: 'Your next attack d20 below 10 becomes 10.',
   },
 });
 
-const ROLE_BY_STAT = Object.freeze(Object.fromEntries(
-  Object.entries(ROLES).map(([role, config]) => [config.stat, role]),
-));
+// Kept only for authored encounter flavor and legacy action labels. These
+// mappings no longer grant a roll modifier in combat.
+const ROLE_BY_STAT = Object.freeze({
+  might: 'knight',
+  agility: 'scout',
+  arcana: 'mage',
+  spirit: 'cleric',
+});
 
 const ENCOUNTER_TYPE_BY_ROOM_TYPE = Object.freeze({
   combat: 'combat',
@@ -215,7 +220,7 @@ const ARTIFACTS = deepFreeze({
   rabbit_foot: artifact('rabbit_foot', 'Rabbit Foot', 'common', 'expedition_passive',
     'Prevent the first personal combat damage', { kind: 'prevent_personal_damage', uses: 1 }),
   bone_die: artifact('bone_die', 'Bone Die', 'common', 'active',
-    'The next combat d20 is at least 9', { kind: 'combat_roll_floor', floor: 9 }),
+    'The next combat attack d20 is at least 10', { kind: 'combat_roll_floor', floor: 10 }),
   wooden_shield: artifact('wooden_shield', 'Wooden Shield', 'common', 'active',
     'Prevent the next wearer damage in this room', { kind: 'prevent_personal_damage', uses: 1 }),
   tiny_shovel: artifact('tiny_shovel', 'Tiny Shovel', 'common', 'active',
@@ -227,7 +232,7 @@ const ARTIFACTS = deepFreeze({
   loaded_die: artifact('loaded_die', 'Loaded Die', 'rare', 'active',
     'Roll twice and keep the higher result on the next combat', { kind: 'combat_advantage', uses: 1 }),
   family_banner: artifact('family_banner', 'Family Banner', 'rare', 'expedition_passive',
-    'Recharge the role ability after 2 AP instead of 3', { kind: 'role_recharge_threshold', threshold: 2 }),
+    'Class ability cooldown is reduced from 3 hours to 2 hours', { kind: 'role_recharge_threshold', threshold: 2 }),
   rootcutters_axe: artifact('rootcutters_axe', "Rootcutter's Axe", 'rare', 'expedition_passive',
     'Boss combat rolls 16-20 deal +1 damage', { kind: 'boss_damage_bonus', minRoll: 16, amount: 1 }),
   warding_nail: artifact('warding_nail', 'Warding Nail', 'rare', 'active',
@@ -245,7 +250,7 @@ const ARTIFACTS = deepFreeze({
   emerald_heart: artifact('emerald_heart', 'Emerald Heart', 'epic', 'expedition_passive',
     'A natural 20 restores 1 HP', { kind: 'critical_heal', amount: 1 }),
   crooked_compass: artifact('crooked_compass', 'Crooked Compass', 'epic', 'active',
-    'Choose which adjacent room opens next', { kind: 'scout_choice' }),
+    'Guarantee one extra artifact roll when the current room is cleared', { kind: 'scout_choice' }),
   mimic_tooth: artifact('mimic_tooth', 'Mimic Tooth', 'epic', 'expedition_passive',
     'Gain 50% more room coins', { kind: 'coin_multiplier', multiplier: 1.5 }),
   fates_broken_die: artifact('fates_broken_die', "Fate's Broken Die", 'legendary', 'active',
@@ -280,6 +285,7 @@ function room(id, type, name, progressTarget, tags, actions, extra = {}) {
     type,
     name,
     progressTarget,
+    attackTarget: extra.attackTarget || (type === 'boss' ? 12 : encounterType === 'combat' ? 10 : null),
     tags,
     encounterType,
     weakRoles: extra.weakRoles || weakRolesForActions(authoredActions),
@@ -299,16 +305,16 @@ function room(id, type, name, progressTarget, tags, actions, extra = {}) {
 
 const ROOM_TEMPLATES = deepFreeze({
   combat: [
-    room('root_guardians', 'combat', 'Root Guardians', 7, ['dark', 'root_creature'], [
+    room('root_guardians', 'combat', 'Root Guardians', 21, ['dark', 'root_creature'], [
       action('break_guard', 'Break their guard', 'might', 'risky', 2, ['weapon', 'root_creature']),
       action('flank_guard', 'Slip behind the roots', 'agility', 'risky', 2, ['root_creature']),
       action('burn_guard_runes', 'Unmake their binding runes', 'arcana', 'hard', 4, ['rune', 'root_creature']),
       action('banish_guard', 'Drive out the grave spirit', 'spirit', 'hard', 4, ['undead']),
-    ]),
-    room('bone_sentinels', 'combat', 'Bone Sentinels', 6, ['dark', 'undead'], [
+    ], { attackTarget: 11 }),
+    room('bone_sentinels', 'combat', 'Bone Sentinels', 18, ['dark', 'undead'], [
       action('scatter_bones', 'Scatter the sentinels', 'might', 'easy', 0, ['weapon', 'undead']),
       action('turn_sentinels', 'Turn the restless dead', 'spirit', 'risky', 2, ['undead']),
-    ]),
+    ], { attackTarget: 9 }),
   ],
   trap: [
     room('thorn_snare', 'trap', 'Thorn Snare', 4, ['root', 'dark'], [
@@ -385,24 +391,24 @@ const ROOM_TEMPLATES = deepFreeze({
     ], { choices: 2 }),
   ],
   boss: [
-    room('root_king_phase_1', 'boss', 'Break the Armor', 9, ['boss', 'root_creature', 'undead'], [
+    room('root_king_phase_1', 'boss', 'Break the Armor', 36, ['boss', 'root_creature', 'undead'], [
       action('break_king_armor', 'Break the bark armor', 'might', 'easy', 0, ['boss', 'root_creature']),
       action('find_king_weakpoint', 'Find a buried weak point', 'agility', 'risky', 2, ['boss', 'root_creature']),
       action('disrupt_king_runes', 'Disrupt the crown runes', 'arcana', 'risky', 2, ['boss', 'rune']),
       action('ward_king_retaliation', 'Ward the king\'s retaliation', 'spirit', 'hard', 4, ['boss', 'undead']),
-    ], { phase: 1 }),
-    room('root_king_phase_2', 'boss', 'Survive the Roots', 9, ['boss', 'root_creature'], [
+    ], { phase: 1, attackTarget: 12 }),
+    room('root_king_phase_2', 'boss', 'Survive the Roots', 42, ['boss', 'root_creature'], [
       action('hold_back_roots', 'Hold back the root tide', 'might', 'risky', 2, ['boss', 'root']),
       action('evade_king_roots', 'Dance through the roots', 'agility', 'easy', 0, ['boss', 'root']),
       action('sever_root_magic', 'Sever the root magic', 'arcana', 'risky', 2, ['boss', 'rune']),
       action('sanctify_root_ground', 'Sanctify the tangled ground', 'spirit', 'easy', 0, ['boss', 'root']),
-    ], { phase: 2, complication: 'frightened' }),
-    room('root_king_phase_3', 'boss', 'Final Strike', 9, ['boss', 'root_creature', 'undead'], [
+    ], { phase: 2, attackTarget: 13, complication: 'frightened' }),
+    room('root_king_phase_3', 'boss', 'Final Strike', 48, ['boss', 'root_creature', 'undead'], [
       action('final_might', 'Land the final blow', 'might', 'risky', 2, ['boss']),
       action('final_agility', 'Strike the exposed heart', 'agility', 'risky', 2, ['boss']),
       action('final_arcana', 'Unmake the root crown', 'arcana', 'risky', 2, ['boss', 'rune']),
       action('final_spirit', 'Banish the buried king', 'spirit', 'risky', 2, ['boss', 'undead']),
-    ], { phase: 3, criticalBonusLootRolls: 1 }),
+    ], { phase: 3, attackTarget: 14, criticalBonusLootRolls: 1 }),
   ],
 });
 

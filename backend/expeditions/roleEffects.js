@@ -51,12 +51,20 @@ function hasReadyAtColumn(transaction) {
     .some(column => column.name === 'role_charge_ready_at');
 }
 
+function hasMemberColumn(transaction, name) {
+  return transaction.prepare('PRAGMA table_info(family_expedition_members)').all()
+    .some(column => column.name === name);
+}
+
 function memberChargeRow(transaction, expeditionId, userId, now = Math.floor(Date.now() / 1000)) {
   const readySelect = hasReadyAtColumn(transaction)
     ? ', role_charge_ready_at AS roleChargeReadyAt'
     : ', 0 AS roleChargeReadyAt';
+  const loadoutSelect = hasMemberColumn(transaction, 'loadout_json')
+    ? ', loadout_json AS loadoutJson'
+    : ", '[]' AS loadoutJson";
   const row = transaction.prepare(`
-    SELECT role, role_charge AS roleCharge, role_charge_progress AS roleChargeProgress ${readySelect}
+    SELECT role, role_charge AS roleCharge, role_charge_progress AS roleChargeProgress ${readySelect} ${loadoutSelect}
     FROM family_expedition_members
     WHERE expedition_id = ? AND user_id = ?
   `).get(expeditionId, userId);
@@ -80,7 +88,16 @@ function consumeRoleCharge(transaction, { expeditionId, userId, expectedRole = n
   if (normalizeCharge(member.roleCharge) < 1) {
     throw new RangeError('role ability is not charged');
   }
-  const readyAt = TIMED_ROLES.has(member.role) ? now + TIMED_ROLE_COOLDOWN_SECONDS : 0;
+  let loadout = [];
+  try {
+    const parsed = JSON.parse(member.loadoutJson || '[]');
+    loadout = Array.isArray(parsed) ? parsed : parsed.slots || [];
+  } catch {
+    loadout = [];
+  }
+  const bannerEquipped = loadout.some(slot => (slot?.artifactId ?? slot) === 'family_banner');
+  const cooldownSeconds = bannerEquipped ? 2 * 60 * 60 : TIMED_ROLE_COOLDOWN_SECONDS;
+  const readyAt = TIMED_ROLES.has(member.role) ? now + cooldownSeconds : 0;
   if (hasReadyAtColumn(transaction)) {
     transaction.prepare(`
       UPDATE family_expedition_members

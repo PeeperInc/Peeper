@@ -391,8 +391,8 @@ test('modified rolls map to progress bands with natural 1 and natural 20 overrid
   assert.equal(progressForRoll({ rawRoll: 20, modifiedRoll: 3 }), 5);
 });
 
-test('combat rooms use simple d20 hit bands and only low rolls damage the hero', () => {
-  const combatRoom = { ...hall, type: 'combat', encounterType: 'combat', progress: 0, progressTarget: 4 };
+test('combat rooms roll d20 to hit and d6 damage while only low attack rolls hurt the hero', () => {
+  const combatRoom = { ...hall, type: 'combat', encounterType: 'combat', progress: 0, progressTarget: 20, attackTarget: 10 };
   const wounded = resolveAttempt({
     expedition: { id: 54, status: 'active' },
     member: member({ role: 'scout', heroHp: 3 }),
@@ -407,6 +407,7 @@ test('combat rooms use simple d20 hit bands and only low rolls damage the hero',
     room: combatRoom,
     action: { ...hall.actions[0], modifier: 0, stat: 'might' },
     roll: 16,
+    damageRoll: 4,
     now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
   });
   const crit = resolveAttempt({
@@ -415,13 +416,15 @@ test('combat rooms use simple d20 hit bands and only low rolls damage the hero',
     room: combatRoom,
     action: { ...hall.actions[0], modifier: 0, stat: 'might' },
     roll: 20,
+    damageRoll: 2,
+    criticalDamageRoll: 3,
     now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
   });
   const boosted = resolveAttempt({
     expedition: { id: 54, status: 'active' },
     member: member({ role: 'scout', heroHp: 3 }),
     room: combatRoom,
-    action: { ...hall.actions[0], modifier: 2, stat: 'might' },
+    action: { ...hall.actions[0], modifier: 99, stat: 'might' },
     roll: 7,
     now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
   });
@@ -439,16 +442,17 @@ test('combat rooms use simple d20 hit bands and only low rolls damage the hero',
     room: { ...combatRoom, progress: 3, progressTarget: 4 },
     action: { ...hall.actions[0], modifier: 0, stat: 'might' },
     roll: 12,
+    damageRoll: 1,
     now: 1000,
   });
 
   assert.equal(wounded.progressAwarded, 0);
   assert.equal(wounded.member.heroHp, 2);
   assert.equal(wounded.events.some(event => event.type === 'hero_damaged'), true);
-  assert.equal(strongHit.progressAwarded, 2);
+  assert.equal(strongHit.progressAwarded, 4);
   assert.equal(strongHit.member.heroHp, 3);
-  assert.equal(crit.progressAwarded, 3);
-  assert.equal(boosted.progressAwarded, 1);
+  assert.equal(crit.progressAwarded, 5);
+  assert.equal(boosted.progressAwarded, 0);
   assert.equal(knockedOut.member.heroHp, 0);
   assert.equal(knockedOut.member.heroRecoverAt, 1000 + 6 * 60 * 60);
   assert.equal(knockedOut.events.some(event => event.type === 'hero_recovering'), true);
@@ -457,16 +461,11 @@ test('combat rooms use simple d20 hit bands and only low rolls damage the hero',
   assert.equal(roomCleared.events.some(event => event.type === 'hero_refreshed'), false);
 });
 
-test('combat d20 outcome uses the exact public-test bands', () => {
-  assert.deepEqual(combatRollOutcome(1), { label: 'hero_hit', heroDamage: 1, progress: 0 });
-  assert.deepEqual(combatRollOutcome(4), { label: 'hero_hit', heroDamage: 1, progress: 0 });
-  assert.deepEqual(combatRollOutcome(5), { label: 'standoff', heroDamage: 0, progress: 0 });
-  assert.deepEqual(combatRollOutcome(7), { label: 'standoff', heroDamage: 0, progress: 0 });
-  assert.deepEqual(combatRollOutcome(8), { label: 'enemy_hit', heroDamage: 0, progress: 1 });
-  assert.deepEqual(combatRollOutcome(15), { label: 'enemy_hit', heroDamage: 0, progress: 1 });
-  assert.deepEqual(combatRollOutcome(16), { label: 'enemy_hit_hard', heroDamage: 0, progress: 2 });
-  assert.deepEqual(combatRollOutcome(19), { label: 'enemy_hit_hard', heroDamage: 0, progress: 2 });
-  assert.deepEqual(combatRollOutcome(20), { label: 'critical_hit', heroDamage: 0, progress: 3 });
+test('combat d20 outcome respects per-enemy armor class', () => {
+  assert.deepEqual(combatRollOutcome(4, 11), { label: 'countered', heroDamage: 1, hit: false, critical: false });
+  assert.deepEqual(combatRollOutcome(10, 11), { label: 'miss', heroDamage: 0, hit: false, critical: false });
+  assert.deepEqual(combatRollOutcome(11, 11), { label: 'hit', heroDamage: 0, hit: true, critical: false });
+  assert.deepEqual(combatRollOutcome(20, 14), { label: 'critical_hit', heroDamage: 0, hit: true, critical: true });
 });
 
 test('knocked-out heroes recover to full HP only after six hours', () => {
@@ -510,13 +509,14 @@ test('millisecond attempt time stores knockout recovery as unix seconds', () => 
   assert.equal(result.member.heroRecoverAt, Math.floor(now / 1000) + 6 * 60 * 60);
 });
 
-test('boss encounters use combat damage and progress bands', () => {
+test('boss encounters use their AC and critical 2d6 damage', () => {
   const bossRoom = {
     ...boss,
     state: 'unlocked',
     encounterType: 'boss',
     progress: 0,
-    progressTarget: 9,
+    progressTarget: 36,
+    attackTarget: 12,
   };
   const wounded = resolveAttempt({
     expedition: { id: 54, status: 'active' },
@@ -532,41 +532,37 @@ test('boss encounters use combat damage and progress bands', () => {
     room: bossRoom,
     action: { ...boss.actions[0], modifier: 0 },
     roll: 20,
+    damageRoll: 3,
+    criticalDamageRoll: 4,
     now: 1000,
   });
 
   assert.equal(wounded.progressAwarded, 0);
   assert.equal(wounded.member.heroHp, 2);
-  assert.equal(critical.progressAwarded, 3);
+  assert.equal(critical.progressAwarded, 7);
 });
 
-test('roll modifiers include action difficulty, role, provision, debuff, and capped support', () => {
+test('damage modifiers ignore legacy action, class, debuff, and support bonuses', () => {
   const modifiers = buildRollModifiers({
     member: member({
       role: 'scout',
-      provisionState: { rollBonus: { amount: 2, uses: 1 } },
+      provisionState: { damageBonus: { amount: 1, uses: 1 } },
       debuff: { type: 'frightened', stat: 'agility', amount: -2 },
       loadout: [{ artifactId: 'old_torch' }],
     }),
-    room: hall,
+    room: { ...hall, type: 'combat', encounterType: 'combat' },
     action: hall.actions[0],
     selectedSupport: 9,
     dayKey: 20627,
   });
 
-  assert.equal(modifiers.total, 11);
-  assert.equal(modifiers.supportApplied, 6);
-  assert.deepEqual(modifiers.parts.map(part => part.source), [
-    'action',
-    'role',
-    'support',
-    'provision',
-    'debuff',
-  ]);
+  assert.equal(modifiers.total, 1);
+  assert.equal(modifiers.supportApplied, 0);
+  assert.deepEqual(modifiers.parts.map(part => part.source), ['provision']);
   assert.equal(modifiers.loadout[0].artifactId, 'old_torch');
 });
 
-test('selected support cannot exceed support stored on the room', () => {
+test('legacy support no longer modifies combat damage', () => {
   const modifiers = buildRollModifiers({
     member: member({ role: 'scout' }),
     room: { ...hall, support: 2 },
@@ -575,8 +571,8 @@ test('selected support cannot exceed support stored on the room', () => {
     dayKey: 20627,
   });
 
-  assert.equal(modifiers.supportApplied, 2);
-  assert.equal(modifiers.total, 7);
+  assert.equal(modifiers.supportApplied, 0);
+  assert.equal(modifiers.total, 0);
 });
 
 test('room mechanic choices are real roll decisions, not decorative labels', () => {
@@ -607,37 +603,38 @@ test('room mechanic choices are real roll decisions, not decorative labels', () 
     dayKey: 20627,
   });
 
-  assert.equal(safe.total, 6);
-  assert.equal(greedy.total, 8);
+  assert.equal(safe.total, 1);
+  assert.equal(greedy.total, 3);
   assert.deepEqual(greedy.parts.at(-1), { source: 'mechanic:greedy_path', amount: 3 });
 });
 
-test('resolveAttempt consumes AP, selected support, one-shot effects, and never regresses room progress', () => {
+test('resolveAttempt consumes AP and damage food without using legacy profile bonuses', () => {
   const result = resolveAttempt({
     expedition: { id: 55, status: 'active' },
     member: member({
       ap: 2,
       role: 'scout',
-      provisionState: { rollBonus: { amount: 2, uses: 1 } },
+      provisionState: { damageBonus: { amount: 1, uses: 1 } },
       debuff: { type: 'frightened', stat: 'agility', amount: -2 },
       loadout: [{ artifactId: 'rabbit_foot' }],
     }),
-    room: { ...hall, progress: 3, support: 8 },
+    room: { ...hall, type: 'combat', encounterType: 'combat', attackTarget: 10, progress: 3, support: 8 },
     action: hall.actions[0],
     selectedSupport: 7,
-    roll: 7,
+    roll: 12,
+    damageRoll: 2,
     rng: () => 0,
     now: Date.UTC(2026, 5, 23),
   });
 
-  assert.equal(result.rawRoll, 7);
-  assert.equal(result.modifiedRoll, 18);
+  assert.equal(result.rawRoll, 12);
+  assert.equal(result.modifiedRoll, 12);
   assert.equal(result.progressAwarded, 1);
   assert.equal(result.room.progress, 4);
   assert.equal(result.room.state, 'cleared');
-  assert.equal(result.room.support, 2);
+  assert.equal(result.room.support, 8);
   assert.equal(result.member.ap, 1);
-  assert.equal(result.member.provisionState.rollBonus.uses, 0);
+  assert.equal(result.member.provisionState.damageBonus.uses, 0);
   assert.equal(result.member.debuff, null);
   assert.equal(result.member.loadout[0].artifactId, 'rabbit_foot');
   assert.equal(Object.isFrozen(result), true);
@@ -758,9 +755,11 @@ test('natural 20 grants a bonus loot roll', () => {
     room: { ...boss, state: 'unlocked' },
     action: boss.actions[0],
     roll: 20,
+    damageRoll: 2,
+    criticalDamageRoll: 3,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(critical.progressAwarded, 3);
+  assert.equal(critical.progressAwarded, 5);
   assert.equal(critical.loot.artifactRolls, 1);
 });
 
@@ -814,7 +813,7 @@ test('cursed disables artifacts for one action and blinded clears without a gene
     roll: 7,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(cursed.modifiedRoll, 10);
+  assert.equal(cursed.modifiedRoll, 7);
   assert.deepEqual(cursed.modifiers.triggeredArtifacts, []);
   assert.equal(cursed.member.debuff, null);
 
@@ -826,7 +825,7 @@ test('cursed disables artifacts for one action and blinded clears without a gene
     roll: 7,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(blinded.modifiedRoll, 10);
+  assert.equal(blinded.modifiedRoll, 7);
   assert.equal(blinded.modifiers.parts.some(part => part.source === 'debuff'), false);
   assert.equal(blinded.member.debuff, null);
 });
@@ -850,6 +849,7 @@ test('cursed combat suppresses offensive passives and Emerald Heart healing', ()
     room: combatRoom,
     action: combatRoom.actions[0],
     roll: 19,
+    damageRoll: 2,
     now: Date.UTC(2026, 5, 23),
   });
   assert.equal(crown.rawRoll, 19);
@@ -862,9 +862,11 @@ test('cursed combat suppresses offensive passives and Emerald Heart healing', ()
     room: combatRoom,
     action: combatRoom.actions[0],
     roll: 20,
+    damageRoll: 2,
+    criticalDamageRoll: 2,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(heart.progressAwarded, 3);
+  assert.equal(heart.progressAwarded, 4);
   assert.equal(heart.member.heroHp, 2);
 });
 
@@ -974,9 +976,10 @@ test('provisions stay carried until explicitly used and one-shot roll effects st
   const raised = resolveAttempt({
     expedition: { id: 58, status: 'active' },
     member: member({ provisionState: { raiseModifiedRoll: { uses: 1, below: 10, value: 10 } } }),
-    room: { ...hall, progress: 0 },
+    room: { ...hall, type: 'combat', encounterType: 'combat', attackTarget: 10, progress: 0 },
     action: hall.actions[0],
     roll: 2,
+    damageRoll: 1,
     now: Date.UTC(2026, 5, 23),
   });
   assert.equal(raised.modifiedRoll, 10);
@@ -1417,7 +1420,7 @@ test('transactional attempts award personal coins and artifacts only when the ro
     userId: 10,
     roomKey: 'vault_1',
     actionId: 'pick_vault',
-    roll: 10,
+    roll: 19,
     rng: () => 0.99,
     now: Date.UTC(2026, 5, 23),
   }));
@@ -1860,7 +1863,7 @@ test('transactional scout choice locks one next room option per source room', ()
   db.close();
 });
 
-test('cursed members cannot spend Crooked Compass on scout choices and keep it for the next eligible choice', () => {
+test('Crooked Compass remains independent from the Scout path ability', () => {
   const db = expeditionDb();
   db.prepare('INSERT INTO users (id, coins) VALUES (24, 0)').run();
   db.prepare(`
@@ -1898,7 +1901,7 @@ test('cursed members cannot spend Crooked Compass on scout choices and keep it f
     idempotencyKey: 'prepare-cursed-compass',
     expeditionId,
     userId: 24,
-    role: 'mage',
+    role: 'scout',
     artifactIds: ['crooked_compass'],
     now: 1_001,
   }));
@@ -1916,18 +1919,11 @@ test('cursed members cannot spend Crooked Compass on scout choices and keep it f
     WHERE expedition_id = ? AND user_id = ?
   `).run(JSON.stringify({ type: 'cursed' }), expeditionId, 24);
 
-  assert.throws(() => inTx(db, () => chooseScoutRoom({
-    transaction: db,
-    idempotencyKey: 'choose-cursed-compass',
-    expeditionId,
-    userId: 24,
-    fromRoomKey: 'camp_0',
-    choiceId: 'trap-path',
-    now: 1_003,
-  })), /only scouts can choose/);
   const cursedMember = expeditionMember(db, expeditionId, 24);
   assert.equal(JSON.parse(cursedMember.loadoutJson).triggerHistory.some(entry => (
-    entry.artifactId === 'crooked_compass' && entry.remainingUses === 1
+    entry.artifactId === 'crooked_compass'
+      && entry.effectKind === 'bonus_artifact_roll'
+      && entry.remainingUses === 1
   )), true);
 
   db.prepare(`
@@ -1946,7 +1942,7 @@ test('cursed members cannot spend Crooked Compass on scout choices and keep it f
   assert.equal(eligible.rooms.find(room => room.key === 'camp_0').scoutChoice.choiceId, 'trap-path');
   assert.equal(eligible.members.find(member => member.userId === 24).triggerHistory.some(entry => (
     entry.artifactId === 'crooked_compass'
-  )), false);
+  )), true);
   db.close();
 });
 

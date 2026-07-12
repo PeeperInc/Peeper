@@ -157,12 +157,11 @@ function progressForRoll({ rawRoll, modifiedRoll, naturalOneProtected = false })
   return band?.progress ?? 0;
 }
 
-function combatRollOutcome(rawRoll) {
-  if (rawRoll <= 4) return { label: 'hero_hit', heroDamage: 1, progress: 0 };
-  if (rawRoll <= 7) return { label: 'standoff', heroDamage: 0, progress: 0 };
-  if (rawRoll <= 15) return { label: 'enemy_hit', heroDamage: 0, progress: 1 };
-  if (rawRoll <= 19) return { label: 'enemy_hit_hard', heroDamage: 0, progress: 2 };
-  return { label: 'critical_hit', heroDamage: 0, progress: 3 };
+function combatRollOutcome(rawRoll, attackTarget = 10) {
+  if (rawRoll <= 4) return { label: 'countered', heroDamage: 1, hit: false, critical: false };
+  if (rawRoll < attackTarget) return { label: 'miss', heroDamage: 0, hit: false, critical: false };
+  if (rawRoll === 20) return { label: 'critical_hit', heroDamage: 0, hit: true, critical: true };
+  return { label: 'hit', heroDamage: 0, hit: true, critical: false };
 }
 
 function normalizeSupport(value, available = MAX_SUPPORT) {
@@ -266,7 +265,11 @@ function rollAttemptLoot({ room = {}, member, rawRoll, rng }) {
   const roomLoot = room.loot || {};
   const criticalRolls = rawRoll === 20 ? 1 + (room.criticalBonusLootRolls || 0) : 0;
   const coins = rollCoins(roomLoot.coins || { min: 0, max: 0 }, rng);
-  const artifactRolls = Math.max(0, Number(roomLoot.artifactRolls || 0) + criticalRolls);
+  const compassEffect = room.state === 'cleared'
+    ? armedEffect(member, 'bonus_artifact_roll', room.key)
+    : null;
+  const artifactRolls = Math.max(0, Number(roomLoot.artifactRolls || 0) + criticalRolls + (compassEffect ? 1 : 0));
+  if (compassEffect) consumeArmedEffect(member, compassEffect);
   let table = lootTableForRoom(room);
   const upgrade = member.provisionState?.upgradeLootRarity;
   if ((upgrade?.uses ?? 0) > 0 && artifactRolls > 0) {
@@ -465,44 +468,27 @@ function buildRollModifiers({
   rng = () => 0,
 } = {}) {
   const workingMember = clone(member || {});
-  const workingAction = clone(action || {});
   const workingRoom = clone(room || {});
   const parts = [];
   let total = 0;
 
-  const actionModifier = workingAction.modifier ?? 0;
-  total += actionModifier;
-  addPart(parts, 'action', actionModifier, { actionId: workingAction.id });
-
-  const role = ROLES[workingMember.role];
-  if (role?.stat === workingAction.stat) {
-    total += role.bonus;
-    addPart(parts, 'role', role.bonus, { role: workingMember.role });
-  }
-
-  const supportApplied = normalizeSupport(selectedSupport, workingRoom.support ?? MAX_SUPPORT);
-  total += supportApplied;
-  addPart(parts, 'support', supportApplied);
+  // Combat no longer uses legacy class stats or action difficulty modifiers.
+  // Every visible bonus here is applied to damage after the d20 hits.
+  const supportApplied = 0;
 
   const mechanicEffect = mechanicChoiceEffect(workingRoom, mechanicChoice);
   total += mechanicEffect.rollBonus;
   addPart(parts, `mechanic:${mechanicChoice}`, mechanicEffect.rollBonus);
 
-  const provision = workingMember.provisionState?.rollBonus;
-  if ((provision?.uses ?? 0) > 0 && (!provision.roomKey || provision.roomKey === workingRoom.key)) {
+  const provision = workingMember.provisionState?.damageBonus;
+  const combatRoom = workingRoom.type === 'boss'
+    || ['combat', 'boss'].includes(workingRoom.encounterType || workingRoom.type);
+  if (combatRoom && (provision?.uses ?? 0) > 0 && (!provision.roomKey || provision.roomKey === workingRoom.key)) {
     total += provision.amount;
     addPart(parts, 'provision', provision.amount);
   }
 
   const debuff = workingMember.debuff;
-  if (debuff?.type === 'frightened') {
-    const applies = !debuff.stat || debuff.stat === workingAction.stat;
-    if (applies) {
-      const amount = debuff.amount ?? -2;
-      total += amount;
-      addPart(parts, 'debuff', amount, { debuffType: debuff.type });
-    }
-  }
 
   const beforeArtifact = applyArtifactEffects({
     phase: 'before_roll',
@@ -510,10 +496,10 @@ function buildRollModifiers({
     expeditionId: expedition.id,
     dayKey,
     bossPhase: workingRoom.phase,
-    stat: workingAction.stat,
+    stat: action?.stat,
     roomType: workingRoom.type,
     roomTags: workingRoom.tags || [],
-    actionTags: workingAction.tags || [],
+    actionTags: action?.tags || [],
     modifier: total,
     support: supportApplied,
     helpers: supportApplied > 0 ? 1 : 0,
@@ -553,6 +539,16 @@ function rollD20(roll, rng) {
   return value;
 }
 
+function rollD6(roll, rng) {
+  const value = typeof roll === 'function'
+    ? roll(rng)
+    : (roll ?? (1 + Math.floor((rng || Math.random)() * 6)));
+  if (!Number.isInteger(value) || value < 1 || value > 6) {
+    throw new RangeError('damage roll must be an integer from 1 to 6');
+  }
+  return value;
+}
+
 function resolveAttempt({
   expedition = {},
   member,
@@ -562,6 +558,8 @@ function resolveAttempt({
   mechanicChoice = null,
   roll,
   reroll,
+  damageRoll,
+  criticalDamageRoll,
   rng = () => 0,
   now = unixSeconds(),
   useSharedBuff = false,
@@ -613,13 +611,14 @@ function resolveAttempt({
   nextMember.loadout = modifiers.loadout;
   nextMember.triggerHistory = modifiers.triggerHistory;
 
-  if (useSharedBuff && (nextExpedition.sharedBuffs.rollBonus?.uses ?? 0) > 0) {
+  let selectedSharedBuff = null;
+  if (combatRoom && useSharedBuff && (nextExpedition.sharedBuffs.rollBonus?.uses ?? 0) > 0) {
     const shared = nextExpedition.sharedBuffs.rollBonus;
+    selectedSharedBuff = shared;
     modifiers.total += shared.amount;
     modifiers.parts.push({ source: `shared:${shared.source || 'roll_bonus'}`, amount: shared.amount });
-    shared.uses -= 1;
   }
-  let modifiedRoll = rawRoll + modifiers.total;
+  let modifiedRoll = rawRoll;
   const afterRoll = applyArtifactEffects({
     phase: 'after_roll',
     actionType: 'attempt',
@@ -640,10 +639,9 @@ function resolveAttempt({
     rng,
   });
   rawRoll = afterRoll.rawRoll;
-  modifiers.total = afterRoll.modifier;
   nextMember.loadout = afterRoll.loadout;
   nextMember.triggerHistory = afterRoll.triggerHistory;
-  modifiedRoll = rawRoll + modifiers.total;
+  modifiedRoll = rawRoll;
   const criticalRawRoll = rawRoll === 20 || (
     !artifactsDisabledForAction
     && rawRoll === ARTIFACTS.crown_of_twenty.effect.threshold
@@ -652,20 +650,33 @@ function resolveAttempt({
   const outcomeRawRoll = criticalRawRoll ? 20 : rawRoll;
 
   const raiseModifiedRoll = nextMember.provisionState?.raiseModifiedRoll;
-  if ((raiseModifiedRoll?.uses ?? 0) > 0 && modifiedRoll < raiseModifiedRoll.below) {
+  if (combatRoom && (raiseModifiedRoll?.uses ?? 0) > 0 && rawRoll < raiseModifiedRoll.below) {
     raiseModifiedRoll.uses -= 1;
-    modifiedRoll = raiseModifiedRoll.value;
+    rawRoll = raiseModifiedRoll.value;
+    modifiedRoll = rawRoll;
+    modifiers.parts.push({ source: 'magic_squash_pie', amount: 0, attackFloor: rawRoll });
   }
 
-  const combatRollValue = Math.max(1, Math.min(20, modifiedRoll));
+  const combatRollValue = Math.max(1, Math.min(20, rawRoll));
   const combatOutcomeValue = criticalRawRoll ? 20 : combatRollValue;
-  const combatOutcome = combatRoom ? combatRollOutcome(combatOutcomeValue) : null;
+  const attackTarget = Math.max(2, Math.min(20, Number(nextRoom.attackTarget || (nextRoom.type === 'boss' ? 12 : 10))));
+  const combatOutcome = combatRoom ? combatRollOutcome(combatOutcomeValue, attackTarget) : null;
   let progressAwarded = progressForRoll({
     rawRoll: outcomeRawRoll,
     modifiedRoll,
   });
   if (combatOutcome) {
-    progressAwarded = combatOutcome.progress;
+    if (selectedSharedBuff && !combatOutcome.hit) {
+      modifiers.total -= selectedSharedBuff.amount;
+      modifiers.parts = modifiers.parts.filter(part => !String(part.source).startsWith('shared:'));
+    } else if (selectedSharedBuff) {
+      selectedSharedBuff.uses -= 1;
+    }
+    const damageRolls = combatOutcome.hit
+      ? [rollD6(damageRoll, rng), ...(combatOutcome.critical ? [rollD6(criticalDamageRoll, rng)] : [])]
+      : [];
+    const baseDamage = damageRolls.reduce((total, value) => total + value, 0);
+    progressAwarded = baseDamage + modifiers.total;
     const passiveCombat = applyPassiveArtifactEffects({
       phase: 'combat_roll',
       expeditionId: nextExpedition.id,
@@ -699,6 +710,11 @@ function resolveAttempt({
       type: 'combat_roll',
       outcome: combatOutcome.label,
       roll: combatOutcomeValue,
+      attackRoll: combatOutcomeValue,
+      attackTarget,
+      damageRolls,
+      baseDamage,
+      damageBonus: Math.max(0, progressAwarded - baseDamage),
       progress: progressAwarded,
       heroDamage,
     });
@@ -733,8 +749,8 @@ function resolveAttempt({
   nextMember.triggerHistory = beforeProgress.triggerHistory;
 
   nextMember.ap -= 1;
-  if (nextMember.provisionState?.rollBonus?.uses > 0 && !nextMember.provisionState.rollBonus.roomKey) {
-    nextMember.provisionState.rollBonus.uses -= 1;
+  if (combatOutcome?.hit && nextMember.provisionState?.damageBonus?.uses > 0 && !nextMember.provisionState.damageBonus.roomKey) {
+    nextMember.provisionState.damageBonus.uses -= 1;
   }
   nextMember.debuff = null;
   nextRoom.support = Math.max(0, (nextRoom.support || 0) - modifiers.supportApplied);
@@ -1072,6 +1088,16 @@ function rowToExpedition(row) {
 
 function rowToRoom(row) {
   const payload = parseJson(row.payload_json, {});
+  const legacyCombatBalance = payload.enemyId === 'hollow_archer'
+    ? { progressTarget: 18, attackTarget: 9 }
+    : payload.enemyId === 'rootbound_guard'
+      ? { progressTarget: 21, attackTarget: 11 }
+      : row.room_type === 'boss'
+        ? {
+            progressTarget: ({ 1: 36, 2: 42, 3: 48 })[payload.phase || 1],
+            attackTarget: ({ 1: 12, 2: 13, 3: 14 })[payload.phase || 1],
+          }
+        : null;
   return {
     ...payload,
     id: row.id,
@@ -1079,7 +1105,8 @@ function rowToRoom(row) {
     type: row.room_type,
     state: row.state,
     progress: row.progress,
-    progressTarget: row.progress_target,
+    progressTarget: legacyCombatBalance?.progressTarget || row.progress_target,
+    attackTarget: payload.attackTarget || legacyCombatBalance?.attackTarget || null,
     support: row.support,
     unlockedAt: row.unlocked_at,
     clearedAt: row.cleared_at,
@@ -1634,6 +1661,8 @@ function attemptRoom(options) {
     selectedSupport = 0,
     roll,
     reroll,
+    damageRoll,
+    criticalDamageRoll,
     rng = () => 0,
     now = Math.floor(Date.now() / 1000),
     useSharedBuff = false,
@@ -1657,6 +1686,8 @@ function attemptRoom(options) {
     selectedSupport,
     roll: roll ?? null,
     reroll: reroll ?? null,
+    damageRoll: damageRoll ?? null,
+    criticalDamageRoll: criticalDamageRoll ?? null,
     useSharedBuff,
   };
   const replay = findIdempotentAction(transaction, {
@@ -1685,6 +1716,8 @@ function attemptRoom(options) {
     mechanicChoice: normalizedMechanicChoice,
     roll,
     reroll,
+    damageRoll,
+    criticalDamageRoll,
     rng,
     now,
     useSharedBuff,
@@ -1835,14 +1868,8 @@ function chooseScoutRoom(options) {
   assertHeroCanAct(memberState, now);
   const dayKey = utcDayKey(now);
   const scout = normalizeRoleDay(memberState, dayKey);
-  const artifactsDisabledForAction = scout.debuff?.type === 'cursed';
-  const compassEffect = artifactsDisabledForAction
-    ? null
-    : armedEffect(scout, 'scout_choice', fromRoomKey);
-  if (!compassEffect) {
-    if (scout.role !== 'scout') throw new RangeError('only scouts can choose the next room');
-    consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout', now });
-  }
+  if (scout.role !== 'scout') throw new RangeError('only scouts can choose the next room');
+  consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'scout', now });
 
   const targetKey = choice.targetKey || choice.room?.key;
   const connected = (snapshot.expedition.map.edges || [])
@@ -1864,13 +1891,9 @@ function chooseScoutRoom(options) {
     },
   };
   const nextTarget = applyScoutChoiceToTarget(source, target, choice, userId, now);
-  if (compassEffect) {
-    consumeArmedEffect(scout, compassEffect);
-  } else {
-    scout.roleCharge = 0;
-    scout.roleChargeProgress = 0;
-    scout.roleChargeReadyAt = 0;
-  }
+  scout.roleCharge = 0;
+  scout.roleChargeProgress = 0;
+  scout.roleChargeReadyAt = 0;
   scout.debuff = null;
 
   updateRoom(transaction, expeditionId, nextSource);
@@ -1948,7 +1971,7 @@ function useRoleAbility(options) {
     const sharedBuffs = clone(snapshot.expedition.sharedBuffs || {});
     if ((sharedBuffs.rollBonus?.uses ?? 0) > 0) throw new RangeError('an Arcane Boost is already waiting to be used');
     sharedBuffs.rollBonus = {
-      amount: 3,
+      amount: 1,
       uses: 1,
       source: 'mage',
       placedBy: userId,
@@ -1957,7 +1980,7 @@ function useRoleAbility(options) {
     transaction.prepare(`
       UPDATE family_expeditions SET shared_buffs_json = ? WHERE id = ?
     `).run(stringifyJson(sharedBuffs), expeditionId);
-    visualEvents = [{ type: 'mage_boost_placed', amount: 3, placedBy: userId }];
+    visualEvents = [{ type: 'mage_boost_placed', amount: 1, placedBy: userId }];
   } else if (ROLE_EFFECT_TYPES[member.role]) {
     const effect = placeRoleEffect(transaction, {
       expeditionId,
@@ -2028,7 +2051,7 @@ function useProvisionForMember(options) {
       state.minimumProgress = { uses: 1, from: 0, to: 1 };
       break;
     case 'lucky_breakfast':
-      state.rollBonus = { uses: 999, amount: 2, roomKey };
+      state.damageBonus = { uses: 999, amount: 1, roomKey };
       break;
     case 'warm_milk':
       if (member.roleCharge >= 1) throw new RangeError('role ability is already ready');
@@ -2431,7 +2454,7 @@ function applyMinigameSuccess({
   assertMinigameRoom(currentRoom);
   const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
   const previousProgress = currentRoom.progress || 0;
-  const requestedProgress = Number(outcome.score ?? 0) >= 90 ? 2 : 1;
+  const requestedProgress = 1;
   const nextRoom = {
     ...currentRoom,
     progress: Math.min(currentRoom.progressTarget || Infinity, previousProgress + requestedProgress),
@@ -2461,6 +2484,7 @@ function applyMinigameSuccess({
       rng,
       now,
     });
+    updateMember(transaction, expeditionId, memberState);
     persistUnlocks(transaction, expeditionId, snapshot.expedition.map, nextRoom.key, now);
   }
   const visualEvents = [{ type: 'event_minigame_success', progressAwarded }];
@@ -2601,7 +2625,7 @@ function armedEffectFromState(artifact, roomKey, state) {
     || 1;
   return {
     artifactId: artifact.id,
-    effectKind: artifact.effect.kind,
+    effectKind: state.bonusArtifactRoll ? 'bonus_artifact_roll' : artifact.effect.kind,
     roomKey,
     remainingUses: uses,
     scope: 'armed',
@@ -2703,7 +2727,7 @@ function useArtifactForMember(options) {
     'multi_combat_advantage',
     'scout_choice',
   ]);
-  if (armedKinds.has(artifact.effect.kind) && !applied.state.restoredScoutCharge) {
+  if (armedKinds.has(artifact.effect.kind)) {
     member.triggerHistory.push(armedEffectFromState(artifact, roomKey, applied.state));
   }
   updateMember(transaction, expeditionId, member);

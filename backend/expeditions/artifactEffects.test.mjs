@@ -63,7 +63,7 @@ test('effect dispatch exposes only the current-system kinds', () => {
 test('every active artifact applies to its valid current-system context', () => {
   const expected = {
     chalk_rune: ['minigameTimeBonus', 3],
-    bone_die: ['combatRollFloor', 9],
+    bone_die: ['combatRollFloor', 10],
     wooden_shield: ['personalDamageShield', 1],
     tiny_shovel: ['roomProgress', 3],
     ration_box: ['heroHp', 3],
@@ -74,7 +74,7 @@ test('every active artifact applies to its valid current-system context', () => 
     campfire_charm: ['roleCharge', 1],
     phoenix_feather: ['heroHp', 3],
     hourglass_shard: ['ap', 4],
-    crooked_compass: ['scoutChoiceArmed', true],
+    crooked_compass: ['bonusArtifactRoll', 1],
     fates_broken_die: ['combatAdvantageUses', 3],
   };
 
@@ -115,14 +115,14 @@ test('every active artifact rejects an inapplicable use without mutating state',
   }
 });
 
-test('Crooked Compass restores a spent Scout path choice', () => {
+test('Crooked Compass arms an extra artifact reward for any class', () => {
   const result = applyActiveArtifact({
     artifactId: 'crooked_compass',
     state: { roomKey: 'room-a', roomState: 'unlocked', role: 'scout', roleCharge: 0 },
   });
   assert.equal(result.applied, true);
-  assert.equal(result.state.roleCharge, 1);
-  assert.equal(result.state.restoredScoutCharge, true);
+  assert.equal(result.state.bonusArtifactRoll, 1);
+  assert.equal(result.state.roleCharge, 0);
 });
 
 test('active dispatch rejects passive and unknown artifacts', () => {

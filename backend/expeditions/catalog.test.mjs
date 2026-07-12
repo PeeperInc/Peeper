@@ -38,10 +38,10 @@ test('root king catalog exposes the approved constants and role rules', () => {
   assert.equal(MAX_AP, 5);
   assert.equal(AP_REGEN_SECONDS, 3 * 60 * 60);
   assert.deepEqual(ROLES, {
-    knight: { stat: 'might', bonus: 3, ability: 'shield_wall' },
-    scout: { stat: 'agility', bonus: 3, ability: 'reveal_room' },
-    mage: { stat: 'arcana', bonus: 3, ability: 'reroll' },
-    cleric: { stat: 'spirit', bonus: 3, ability: 'blessing' },
+    knight: { ability: 'shield_wall' },
+    scout: { ability: 'reveal_room' },
+    mage: { ability: 'damage_boost' },
+    cleric: { ability: 'blessing' },
   });
 });
 
@@ -71,7 +71,7 @@ test('provisions contain the seven exact farm recipes and structured effects', (
       lucky_breakfast: {
         ingredient: 'egg',
         quantity: 10,
-        effect: { type: 'roll_bonus', config: { uses: 1, amount: 2 } },
+        effect: { type: 'damage_bonus', config: { uses: 1, amount: 1 } },
       },
       warm_milk: {
         ingredient: 'milk',

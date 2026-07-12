@@ -211,7 +211,7 @@ test('higher contribution never yields fewer coins under identical expedition in
   db.close();
 });
 
-test('duplicate substitutions do not let lower contribution earn more total coins', () => {
+test('duplicate artifact rewards remain copies and contribution still controls coins', () => {
   const db = rewardDb();
   addUser(db, 10);
   addUser(db, 11);
@@ -239,11 +239,7 @@ test('duplicate substitutions do not let lower contribution earn more total coin
   const low = created.find(reward => reward.userId === 10).payload;
   const high = created.find(reward => reward.userId === 11).payload;
 
-  assert.deepEqual(low.artifacts, [{
-    artifactId: 'old_torch',
-    duplicate: true,
-    coins: 10,
-  }]);
+  assert.deepEqual(low.artifacts, [{ artifactId: 'old_torch' }]);
   assert.deepEqual(high.artifacts, [{ artifactId: 'old_torch' }]);
   assert.equal(low.contributionAp, 1);
   assert.equal(high.contributionAp, 2);
@@ -370,7 +366,7 @@ test('malformed pending reward payload cannot be claimed or hidden', () => {
   db.close();
 });
 
-test('duplicate artifact substitutions are doubled, awarded, and included in final totals', () => {
+test('duplicate artifact rewards are stored as another usable copy', () => {
   const db = rewardDb();
   addUser(db, 10, 0);
   const expeditionId = createFinishedExpedition(db, {
@@ -386,12 +382,8 @@ test('duplicate artifact substitutions are doubled, awarded, and included in fin
     rng: () => rolls.shift() ?? 0,
   }));
 
-  assert.deepEqual(reward.payload.artifacts, [{
-    artifactId: 'old_torch',
-    duplicate: true,
-    coins: 10,
-  }]);
-  assert.equal(reward.payload.finalCoins, 40);
+  assert.deepEqual(reward.payload.artifacts, [{ artifactId: 'old_torch' }]);
+  assert.equal(reward.payload.finalCoins, 30);
   assert.equal(reward.payload.totalCoins, reward.payload.roomCoins + reward.payload.finalCoins);
   const claimed = inTx(db, () => claimPendingReward(db, {
     rewardId: reward.id,
@@ -400,6 +392,10 @@ test('duplicate artifact substitutions are doubled, awarded, and included in fin
   }));
   assert.equal(claimed.pendingCount, 0);
   assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').pluck().get(), reward.payload.totalCoins);
+  assert.equal(db.prepare(`
+    SELECT quantity FROM expedition_artifact_inventory
+    WHERE user_id = 10 AND artifact_id = 'old_torch'
+  `).pluck().get(), 1);
   db.close();
 });
 

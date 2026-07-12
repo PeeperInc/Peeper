@@ -95,22 +95,12 @@ function progressOutcome(progress = 0) {
   return { label: 'Setback', detail: '0 progress, try another approach' };
 }
 
-function combatOutcome(roll) {
-  const value = Number(roll || 0);
-  if (value <= 4) return { label: 'Wounded', detail: 'Hero loses 1 HP' };
-  if (value <= 7) return { label: 'Miss', detail: 'No damage dealt' };
-  if (value <= 15) return { label: 'Hit', detail: '1 damage' };
-  if (value <= 19) return { label: 'Heavy hit', detail: '2 damage' };
-  return { label: 'Critical hit', detail: '3 damage' };
-}
-
-function combatRollPreview() {
+function combatRollPreview(attackTarget = 10) {
   return [
-    { roll: '1-4', outcome: combatOutcome(4) },
-    { roll: '5-7', outcome: combatOutcome(7) },
-    { roll: '8-15', outcome: combatOutcome(15) },
-    { roll: '16-19', outcome: combatOutcome(19) },
-    { roll: '20', outcome: combatOutcome(20) },
+    { roll: '1-4', outcome: { detail: 'Countered: lose 1 HP' } },
+    { roll: `5-${Math.max(5, attackTarget - 1)}`, outcome: { detail: 'Miss: no damage roll' } },
+    { roll: `${attackTarget}-19`, outcome: { detail: 'Hit: roll 1d6 damage' } },
+    { roll: '20', outcome: { detail: 'Critical: roll 2d6 damage' } },
   ];
 }
 
@@ -174,7 +164,7 @@ function roomRuleCopy(room = {}) {
   if (isCombatRoom(room)) {
     return {
       title: 'Combat roll',
-      body: 'Roll d20, then add Roll Power. Final 1-4 hurts your hero, 5-7 misses, 8-15 deals 1 damage, 16-19 deals 2, and 20+ deals 3.',
+      body: `First roll a clean d20 against AC ${room.attackTarget || (room.type === 'boss' ? 12 : 10)}. A hit rolls 1d6 damage; a natural 20 rolls 2d6. Food, Mage magic and relics add only to damage.`,
     };
   }
   return mechanicCopy(room?.miniMechanic);
@@ -356,10 +346,13 @@ function buildRoomLayout(rooms = [], edges = []) {
 
 function useCatalogMaps(canonicalArtifacts = []) {
   return useMemo(() => {
-    const artifacts = new Map((assetCatalog.artifacts || []).map(item => [item.id, item]));
-    for (const item of canonicalArtifacts || []) {
-      artifacts.set(item.id, { ...(artifacts.get(item.id) || {}), ...item });
-    }
+    const canonical = Array.isArray(canonicalArtifacts) ? canonicalArtifacts : [];
+    const artifactSource = canonical.length > 0 ? canonical : (assetCatalog.artifacts || []);
+    const assetMetadata = new Map((assetCatalog.artifacts || []).map(item => [item.id, item]));
+    const artifacts = new Map(artifactSource.map(item => [
+      item.id,
+      { ...(assetMetadata.get(item.id) || {}), ...item },
+    ]));
     const provisions = new Map((assetCatalog.provisions || []).map(item => [item.id, item]));
     return { artifacts, provisions };
   }, [canonicalArtifacts]);
@@ -405,17 +398,17 @@ function PreparationFlow({ state, loading, onPrepare }) {
   const roleCopy = {
     knight: ['🛡️', 'Shield the family', 'Place a shield in the current battle. It blocks the next hit against any family hero. Recharges after 3 hours.'],
     scout: ['🧭', 'Choose the road', 'Once per expedition, reveal three possible next rooms and choose the family path. Warm Milk or a relic can restore it.'],
-    mage: ['✨', 'Empower one roll', 'Create one shared +3 boost. Any family hero can choose to spend it on a roll. Recharges after 3 hours.'],
+    mage: ['✨', 'Empower one strike', 'Create one shared +1 damage boost. Any family hero can spend it after a successful attack. Recharges after 3 hours.'],
     cleric: ['💚', 'Heal the wounded', 'Restore 1 HP to every wounded conscious hero. Knocked-out heroes still need their recovery time. Recharges after 3 hours.'],
   };
   const provisionCopy = {
     carrot_rations: 'Drink during the run to restore 1 AP.',
     tomato_soup: 'Restore 1 HP to your wounded hero.',
     hearty_potato_meal: 'Your next failed progress roll still adds at least 1 progress.',
-    lucky_breakfast: 'Gain +2 on every d20 roll in the current room.',
+    lucky_breakfast: 'Add +1 damage to every successful attack in the current room.',
     warm_milk: 'Immediately restore your class ability.',
     truffle_treat: 'Upgrade the rarity table of your next artifact reward.',
-    magic_squash_pie: 'Your next modified roll below 10 becomes 10.',
+    magic_squash_pie: 'Your next attack d20 below 10 becomes 10.',
   };
 
   const selectedRole = roleEntries.find(([id]) => id === role)?.[1] || {};
@@ -613,10 +606,10 @@ function ExpeditionGuidePanel() {
   const sections = [
     ['Getting started', 'Every family member chooses a class, one provision and up to three artifacts. You can join and help at your own pace; an expedition never fails because the family is slow.'],
     ['AP and returning to play', 'Actions cost 1 AP. You can hold up to 5 AP and recover 1 AP every 3 hours. More active family members move the expedition faster, and active heroes receive a larger final reward.'],
-    ['Combat and the d20', 'The large die shows your raw d20. Roll Power is added before the result is checked. Final 1-4 wounds you, 5-7 changes nothing, 8-15 deals 1 damage, 16-19 deals 2, and 20 or more deals 3. A favored class receives its class bonus automatically.'],
+    ['Combat: d20 then damage', 'Every enemy has a visible Armor Class (AC). First roll a clean d20: 1-4 lets the enemy counter for 1 HP, a result below AC misses, and AC or higher hits. A hit rolls 1d6 damage; a natural 20 rolls two d6. Food, Mage magic and relics add only small damage bonuses. Classes no longer change the attack roll.'],
     ['Room mini-games', 'Non-combat rooms replace the d20 with a skill challenge. Starting an attempt spends 1 AP. Failing costs that AP, but never removes HP. If the room still needs progress, you can begin another attempt immediately.'],
     ['HP and knockout', 'Heroes have 3 HP. HP does not refill between rooms. At 0 HP your hero is knocked out for 6 hours, then returns with 3 HP. A Knight shield can prevent a hit; a Cleric heals conscious wounded heroes.'],
-    ['Class abilities', 'Scout chooses one future path per expedition. Mage creates one shared +3 boost for a family hero to spend. Knight blocks the next family hit and Cleric restores 1 HP. Mage, Knight and Cleric recharge after 3 hours.'],
+    ['Class abilities', 'Scout chooses one future path per expedition. Mage creates one shared +1 damage boost for a family hero to spend after a hit. Knight blocks the next family hit and Cleric restores 1 HP. Mage, Knight and Cleric recharge after 3 hours.'],
     ['Provisions', 'Your chosen meal appears beside your relics. Tap it when you want to consume it. Meals are single-use: some heal or restore AP, while others empower one roll, one room, one reward, or restore your class ability.'],
     ['Artifacts', 'Only the three equipped slots work. Tap a relic in the top bar to read its exact effect and use it when allowed. Active relics disappear when used; expedition-long relics are consumed when the expedition ends.'],
     ['Scout paths and rewards', 'Future rooms remain hidden. A Scout can choose the next encounter from three paths once per expedition. Rooms pay rewards when cleared, and the final reward favors heroes who spent more AP helping the family.'],
@@ -641,34 +634,41 @@ function LastRollPanel({ action }) {
   const combatEvent = events.find(event => event.type === 'combat_roll');
   const damageEvent = events.find(event => event.type === 'hero_damaged');
   const combatCopy = combatEvent ? {
-    hero_hit: 'Wounded',
-    standoff: 'Miss',
-    enemy_hit: 'Hit',
-    enemy_hit_hard: 'Heavy hit',
+    countered: 'Countered',
+    miss: 'Miss',
+    hit: 'Hit',
     critical_hit: 'Critical hit',
   }[combatEvent.outcome] || titleize(combatEvent.outcome) : null;
 
   return (
     <div className="expedition-last-roll">
       <div className="expedition-last-roll-die">
-        <span>d20</span>
+        <span>ATTACK</span>
         <strong>{action.rawRoll ?? '?'}</strong>
       </div>
+      {(combatEvent?.damageRolls || []).map((roll, index) => (
+        <div className="expedition-last-roll-die damage" key={`damage-${index}`}>
+          <span>d6</span>
+          <strong>{roll}</strong>
+        </div>
+      ))}
       <div className="expedition-last-roll-copy">
         <div>
           <strong>Last Roll</strong>
           {combatEvent ? (
             <span>
-              {combatCopy} / raw {action.rawRoll ?? '?'} → total {action.modifiedRoll ?? '?'} / {combatEvent.progress || 0} damage
+              {combatCopy} / d20 {action.rawRoll ?? '?'} vs AC {combatEvent.attackTarget || '?'} / {combatEvent.progress || 0} total damage
               {damageEvent ? ` / HP ${damageEvent.heroHp}/3` : ''}
             </span>
           ) : (
             <span>Modified {action.modifiedRoll ?? '?'} / +{action.progressAwarded || 0} progress</span>
           )}
         </div>
-        {modifierParts.length > 0 && (
+        {(combatEvent || modifierParts.length > 0) && (
           <small>
-            {modifierParts.slice(0, 3).map(part => `${titleize(part.source)} ${signedNumber(part.amount)}`).join(' / ')}
+            {combatEvent
+              ? `Damage: ${(combatEvent.damageRolls || []).length ? `${combatEvent.damageRolls.join(' + ')}${combatEvent.damageBonus ? ` + ${combatEvent.damageBonus} bonus` : ''}` : 'no damage roll'}`
+              : modifierParts.slice(0, 3).map(part => `${titleize(part.source)} ${signedNumber(part.amount)}`).join(' / ')}
           </small>
         )}
         {(loot.coins || loot.artifactRolls || loot.artifactId) && (
@@ -684,7 +684,7 @@ function LastRollPanel({ action }) {
 function RoleAbilityControl({ member, room, sharedBuffs, mutating, onUse }) {
   if (!member?.role || member.role === 'scout' || !isActionableRoom(room)) return null;
   const copy = {
-    mage: ['Create Arcane Boost', 'Adds one shared +3 boost that a family hero can spend on a roll.'],
+    mage: ['Create Arcane Edge', 'Adds one shared +1 damage boost that a family hero can spend after a hit.'],
     knight: ['Place Knight Shield', 'Blocks the next family hit in this room.'],
     cleric: ['Healing Prayer', 'Restores 1 HP to every conscious wounded hero.'],
   }[member.role];
@@ -1514,7 +1514,7 @@ function RoomPanel({
   const bossArt = useLazyAsset(bossImages, bossArtFile(room));
   const enemyArt = useLazyAsset(enemyImages, enemyArtFile(room));
   const rollBonus = expedition?.sharedBuffs?.rollBonus;
-  const canUseSharedBuff = Boolean(rollBonus && (rollBonus.uses ?? 0) > 0 && isActionableRoom(room));
+  const canUseSharedBuff = Boolean(rollBonus && (rollBonus.uses ?? 0) > 0 && isCombatRoom(room) && isActionableRoom(room));
   const primaryAction = useMemo(() => primaryActionForRoom(room, member, roles), [room, member, roles]);
   const weakRoleLabels = (room?.weakRoles || []).map(role => roles?.[role]?.name || titleize(role));
   const mechanic = roomRuleCopy(room);
@@ -1530,10 +1530,9 @@ function RoomPanel({
   const stageDamageEvent = stageEvents.find(event => event.type === 'hero_damaged');
   const stageOutcome = stageCombatEvent?.outcome || null;
   const stageOutcomeCopy = {
-    hero_hit: ['Wounded', 'hero hit'],
-    standoff: ['Miss', 'no damage'],
-    enemy_hit: ['Hit', 'enemy damaged'],
-    enemy_hit_hard: ['Heavy hit', 'enemy damaged'],
+    countered: ['Countered', 'hero hit'],
+    miss: ['Miss', 'no damage'],
+    hit: ['Hit', 'enemy damaged'],
     critical_hit: ['Critical', 'enemy damaged'],
   }[stageOutcome] || [titleize(stageOutcome), 'resolved'];
   const stageDamage = Number(stageCombatEvent?.progress || 0);
@@ -1552,17 +1551,19 @@ function RoomPanel({
     : combatRoom
       ? {
           title: 'Combat roll',
-          body: 'Roll d20 and add Roll Power: final 1-4 loses 1 HP, 5-7 misses, 8-15 deals 1 damage, 16-19 deals 2, and 20+ deals 3.',
+          body: `Roll a clean d20 against AC ${room?.attackTarget || (room?.type === 'boss' ? 12 : 10)}. On a hit, roll d6 damage. Natural 20 rolls two damage dice.`,
         }
       : {
           title: mechanic.title,
           body: mechanic.body,
         };
   const sharedBuffAmount = useSharedBuff ? Number(rollBonus?.amount || 0) : 0;
-  const roleActionBonus = roleMeta?.stat === primaryAction?.stat ? Number(roleMeta.bonus || 0) : 0;
-  const totalRollModifier = Number(primaryAction?.modifier || 0)
-    + roleActionBonus
-    + sharedBuffAmount;
+  const provisionDamageBonus = member?.provisionState?.damageBonus
+    && room?.key
+    && member.provisionState.damageBonus.roomKey === room.key
+    ? Number(member.provisionState.damageBonus.amount || 0)
+    : 0;
+  const totalDamageBonus = provisionDamageBonus + sharedBuffAmount;
   const heroRecoverAt = Number(member?.heroRecoverAt || 0);
   const heroRecovering = heroRecoverAt > Math.floor(Date.now() / 1000) || Number(member?.heroHp ?? 3) <= 0;
   const heroRecoverLabel = heroRecoverAt > 0 ? `Recovering until ${formatTime(heroRecoverAt)}` : 'Hero is recovering';
@@ -1677,10 +1678,7 @@ function RoomPanel({
                   <span>Encounter</span>
                   <strong>{titleize(room.encounterType || room.type || 'room')}</strong>
                 </div>
-                <div>
-                  <span>Role advantage</span>
-                  <strong>{weakRoleLabels.length ? weakRoleLabels.join(' / ') : 'Any hero'}</strong>
-                </div>
+                {combatRoom && <div><span>Armor Class</span><strong>Hit on {room.attackTarget || (room.type === 'boss' ? 12 : 10)}+</strong></div>}
               </div>
               <div className="expedition-mechanic-card">
                 <strong>{encounterGuide.title}</strong>
@@ -1688,7 +1686,7 @@ function RoomPanel({
               </div>
               {primaryAction && !eventRoom && (
                 <div className="expedition-roll-preview expedition-roll-preview-info">
-                  {(combatRoom ? combatRollPreview() : expectedProgressForAction(
+                  {(combatRoom ? combatRollPreview(room.attackTarget || (room.type === 'boss' ? 12 : 10)) : expectedProgressForAction(
                     primaryAction,
                     member,
                     roleMeta,
@@ -1753,7 +1751,7 @@ function RoomPanel({
                         onClick={() => canUseSharedBuff && setUseSharedBuff(value => !value)}
                         disabled={!canUseSharedBuff}
                       >
-                        <strong>Shared +{rollBonus.amount || 0}</strong>
+                        <strong>Damage +{rollBonus.amount || 0}</strong>
                         <span>{canUseSharedBuff ? `${rollBonus.uses || 0} use left` : 'No uses left'}</span>
                       </button>
                     )}
@@ -1763,15 +1761,13 @@ function RoomPanel({
                     <div className={`expedition-one-roll-card${mutating ? ' is-rolling' : ''}`}>
                       <div className="expedition-one-roll-main">
                         <div>
-                          <span>Current roll</span>
-                          <strong>{actionLabel(primaryAction)}</strong>
-                          <small>
-                            {titleize(primaryAction.stat || 'stat')} check / {formatDifficulty(primaryAction.difficulty)} / 1 AP
-                          </small>
+                          <span>Attack check</span>
+                          <strong>Hit on {room.attackTarget || (room.type === 'boss' ? 12 : 10)}+</strong>
+                          <small>Clean d20, then {room.type === 'boss' ? '1d6' : '1d6'} damage / 1 AP</small>
                         </div>
                         <div className="expedition-roll-score">
-                          <span>Roll power</span>
-                          <strong>{signedNumber(totalRollModifier)}</strong>
+                          <span>Damage bonus</span>
+                          <strong>{signedNumber(totalDamageBonus)}</strong>
                         </div>
                       </div>
                       <button
@@ -1914,14 +1910,11 @@ function ExpeditionDashboard({
   }
 
   const artifactUse = equippedRelics.find(item => item?.artifactId === artifactUseId);
-  const compassRestoresScout = artifactUse?.artifactId === 'crooked_compass'
-    && member?.role === 'scout'
-    && Number(member?.roleCharge || 0) < 1;
   const artifactUseDisabledReason = artifactUse?.meta?.useType !== 'active'
     ? ''
     : !selectedRoom
     ? 'Select an open room first.'
-    : selectedRoom.state !== 'unlocked' && !compassRestoresScout
+    : selectedRoom.state !== 'unlocked'
       ? 'Active artifacts can only be used in the current open room.'
       : mutating
         ? 'Another expedition action is still resolving.'
@@ -2043,8 +2036,18 @@ function ExpeditionDashboard({
             </div>
           </section>
 
-          <section>
-            <div className="expedition-section-title">Recent Actions</div>
+          <ExpeditionArchivePanel
+            archive={archive}
+            currentInventory={state.artifactInventory}
+            familyMembers={state.familyMembers}
+            canonicalArtifacts={state.catalog?.artifacts}
+          />
+
+          <details className="expedition-recent-actions">
+            <summary>
+              <strong>Recent Actions</strong>
+              <span>{(state.recentActions || []).length} entries</span>
+            </summary>
             <div className="expedition-action-list">
               {(state.recentActions || []).length > 0 ? state.recentActions.slice().reverse().map(action => (
                 <div key={action.id} className="expedition-action-row">
@@ -2055,13 +2058,7 @@ function ExpeditionDashboard({
                 <div className="expedition-empty">No actions yet. The dungeon is quiet.</div>
               )}
             </div>
-          </section>
-
-          <ExpeditionArchivePanel
-            archive={archive}
-            currentInventory={state.artifactInventory}
-            familyMembers={state.familyMembers}
-          />
+          </details>
         </ExpeditionOverlay>
       )}
 
@@ -2089,7 +2086,7 @@ function ExpeditionDashboard({
           <div className="expedition-provision-use">
             {assetById(provisionImages, member.provisionId) && <img src={assetById(provisionImages, member.provisionId)} alt="" />}
             <p>{{
-              carrot_rations: 'Restore 1 AP now.', tomato_soup: 'Restore 1 HP now.', hearty_potato_meal: 'Guarantee at least 1 progress on your next failed roll.', lucky_breakfast: 'Gain +2 on every d20 roll in this room.', warm_milk: 'Restore your class ability immediately.', truffle_treat: 'Upgrade your next artifact reward.', magic_squash_pie: 'Raise your next low modified roll to 10.',
+              carrot_rations: 'Restore 1 AP now.', tomato_soup: 'Restore 1 HP now.', hearty_potato_meal: 'Guarantee at least 1 damage on your next failed attack.', lucky_breakfast: 'Add +1 damage to every successful attack in this room.', warm_milk: 'Restore your class ability immediately.', truffle_treat: 'Upgrade your next artifact reward.', magic_squash_pie: 'Raise your next attack roll below 10 to 10.',
             }[member.provisionId]}</p>
             <button type="button" className="btn btn-primary btn-full" disabled={!provisionAvailable || mutating || !selectedRoom || selectedRoom.state !== 'unlocked'} onClick={async () => { const next = await onUseProvision(selectedRoom.key); if (next) setShowProvision(false); }}>
               {provisionAvailable ? 'Use Provision' : 'Already Used'}
@@ -2101,8 +2098,8 @@ function ExpeditionDashboard({
   );
 }
 
-function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers = [] }) {
-  const { artifacts } = useCatalogMaps();
+function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers = [], canonicalArtifacts = [] }) {
+  const { artifacts } = useCatalogMaps(canonicalArtifacts);
   const [openPanel, setOpenPanel] = useState(null);
   const [selectedArtifactId, setSelectedArtifactId] = useState(null);
   const [selectedRun, setSelectedRun] = useState(null);
@@ -2573,6 +2570,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
             archive={archive}
             currentInventory={state?.artifactInventory}
             familyMembers={state?.familyMembers}
+            canonicalArtifacts={state?.catalog?.artifacts}
           />
         </>
       )}
@@ -2584,6 +2582,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
             archive={archive}
             currentInventory={state?.artifactInventory}
             familyMembers={state?.familyMembers}
+            canonicalArtifacts={state?.catalog?.artifacts}
           />
         </>
       )}

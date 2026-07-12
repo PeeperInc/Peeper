@@ -217,11 +217,6 @@ function duplicateSubstitutionCoins(artifactId) {
 }
 
 function rollArtifactPayloads({ db, userId, loadout = [], artifactRolls, rng }) {
-  const inventoryIds = readInventoryIds(db, userId);
-  const seen = new Set([
-    ...inventoryIds,
-    ...loadout.map(slot => slot?.artifactId).filter(Boolean),
-  ]);
   const rolled = rollPersonalLoot({
     coinRange: { min: 0, max: 0 },
     artifactRolls,
@@ -229,20 +224,12 @@ function rollArtifactPayloads({ db, userId, loadout = [], artifactRolls, rng }) 
     rng,
   });
   const artifacts = [];
-  let substitutionCoins = 0;
 
   for (const artifactId of rolled.artifacts) {
-    if (seen.has(artifactId)) {
-      const coins = duplicateSubstitutionCoins(artifactId);
-      substitutionCoins += coins;
-      artifacts.push({ artifactId, duplicate: true, coins });
-    } else {
-      seen.add(artifactId);
-      artifacts.push({ artifactId });
-    }
+    artifacts.push({ artifactId });
   }
 
-  return { artifacts, substitutionCoins };
+  return { artifacts, substitutionCoins: 0 };
 }
 
 function buildRewardPayload({
@@ -405,7 +392,8 @@ function grantPayload(db, userId, payload, now) {
     db.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(totalCoins, userId);
   }
   for (const artifact of payload.artifacts || []) {
-    if (!artifact?.artifactId || artifact.duplicate) continue;
+    // Legacy pending rewards already paid duplicate compensation in totalCoins.
+    if (!artifact?.artifactId || artifact.duplicate === true) continue;
     grantArtifact({
       transaction: db,
       userId,

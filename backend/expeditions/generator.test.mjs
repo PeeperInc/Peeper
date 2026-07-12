@@ -166,8 +166,10 @@ test('generated room gameplay data comes from authored templates', () => {
 });
 
 test('combat and boss targets are harder without changing event targets', () => {
-  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.progressTarget), [7, 6]);
-  assert.deepEqual(ROOM_TEMPLATES.boss.map(room => room.progressTarget), [9, 9, 9]);
+  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.progressTarget), [21, 18]);
+  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.attackTarget), [11, 9]);
+  assert.deepEqual(ROOM_TEMPLATES.boss.map(room => room.progressTarget), [36, 42, 48]);
+  assert.deepEqual(ROOM_TEMPLATES.boss.map(room => room.attackTarget), [12, 13, 14]);
   assert.deepEqual(ROOM_TEMPLATES.trap.map(room => room.progressTarget), [4, 4]);
   assert.deepEqual(ROOM_TEMPLATES.arcane.map(room => room.progressTarget), [5, 5]);
   assert.deepEqual(ROOM_TEMPLATES.exploration.map(room => room.progressTarget), [5, 4]);

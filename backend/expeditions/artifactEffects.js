@@ -102,15 +102,8 @@ const ACTIVE_EFFECT_HANDLERS = Object.freeze({
     return true;
   },
   scout_choice(state) {
-    if (state.role === 'scout' && (state.roleCharge ?? 0) < 1) {
-      state.roleCharge = 1;
-      state.roleChargeProgress = 0;
-      state.roleChargeReadyAt = 0;
-      state.restoredScoutCharge = true;
-      return true;
-    }
-    if (!roomIsCurrent(state) || state.scoutChoiceArmed || (state.scoutChoices || []).length < 2) return false;
-    state.scoutChoiceArmed = true;
+    if (!roomIsCurrent(state) || state.bonusArtifactRoll) return false;
+    state.bonusArtifactRoll = 1;
     return true;
   },
   multi_combat_advantage(state, effect) {

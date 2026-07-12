@@ -297,6 +297,10 @@ function secureD20() {
   return 1 + crypto.randomInt(20);
 }
 
+function secureD6() {
+  return 1 + crypto.randomInt(6);
+}
+
 function secureRng() {
   return crypto.randomInt(1_000_000) / 1_000_000;
 }
@@ -497,6 +501,10 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
   const replayIntent = existingAttemptIntent(replay, access.expeditionId);
   const roll = Number.isInteger(replayIntent?.roll) ? replayIntent.roll : secureD20();
   const reroll = Number.isInteger(replayIntent?.reroll) ? replayIntent.reroll : secureD20();
+  const damageRoll = Number.isInteger(replayIntent?.damageRoll) ? replayIntent.damageRoll : secureD6();
+  const criticalDamageRoll = Number.isInteger(replayIntent?.criticalDamageRoll)
+    ? replayIntent.criticalDamageRoll
+    : secureD6();
 
   try {
     const snapshot = db.transaction(() => attemptRoom({
@@ -510,6 +518,8 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
       selectedSupport: req.body?.selectedSupport ?? 0,
       roll,
       reroll,
+      damageRoll,
+      criticalDamageRoll,
       rng: secureRng,
       useSharedBuff: Boolean(req.body?.useSharedBuff),
     }))();
