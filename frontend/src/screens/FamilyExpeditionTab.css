@@ -3745,7 +3745,8 @@ button.expedition-loadout-slot:disabled {
 .expedition-guide-accordion p { margin: 0; padding: 0 10px 11px 45px; color: rgba(233,223,189,.78); font-size: 11px; line-height: 1.42; }
 
 .expedition-player-hud {
-  grid-template-columns: 56px 56px 58px minmax(0, 1fr);
+  grid-template-columns: 56px 56px 58px 180px;
+  justify-content: center;
   min-height: 62px;
 }
 .expedition-hud-role { display: none; }
@@ -3771,7 +3772,7 @@ button.expedition-loadout-slot:disabled {
 .expedition-provision-use p { margin: 0; color: rgba(233,223,189,.8); font-size: 13px; line-height: 1.4; }
 
 @media (max-width: 380px) {
-  .expedition-player-hud { grid-template-columns: 50px 50px 52px minmax(0,1fr); }
+  .expedition-player-hud { grid-template-columns: 50px 50px 52px minmax(0,1fr); justify-content: stretch; }
   .expedition-hud-relics { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 5px; padding-inline: 5px; }
   .expedition-hud-relics > button,
   .expedition-hud-relics > span { width: 44px; height: 48px; justify-self: center; }
@@ -3980,7 +3981,7 @@ button.expedition-loadout-slot:disabled {
 
 @media (max-width: 340px), (max-height: 590px) {
   .expedition-game-title span { display: none; }
-  .expedition-player-hud { grid-template-columns: 46px 46px 50px minmax(0,1fr); min-height: 56px; }
+  .expedition-player-hud { grid-template-columns: 46px 46px 50px minmax(0,1fr); justify-content: stretch; min-height: 56px; }
   .expedition-hud-stat,
   .expedition-hud-role { padding-inline: 6px; }
   .expedition-hud-relics { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 4px; padding-inline: 4px; }
