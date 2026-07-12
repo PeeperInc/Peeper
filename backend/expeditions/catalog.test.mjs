@@ -66,7 +66,7 @@ test('provisions contain the seven exact farm recipes and structured effects', (
       hearty_potato_meal: {
         ingredient: 'potato',
         quantity: 10,
-        effect: { type: 'minimum_progress', config: { uses: 1, from: 0, to: 1 } },
+        effect: { type: 'damage_bonus', config: { uses: 1, amount: 2 } },
       },
       lucky_breakfast: {
         ingredient: 'egg',
@@ -86,10 +86,21 @@ test('provisions contain the seven exact farm recipes and structured effects', (
       magic_squash_pie: {
         ingredient: 'magic_squash',
         quantity: 1,
-        effect: { type: 'raise_modified_roll', config: { uses: 1, below: 10, value: 10 } },
+        effect: { type: 'damage_bonus', config: { uses: 1, amount: 3 } },
       },
     },
   );
+});
+
+test('combat roster uses all twelve enemy assets with a low-AC weighted spread', () => {
+  const combatRooms = ROOM_TEMPLATES.combat;
+  assert.equal(combatRooms.length, 12);
+  assert.equal(new Set(combatRooms.map(room => room.enemyId)).size, 12);
+  assert.deepEqual(
+    combatRooms.map(room => room.attackTarget).sort((left, right) => left - right),
+    [6, 6, 6, 7, 7, 7, 8, 8, 9, 10, 11, 12],
+  );
+  assert.ok(combatRooms.filter(room => room.attackTarget <= 8).length > combatRooms.filter(room => room.attackTarget >= 9).length);
 });
 
 test('all curated artifacts have unique IDs and explicit current-system effects', () => {

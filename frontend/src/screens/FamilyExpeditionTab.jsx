@@ -97,10 +97,11 @@ function progressOutcome(progress = 0) {
 
 function combatRollPreview(attackTarget = 10) {
   return [
-    { roll: '1-4', outcome: { detail: 'Countered: lose 1 HP' } },
-    { roll: `5-${Math.max(5, attackTarget - 1)}`, outcome: { detail: 'Miss: no damage roll' } },
-    { roll: `${attackTarget}-19`, outcome: { detail: 'Hit: roll 1d6 damage' } },
-    { roll: '20', outcome: { detail: 'Critical: roll 2d6 damage' } },
+    { roll: '1-3', outcome: { detail: 'Countered: lose 1 HP' } },
+    { roll: `4-${Math.max(4, attackTarget - 1)}`, outcome: { detail: 'Miss: no damage roll' } },
+    { roll: `${attackTarget}-18`, outcome: { detail: 'Hit: roll 1d6 damage' } },
+    { roll: '19', outcome: { detail: 'Critical: roll 2d6 damage' } },
+    { roll: '20', outcome: { detail: 'Devastating: roll 3d6 damage' } },
   ];
 }
 
@@ -164,7 +165,7 @@ function roomRuleCopy(room = {}) {
   if (isCombatRoom(room)) {
     return {
       title: 'Combat roll',
-      body: `First roll a clean d20 against AC ${room.attackTarget || (room.type === 'boss' ? 12 : 10)}. A hit rolls 1d6 damage; a natural 20 rolls 2d6. Food, Mage magic and relics add only to damage.`,
+      body: `First roll a clean d20 against AC ${room.attackTarget || (room.type === 'boss' ? 12 : 10)}. Rolls 1-3 hurt your hero. A normal hit rolls 1d6, 19 rolls 2d6, and 20 rolls 3d6. Nothing modifies the attack d20.`,
     };
   }
   return mechanicCopy(room?.miniMechanic);
@@ -404,11 +405,11 @@ function PreparationFlow({ state, loading, onPrepare }) {
   const provisionCopy = {
     carrot_rations: 'Drink during the run to restore 1 AP.',
     tomato_soup: 'Restore 1 HP to your wounded hero.',
-    hearty_potato_meal: 'Your next failed progress roll still adds at least 1 progress.',
+    hearty_potato_meal: 'Add +2 damage to your next successful attack.',
     lucky_breakfast: 'Add +1 damage to every successful attack in the current room.',
     warm_milk: 'Immediately restore your class ability.',
     truffle_treat: 'Upgrade the rarity table of your next artifact reward.',
-    magic_squash_pie: 'Your next attack d20 below 10 becomes 10.',
+    magic_squash_pie: 'Add +3 damage to your next successful attack.',
   };
 
   const selectedRole = roleEntries.find(([id]) => id === role)?.[1] || {};
@@ -606,7 +607,7 @@ function ExpeditionGuidePanel() {
   const sections = [
     ['Getting started', 'Every family member chooses a class, one provision and up to three artifacts. You can join and help at your own pace; an expedition never fails because the family is slow.'],
     ['AP and returning to play', 'Actions cost 1 AP. You can hold up to 5 AP and recover 1 AP every 3 hours. More active family members move the expedition faster, and active heroes receive a larger final reward.'],
-    ['Combat: d20 then damage', 'Every enemy has a visible Armor Class (AC). First roll a clean d20: 1-4 lets the enemy counter for 1 HP, a result below AC misses, and AC or higher hits. A hit rolls 1d6 damage; a natural 20 rolls two d6. Food, Mage magic and relics add only small damage bonuses. Classes no longer change the attack roll.'],
+    ['Combat: d20 then damage', 'Every enemy has a visible Armor Class (AC). First roll a clean, unmodified d20: 1-3 lets the enemy counter for 1 HP, a result below AC misses, and AC or higher hits. Results up to 18 roll 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Food, Mage magic and relics can modify damage, never the attack d20.'],
     ['Room mini-games', 'Non-combat rooms replace the d20 with a skill challenge. Starting an attempt spends 1 AP. Failing costs that AP, but never removes HP. If the room still needs progress, you can begin another attempt immediately.'],
     ['HP and knockout', 'Heroes have 3 HP. HP does not refill between rooms. At 0 HP your hero is knocked out for 6 hours, then returns with 3 HP. A Knight shield can prevent a hit; a Cleric heals conscious wounded heroes.'],
     ['Class abilities', 'Scout chooses one future path per expedition. Mage creates one shared +1 damage boost for a family hero to spend after a hit. Knight blocks the next family hit and Cleric restores 1 HP. Mage, Knight and Cleric recharge after 3 hours.'],
@@ -638,6 +639,7 @@ function LastRollPanel({ action }) {
     miss: 'Miss',
     hit: 'Hit',
     critical_hit: 'Critical hit',
+    devastating_hit: 'Devastating hit',
   }[combatEvent.outcome] || titleize(combatEvent.outcome) : null;
 
   return (
@@ -1509,6 +1511,7 @@ function RoomPanel({
 }) {
   const [useSharedBuff, setUseSharedBuff] = useState(false);
   const [showRoomInfo, setShowRoomInfo] = useState(false);
+  const [combatReveal, setCombatReveal] = useState({ phase: 'idle', progressBefore: 0, action: null });
   const selectedMechanicChoice = null;
   const roomArt = useLazyAsset(roomImages, roomArtFile(room));
   const bossArt = useLazyAsset(bossImages, bossArtFile(room));
@@ -1534,8 +1537,10 @@ function RoomPanel({
     miss: ['Miss', 'no damage'],
     hit: ['Hit', 'enemy damaged'],
     critical_hit: ['Critical', 'enemy damaged'],
+    devastating_hit: ['Devastating', 'enemy crushed'],
   }[stageOutcome] || [titleize(stageOutcome), 'resolved'];
   const stageDamage = Number(stageCombatEvent?.progress || 0);
+  const combatVisualResolved = !combatRoom || combatReveal.phase === 'resolved';
   const enemyName = bossArt
     ? 'The Root King'
     : room?.enemyId
@@ -1551,7 +1556,7 @@ function RoomPanel({
     : combatRoom
       ? {
           title: 'Combat roll',
-          body: `Roll a clean d20 against AC ${room?.attackTarget || (room?.type === 'boss' ? 12 : 10)}. On a hit, roll d6 damage. Natural 20 rolls two damage dice.`,
+          body: `Roll a clean d20 against AC ${room?.attackTarget || (room?.type === 'boss' ? 12 : 10)}. A normal hit rolls 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6.`,
         }
       : {
           title: mechanic.title,
@@ -1570,7 +1575,39 @@ function RoomPanel({
   useEffect(() => {
     setUseSharedBuff(false);
     setShowRoomInfo(false);
+    setCombatReveal({ phase: 'idle', progressBefore: 0, action: null });
   }, [room?.key]);
+
+  async function runAttackRoll() {
+    const progressBefore = Number(room?.progress || 0);
+    setCombatReveal({ phase: 'rolling-attack', progressBefore, action: null });
+    try {
+      const [action] = await Promise.all([
+        onAttempt(room.key, null, {
+          selectedSupport: 0,
+          mechanicChoice: selectedMechanicChoice,
+          useSharedBuff,
+        }),
+        new Promise(resolve => setTimeout(resolve, 1000)),
+      ]);
+      const combatEvent = (action?.events || action?.modifiers?.events || [])
+        .find(event => event.type === 'combat_roll');
+      setCombatReveal({
+        phase: combatEvent?.damageRolls?.length ? 'awaiting-damage' : 'resolved',
+        progressBefore,
+        action,
+      });
+    } catch (error) {
+      setCombatReveal({ phase: 'idle', progressBefore, action: null });
+      throw error;
+    }
+  }
+
+  async function runDamageRoll() {
+    setCombatReveal(current => ({ ...current, phase: 'rolling-damage' }));
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setCombatReveal(current => ({ ...current, phase: 'resolved' }));
+  }
 
   if (!room) {
     return (
@@ -1581,7 +1618,12 @@ function RoomPanel({
   }
 
   const progressTarget = room.progressTarget || 1;
-  const progressPercent = Math.min(100, Math.round(((room.progress || 0) / progressTarget) * 100));
+  const damagePending = ['rolling-attack', 'awaiting-damage', 'rolling-damage'].includes(combatReveal.phase);
+  const revealEvents = combatReveal.action?.events || combatReveal.action?.modifiers?.events || [];
+  const revealCombatEvent = revealEvents.find(event => event.type === 'combat_roll');
+  const revealDamageDice = revealCombatEvent?.damageRolls?.length || 0;
+  const visibleProgress = damagePending ? combatReveal.progressBefore : Number(room.progress || 0);
+  const progressPercent = Math.min(100, Math.round((visibleProgress / progressTarget) * 100));
   const foregroundArt = bossArt || (combatRoom ? enemyArt : null);
   const locked = room.state === 'locked';
   const hidden = room.state === 'hidden';
@@ -1608,13 +1650,13 @@ function RoomPanel({
             </i>
           </div>
         )}
-        {stageOutcome && (
+        {stageOutcome && combatVisualResolved && (
           <div className={`expedition-stage-impact ${stageDamage > 0 ? 'damage' : stageOutcome}`}>
             <strong>{stageDamage > 0 ? `-${stageDamage}` : stageOutcomeCopy[0]}</strong>
             <span>{stageDamage > 0 ? 'enemy HP' : stageOutcomeCopy[1]}</span>
           </div>
         )}
-        {stageDamageEvent && (
+        {stageDamageEvent && combatVisualResolved && (
           <div className="expedition-hero-hurt">
             <strong>-1 HP</strong>
             <span>hero hurt</span>
@@ -1650,7 +1692,7 @@ function RoomPanel({
           <div className="expedition-room-meter">
             <div>
               <span>Progress</span>
-              <strong>{room.progress || 0}/{progressTarget}</strong>
+              <strong>{visibleProgress}/{progressTarget}</strong>
               <button
                 type="button"
                 className={`expedition-room-info-toggle${showRoomInfo ? ' active' : ''}`}
@@ -1703,7 +1745,7 @@ function RoomPanel({
             </div>
           )}
 
-          {!eventRoom && <LastRollPanel action={lastRoll} />}
+          {!eventRoom && (!combatRoom || combatReveal.phase === 'resolved') && <LastRollPanel action={lastRoll} />}
 
           {heroRecovering && (
             <div className="expedition-room-locked expedition-hero-recovery" role="status">
@@ -1759,11 +1801,26 @@ function RoomPanel({
 
                   {primaryAction ? (
                     <div className={`expedition-one-roll-card${mutating ? ' is-rolling' : ''}`}>
+                      {['rolling-attack', 'rolling-damage'].includes(combatReveal.phase) && (
+                        <div className={`expedition-live-die ${combatReveal.phase === 'rolling-damage' ? 'damage' : 'attack'}`}>
+                          <i><span>{combatReveal.phase === 'rolling-damage' ? 'd6' : 'd20'}</span></i>
+                          <strong>{combatReveal.phase === 'rolling-damage' ? 'Rolling damage' : 'Rolling attack'}</strong>
+                        </div>
+                      )}
+                      {combatReveal.phase === 'awaiting-damage' && revealCombatEvent && (
+                        <div className="expedition-attack-result" role="status">
+                          <i><span>d20</span><strong>{revealCombatEvent.attackRoll}</strong></i>
+                          <div>
+                            <strong>{revealCombatEvent.outcome === 'devastating_hit' ? 'Devastating hit' : revealCombatEvent.outcome === 'critical_hit' ? 'Critical hit' : 'Armor broken'}</strong>
+                            <span>AC {revealCombatEvent.attackTarget} beaten. Roll {revealDamageDice}d6 damage.</span>
+                          </div>
+                        </div>
+                      )}
                       <div className="expedition-one-roll-main">
                         <div>
                           <span>Attack check</span>
                           <strong>Hit on {room.attackTarget || (room.type === 'boss' ? 12 : 10)}+</strong>
-                          <small>Clean d20, then {room.type === 'boss' ? '1d6' : '1d6'} damage / 1 AP</small>
+                          <small>Pure d20, then 1d6 / 2d6 / 3d6 damage · 1 AP</small>
                         </div>
                         <div className="expedition-roll-score">
                           <span>Damage bonus</span>
@@ -1773,14 +1830,14 @@ function RoomPanel({
                       <button
                         type="button"
                         className="btn btn-primary expedition-roll-button"
-                        onClick={() => onAttempt(room.key, null, {
-                          selectedSupport: 0,
-                          mechanicChoice: selectedMechanicChoice,
-                          useSharedBuff,
-                        })}
-                        disabled={mutating || (member?.ap || 0) <= 0 || heroRecovering}
+                        onClick={combatReveal.phase === 'awaiting-damage' ? runDamageRoll : runAttackRoll}
+                        disabled={mutating || ['rolling-attack', 'rolling-damage'].includes(combatReveal.phase) || ((member?.ap || 0) <= 0 && combatReveal.phase !== 'awaiting-damage') || heroRecovering}
                       >
-                        {mutating ? 'Rolling d20...' : 'Roll d20'}
+                        {combatReveal.phase === 'awaiting-damage'
+                          ? `Roll ${revealDamageDice || 1}d6 damage`
+                          : ['rolling-attack', 'rolling-damage'].includes(combatReveal.phase) || mutating
+                            ? 'Rolling...'
+                            : 'Roll d20 attack'}
                       </button>
                     </div>
                   ) : (
@@ -1872,13 +1929,16 @@ function ExpeditionDashboard({
       const next = await onAttempt(roomKey, actionId, options);
       const action = latestAction(next?.recentActions);
       if (action?.actionType === 'attempt') {
-        setLastRoll({
+        const resolvedAction = {
           ...action,
           roomKey,
           events: next?.visualEvents || action.events || action.modifiers?.events || [],
-        });
+        };
+        setLastRoll(resolvedAction);
+        return resolvedAction;
       } else {
         setLastRoll(null);
+        return null;
       }
     } catch (error) {
       setLastRoll(null);
@@ -2086,7 +2146,7 @@ function ExpeditionDashboard({
           <div className="expedition-provision-use">
             {assetById(provisionImages, member.provisionId) && <img src={assetById(provisionImages, member.provisionId)} alt="" />}
             <p>{{
-              carrot_rations: 'Restore 1 AP now.', tomato_soup: 'Restore 1 HP now.', hearty_potato_meal: 'Guarantee at least 1 damage on your next failed attack.', lucky_breakfast: 'Add +1 damage to every successful attack in this room.', warm_milk: 'Restore your class ability immediately.', truffle_treat: 'Upgrade your next artifact reward.', magic_squash_pie: 'Raise your next attack roll below 10 to 10.',
+              carrot_rations: 'Restore 1 AP now.', tomato_soup: 'Restore 1 HP now.', hearty_potato_meal: 'Add +2 damage to your next successful attack.', lucky_breakfast: 'Add +1 damage to every successful attack in this room.', warm_milk: 'Restore your class ability immediately.', truffle_treat: 'Upgrade your next artifact reward.', magic_squash_pie: 'Add +3 damage to your next successful attack.',
             }[member.provisionId]}</p>
             <button type="button" className="btn btn-primary btn-full" disabled={!provisionAvailable || mutating || !selectedRoom || selectedRoom.state !== 'unlocked'} onClick={async () => { const next = await onUseProvision(selectedRoom.key); if (next) setShowProvision(false); }}>
               {provisionAvailable ? 'Use Provision' : 'Already Used'}

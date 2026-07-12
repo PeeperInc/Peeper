@@ -32,6 +32,41 @@ function choose(rng, values) {
   return values[randomInt(rng, 0, values.length - 1)];
 }
 
+function chooseWeighted(rng, weighted) {
+  const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+  if (total <= 0) return weighted[0]?.value;
+  let cursor = rng() * total;
+  for (const entry of weighted) {
+    cursor -= entry.weight;
+    if (cursor <= 0) return entry.value;
+  }
+  return weighted.at(-1)?.value;
+}
+
+function chooseCombatTemplate(rng, encounterHistory = []) {
+  const templates = ROOM_TEMPLATES.combat;
+  const lastEnemyId = encounterHistory.at(-1) || null;
+  const weighted = templates.map(template => {
+    const lastIndex = encounterHistory.lastIndexOf(template.enemyId);
+    const distance = lastIndex < 0 ? Infinity : encounterHistory.length - lastIndex;
+    const recencyWeight = distance === Infinity
+      ? 8
+      : distance <= 1
+        ? 0
+        : Math.min(1, (distance / 6) ** 2);
+    const difficultyWeight = Math.max(1, 13 - Number(template.attackTarget || 10));
+    return {
+      value: template,
+      weight: template.enemyId === lastEnemyId ? 0 : recencyWeight * difficultyWeight,
+    };
+  });
+  const selected = chooseWeighted(rng, weighted)
+    || templates.find(template => template.enemyId !== lastEnemyId)
+    || templates[0];
+  encounterHistory.push(selected.enemyId);
+  return selected;
+}
+
 function cloneTemplate(template, placement) {
   return {
     ...JSON.parse(JSON.stringify(template)),
@@ -44,10 +79,10 @@ function chooseTemplate(rng, types) {
   return choose(rng, ROOM_TEMPLATES[type]);
 }
 
-function chooseEncounterTemplate(rng, types) {
+function chooseEncounterTemplate(rng, types, encounterHistory = []) {
   const available = new Set(types);
   if (available.has('combat') && rng() < 0.7) {
-    return choose(rng, ROOM_TEMPLATES.combat);
+    return chooseCombatTemplate(rng, encounterHistory);
   }
   const eventTypes = EVENT_ROOM_TYPES.filter(type => available.has(type));
   return choose(rng, ROOM_TEMPLATES[choose(rng, eventTypes.length > 0 ? eventTypes : types)]);
@@ -106,7 +141,7 @@ function scoutChoiceRoom(template, targetRoom) {
   return room;
 }
 
-function buildScoutChoices(rng, targetRoom) {
+function buildScoutChoices(rng, targetRoom, encounterHistory = []) {
   const choices = [{
     id: `choice-${targetRoom.key}-default`,
     targetKey: targetRoom.key,
@@ -118,7 +153,8 @@ function buildScoutChoices(rng, targetRoom) {
 
   while (choices.length < 3 && guard < 40) {
     guard += 1;
-    const template = chooseEncounterTemplate(rng, REQUIRED_ROOM_TYPES);
+    const availableTypes = REQUIRED_ROOM_TYPES.filter(type => !usedTypes.has(type));
+    const template = chooseEncounterTemplate(rng, availableTypes, encounterHistory);
     if (usedTypes.has(template.type)) continue;
     usedTypes.add(template.type);
     choices.push({
@@ -132,21 +168,23 @@ function buildScoutChoices(rng, targetRoom) {
   return choices;
 }
 
-function buildRequiredSpine(rng, encounterCount) {
+function buildRequiredSpine(rng, encounterCount, encounterHistory = []) {
   const camp = createRoom(ROOM_TEMPLATES.camp[0], 0, 0, { required: true });
   const rooms = [camp];
   const typePlan = buildRequiredTypePlan(rng, encounterCount);
 
   for (let index = 0; index < encounterCount; index += 1) {
     const roomType = typePlan[index] || 'combat';
-    const template = choose(rng, ROOM_TEMPLATES[roomType]);
+    const template = roomType === 'combat'
+      ? chooseCombatTemplate(rng, encounterHistory)
+      : choose(rng, ROOM_TEMPLATES[roomType]);
     rooms.push(createRoom(template, index + 1, index + 1, { required: true }));
   }
 
   return rooms;
 }
 
-function attachOptionalBranches(rng, rooms, optionalCount, treasureCount) {
+function attachOptionalBranches(rng, rooms, optionalCount, treasureCount, encounterHistory = []) {
   const requiredRooms = [...rooms];
   const optionalTemplates = [];
 
@@ -154,7 +192,7 @@ function attachOptionalBranches(rng, rooms, optionalCount, treasureCount) {
     optionalTemplates.push(choose(rng, ROOM_TEMPLATES.treasure));
   }
   for (let index = treasureCount; index < optionalCount; index += 1) {
-    optionalTemplates.push(chooseEncounterTemplate(rng, OPTIONAL_ROOM_TYPES));
+    optionalTemplates.push(chooseEncounterTemplate(rng, OPTIONAL_ROOM_TYPES, encounterHistory));
   }
 
   for (let index = optionalTemplates.length - 1; index > 0; index -= 1) {
@@ -237,15 +275,16 @@ function generateExpeditionMap(seed) {
   const requiredCount = randomInt(rng, 8, 12);
   const optionalCount = randomInt(rng, 3, 5);
   const treasureCount = randomInt(rng, 1, 2);
-  const requiredRooms = enforceStatCoverage(rng, buildRequiredSpine(rng, requiredCount));
-  const optionalBranches = attachOptionalBranches(rng, requiredRooms, optionalCount, treasureCount);
+  const encounterHistory = [];
+  const requiredRooms = enforceStatCoverage(rng, buildRequiredSpine(rng, requiredCount, encounterHistory));
+  const optionalBranches = attachOptionalBranches(rng, requiredRooms, optionalCount, treasureCount, encounterHistory);
   const boss = appendBoss(requiredRooms);
   const rooms = [...requiredRooms, ...optionalBranches.map(branch => branch.room), boss];
   const edges = [];
 
   for (let index = 1; index < requiredRooms.length; index += 1) {
     edges.push({ from: requiredRooms[index - 1].key, to: requiredRooms[index].key });
-    requiredRooms[index - 1].scoutChoices = buildScoutChoices(rng, requiredRooms[index]);
+    requiredRooms[index - 1].scoutChoices = buildScoutChoices(rng, requiredRooms[index], encounterHistory);
   }
   edges.push({ from: requiredRooms.at(-1).key, to: boss.key });
   for (const branch of optionalBranches) {
@@ -464,6 +503,7 @@ function validateExpeditionMap(map) {
 module.exports = {
   ACTION_STATS,
   createSeededRandom,
+  chooseCombatTemplate,
   randomInt,
   buildRequiredSpine,
   attachOptionalBranches,

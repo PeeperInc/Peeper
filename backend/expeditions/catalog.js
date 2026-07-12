@@ -39,9 +39,9 @@ const PROVISIONS = deepFreeze({
     id: 'hearty_potato_meal',
     name: 'Hearty Potato Meal',
     recipe: { productId: 'potato', quantity: 10 },
-    effect: { type: 'minimum_progress', config: { uses: 1, from: 0, to: 1 } },
-    manualEffect: 'minimum_progress',
-    description: 'Your next failed progress roll still adds at least 1 progress.',
+    effect: { type: 'damage_bonus', config: { uses: 1, amount: 2 } },
+    manualEffect: 'next_hit_damage',
+    description: 'Add +2 damage to your next successful attack.',
   },
   lucky_breakfast: {
     id: 'lucky_breakfast',
@@ -71,9 +71,9 @@ const PROVISIONS = deepFreeze({
     id: 'magic_squash_pie',
     name: 'Magic Squash Pie',
     recipe: { productId: 'magic_squash', quantity: 1 },
-    effect: { type: 'raise_modified_roll', config: { uses: 1, below: 10, value: 10 } },
-    manualEffect: 'raise_modified_roll',
-    description: 'Your next attack d20 below 10 becomes 10.',
+    effect: { type: 'damage_bonus', config: { uses: 1, amount: 3 } },
+    manualEffect: 'next_hit_damage',
+    description: 'Add +3 damage to your next successful attack.',
   },
 });
 
@@ -220,7 +220,7 @@ const ARTIFACTS = deepFreeze({
   rabbit_foot: artifact('rabbit_foot', 'Rabbit Foot', 'common', 'expedition_passive',
     'Prevent the first personal combat damage', { kind: 'prevent_personal_damage', uses: 1 }),
   bone_die: artifact('bone_die', 'Bone Die', 'common', 'active',
-    'The next combat attack d20 is at least 10', { kind: 'combat_roll_floor', floor: 10 }),
+    'Your next damage d6 is at least 3', { kind: 'combat_roll_floor', floor: 3 }),
   wooden_shield: artifact('wooden_shield', 'Wooden Shield', 'common', 'active',
     'Prevent the next wearer damage in this room', { kind: 'prevent_personal_damage', uses: 1 }),
   tiny_shovel: artifact('tiny_shovel', 'Tiny Shovel', 'common', 'active',
@@ -230,7 +230,7 @@ const ARTIFACTS = deepFreeze({
   rusty_lockpick: artifact('rusty_lockpick', 'Rusty Lockpick', 'rare', 'active',
     'Automatically succeed one noncombat minigame attempt', { kind: 'minigame_auto_success' }),
   loaded_die: artifact('loaded_die', 'Loaded Die', 'rare', 'active',
-    'Roll twice and keep the higher result on the next combat', { kind: 'combat_advantage', uses: 1 }),
+    'Add +1 damage to your next successful attack', { kind: 'combat_advantage', uses: 1 }),
   family_banner: artifact('family_banner', 'Family Banner', 'rare', 'expedition_passive',
     'Class ability cooldown is reduced from 3 hours to 2 hours', { kind: 'role_recharge_threshold', threshold: 2 }),
   rootcutters_axe: artifact('rootcutters_axe', "Rootcutter's Axe", 'rare', 'expedition_passive',
@@ -254,9 +254,9 @@ const ARTIFACTS = deepFreeze({
   mimic_tooth: artifact('mimic_tooth', 'Mimic Tooth', 'epic', 'expedition_passive',
     'Gain 50% more room coins', { kind: 'coin_multiplier', multiplier: 1.5 }),
   fates_broken_die: artifact('fates_broken_die', "Fate's Broken Die", 'legendary', 'active',
-    'Gain advantage on the next 3 combat rolls', { kind: 'multi_combat_advantage', uses: 3 }),
+    'Add +1 damage to your next 3 successful attacks', { kind: 'multi_combat_advantage', uses: 3 }),
   crown_of_twenty: artifact('crown_of_twenty', 'Crown of Twenty', 'legendary', 'expedition_passive',
-    'Treat a natural 19 as a natural 20', { kind: 'critical_threshold', threshold: 19 }),
+    'A natural 20 deals +2 additional damage', { kind: 'critical_threshold', threshold: 20, amount: 2 }),
   root_kings_signet: artifact('root_kings_signet', "Root King's Signet", 'legendary', 'expedition_passive',
     'Every successful boss combat deals +1 damage', { kind: 'boss_damage_bonus', minRoll: 9, amount: 1 }),
 });
@@ -303,18 +303,29 @@ function room(id, type, name, progressTarget, tags, actions, extra = {}) {
   return authoredRoom;
 }
 
+function combatEnemyRoom(id, name, enemyId, hp, attackTarget, tags = []) {
+  return room(id, 'combat', name, hp, ['dark', ...tags], [
+    action(`${id}_strike`, `Strike ${name}`, 'might', 'easy', 0, ['weapon', ...tags]),
+    action(`${id}_flank`, `Flank ${name}`, 'agility', 'easy', 0, ['combat', ...tags]),
+    action(`${id}_hex`, `Break ${name}'s ward`, 'arcana', 'easy', 0, ['rune', ...tags]),
+    action(`${id}_banish`, `Defy ${name}`, 'spirit', 'easy', 0, ['spirit', ...tags]),
+  ], { enemyId, attackTarget });
+}
+
 const ROOM_TEMPLATES = deepFreeze({
   combat: [
-    room('root_guardians', 'combat', 'Root Guardians', 21, ['dark', 'root_creature'], [
-      action('break_guard', 'Break their guard', 'might', 'risky', 2, ['weapon', 'root_creature']),
-      action('flank_guard', 'Slip behind the roots', 'agility', 'risky', 2, ['root_creature']),
-      action('burn_guard_runes', 'Unmake their binding runes', 'arcana', 'hard', 4, ['rune', 'root_creature']),
-      action('banish_guard', 'Drive out the grave spirit', 'spirit', 'hard', 4, ['undead']),
-    ], { attackTarget: 11 }),
-    room('bone_sentinels', 'combat', 'Bone Sentinels', 18, ['dark', 'undead'], [
-      action('scatter_bones', 'Scatter the sentinels', 'might', 'easy', 0, ['weapon', 'undead']),
-      action('turn_sentinels', 'Turn the restless dead', 'spirit', 'risky', 2, ['undead']),
-    ], { attackTarget: 9 }),
+    combatEnemyRoom('bone_rat_pack', 'Bone Rat Pack', 'bone_rat', 14, 6, ['undead']),
+    combatEnemyRoom('grave_slime_pool', 'Grave Slime', 'grave_slime', 15, 6, ['ooze']),
+    combatEnemyRoom('crypt_spider_nest', 'Crypt Spider', 'crypt_spider', 16, 6, ['beast']),
+    combatEnemyRoom('lantern_skull_watch', 'Lantern Skull', 'lantern_skull', 17, 7, ['undead']),
+    combatEnemyRoom('hollow_archer_watch', 'Hollow Archer', 'hollow_archer', 18, 7, ['undead']),
+    combatEnemyRoom('thorn_hound_lair', 'Thorn Hound', 'thorn_hound', 18, 7, ['root_creature']),
+    combatEnemyRoom('moss_wraith_hollow', 'Moss Wraith', 'moss_wraith', 19, 8, ['spirit']),
+    combatEnemyRoom('root_cultist_ritual', 'Root Cultist', 'root_cultist', 20, 8, ['cultist']),
+    combatEnemyRoom('vine_mimic_den', 'Vine Mimic', 'vine_mimic', 21, 9, ['mimic']),
+    combatEnemyRoom('rootbound_guard_post', 'Rootbound Guard', 'rootbound_guard', 23, 10, ['root_creature']),
+    combatEnemyRoom('ossuary_golem_vault', 'Ossuary Golem', 'ossuary_golem', 25, 11, ['undead']),
+    combatEnemyRoom('rootbound_champion_gate', 'Rootbound Champion', 'rootbound_champion', 27, 12, ['root_creature']),
   ],
   trap: [
     room('thorn_snare', 'trap', 'Thorn Snare', 4, ['root', 'dark'], [

@@ -398,7 +398,7 @@ test('combat rooms roll d20 to hit and d6 damage while only low attack rolls hur
     member: member({ role: 'scout', heroHp: 3 }),
     room: combatRoom,
     action: { ...hall.actions[0], modifier: 0, stat: 'might' },
-    roll: 4,
+    roll: 3,
     now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
   });
   const strongHit = resolveAttempt({
@@ -418,6 +418,7 @@ test('combat rooms roll d20 to hit and d6 damage while only low attack rolls hur
     roll: 20,
     damageRoll: 2,
     criticalDamageRoll: 3,
+    thirdDamageRoll: 1,
     now: Math.floor(Date.UTC(2026, 5, 23) / 1000),
   });
   const boosted = resolveAttempt({
@@ -433,7 +434,7 @@ test('combat rooms roll d20 to hit and d6 damage while only low attack rolls hur
     member: member({ role: 'scout', heroHp: 1 }),
     room: combatRoom,
     action: { ...hall.actions[0], modifier: 0, stat: 'might' },
-    roll: 4,
+    roll: 3,
     now: 1000,
   });
   const roomCleared = resolveAttempt({
@@ -451,7 +452,7 @@ test('combat rooms roll d20 to hit and d6 damage while only low attack rolls hur
   assert.equal(wounded.events.some(event => event.type === 'hero_damaged'), true);
   assert.equal(strongHit.progressAwarded, 4);
   assert.equal(strongHit.member.heroHp, 3);
-  assert.equal(crit.progressAwarded, 5);
+  assert.equal(crit.progressAwarded, 6);
   assert.equal(boosted.progressAwarded, 0);
   assert.equal(knockedOut.member.heroHp, 0);
   assert.equal(knockedOut.member.heroRecoverAt, 1000 + 6 * 60 * 60);
@@ -461,11 +462,12 @@ test('combat rooms roll d20 to hit and d6 damage while only low attack rolls hur
   assert.equal(roomCleared.events.some(event => event.type === 'hero_refreshed'), false);
 });
 
-test('combat d20 outcome respects per-enemy armor class', () => {
-  assert.deepEqual(combatRollOutcome(4, 11), { label: 'countered', heroDamage: 1, hit: false, critical: false });
-  assert.deepEqual(combatRollOutcome(10, 11), { label: 'miss', heroDamage: 0, hit: false, critical: false });
-  assert.deepEqual(combatRollOutcome(11, 11), { label: 'hit', heroDamage: 0, hit: true, critical: false });
-  assert.deepEqual(combatRollOutcome(20, 14), { label: 'critical_hit', heroDamage: 0, hit: true, critical: true });
+test('combat d20 outcome respects counter band, enemy AC, and damage dice bands', () => {
+  assert.deepEqual(combatRollOutcome(3, 11), { label: 'countered', heroDamage: 1, hit: false, damageDice: 0 });
+  assert.deepEqual(combatRollOutcome(10, 11), { label: 'miss', heroDamage: 0, hit: false, damageDice: 0 });
+  assert.deepEqual(combatRollOutcome(11, 11), { label: 'hit', heroDamage: 0, hit: true, damageDice: 1 });
+  assert.deepEqual(combatRollOutcome(19, 14), { label: 'critical_hit', heroDamage: 0, hit: true, damageDice: 2 });
+  assert.deepEqual(combatRollOutcome(20, 14), { label: 'devastating_hit', heroDamage: 0, hit: true, damageDice: 3 });
 });
 
 test('knocked-out heroes recover to full HP only after six hours', () => {
@@ -509,7 +511,7 @@ test('millisecond attempt time stores knockout recovery as unix seconds', () => 
   assert.equal(result.member.heroRecoverAt, Math.floor(now / 1000) + 6 * 60 * 60);
 });
 
-test('boss encounters use their AC and critical 2d6 damage', () => {
+test('boss encounters use their AC and devastating 3d6 damage', () => {
   const bossRoom = {
     ...boss,
     state: 'unlocked',
@@ -523,7 +525,7 @@ test('boss encounters use their AC and critical 2d6 damage', () => {
     member: member({ role: 'scout', heroHp: 3 }),
     room: bossRoom,
     action: { ...boss.actions[0], modifier: 0 },
-    roll: 4,
+    roll: 3,
     now: 1000,
   });
   const critical = resolveAttempt({
@@ -534,12 +536,13 @@ test('boss encounters use their AC and critical 2d6 damage', () => {
     roll: 20,
     damageRoll: 3,
     criticalDamageRoll: 4,
+    thirdDamageRoll: 2,
     now: 1000,
   });
 
   assert.equal(wounded.progressAwarded, 0);
   assert.equal(wounded.member.heroHp, 2);
-  assert.equal(critical.progressAwarded, 7);
+  assert.equal(critical.progressAwarded, 9);
 });
 
 test('damage modifiers ignore legacy action, class, debuff, and support bonuses', () => {
@@ -757,9 +760,10 @@ test('natural 20 grants a bonus loot roll', () => {
     roll: 20,
     damageRoll: 2,
     criticalDamageRoll: 3,
+    thirdDamageRoll: 1,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(critical.progressAwarded, 5);
+  assert.equal(critical.progressAwarded, 6);
   assert.equal(critical.loot.artifactRolls, 1);
 });
 
@@ -850,10 +854,11 @@ test('cursed combat suppresses offensive passives and Emerald Heart healing', ()
     action: combatRoom.actions[0],
     roll: 19,
     damageRoll: 2,
+    criticalDamageRoll: 2,
     now: Date.UTC(2026, 5, 23),
   });
   assert.equal(crown.rawRoll, 19);
-  assert.equal(crown.progressAwarded, 2);
+  assert.equal(crown.progressAwarded, 4);
   assert.equal(crown.member.heroHp, 2);
 
   const heart = resolveAttempt({
@@ -864,9 +869,10 @@ test('cursed combat suppresses offensive passives and Emerald Heart healing', ()
     roll: 20,
     damageRoll: 2,
     criticalDamageRoll: 2,
+    thirdDamageRoll: 2,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(heart.progressAwarded, 4);
+  assert.equal(heart.progressAwarded, 6);
   assert.equal(heart.member.heroHp, 2);
 });
 
@@ -900,14 +906,16 @@ test('cursed combat preserves armed roll artifacts for the next eligible action'
     member: { ...cursed.member, ap: 5, heroHp: 3, heroRecoverAt: null },
     room: combatRoom,
     action: combatRoom.actions[0],
-    roll: 1,
+    roll: 10,
     reroll: 20,
+    damageRoll: 1,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(eligible.rawRoll, 20);
+  assert.equal(eligible.rawRoll, 10);
+  assert.equal(eligible.progressAwarded, 4);
   assert.equal(eligible.member.triggerHistory.length, 0);
-  assert.equal(eligible.events.some(event => event.type === 'artifact_roll_floor'), true);
-  assert.equal(eligible.events.some(event => event.type === 'artifact_advantage'), true);
+  assert.equal(eligible.events.some(event => event.type === 'artifact_damage_floor'), true);
+  assert.equal(eligible.events.some(event => event.type === 'artifact_damage_boost'), true);
 });
 
 test('cursed combat bypasses all armed and passive personal damage protection', () => {
@@ -956,7 +964,7 @@ test('cursed combat bypasses all armed and passive personal damage protection', 
   assert.equal(eligible.events.some(event => event.type === 'artifact_damage_prevented'), true);
 });
 
-test('provisions stay carried until explicitly used and one-shot roll effects still resolve', () => {
+test('legacy progress provisions remain compatible but cannot modify the combat d20', () => {
   const prepared = prepareMemberLoadout({
     member: member({ ap: 2, provisionId: 'carrot_rations' }),
   });
@@ -982,9 +990,9 @@ test('provisions stay carried until explicitly used and one-shot roll effects st
     damageRoll: 1,
     now: Date.UTC(2026, 5, 23),
   });
-  assert.equal(raised.modifiedRoll, 10);
-  assert.equal(raised.progressAwarded, 1);
-  assert.equal(raised.member.provisionState.raiseModifiedRoll.uses, 0);
+  assert.equal(raised.modifiedRoll, 2);
+  assert.equal(raised.progressAwarded, 0);
+  assert.equal(raised.member.provisionState.raiseModifiedRoll.uses, 1);
 });
 
 test('assist costs one AP and adds capped support, with exhausted debuff reducing the grant for one action', () => {

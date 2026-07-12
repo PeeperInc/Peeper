@@ -158,10 +158,11 @@ function progressForRoll({ rawRoll, modifiedRoll, naturalOneProtected = false })
 }
 
 function combatRollOutcome(rawRoll, attackTarget = 10) {
-  if (rawRoll <= 4) return { label: 'countered', heroDamage: 1, hit: false, critical: false };
-  if (rawRoll < attackTarget) return { label: 'miss', heroDamage: 0, hit: false, critical: false };
-  if (rawRoll === 20) return { label: 'critical_hit', heroDamage: 0, hit: true, critical: true };
-  return { label: 'hit', heroDamage: 0, hit: true, critical: false };
+  if (rawRoll <= 3) return { label: 'countered', heroDamage: 1, hit: false, damageDice: 0 };
+  if (rawRoll < attackTarget) return { label: 'miss', heroDamage: 0, hit: false, damageDice: 0 };
+  if (rawRoll === 20) return { label: 'devastating_hit', heroDamage: 0, hit: true, damageDice: 3 };
+  if (rawRoll === 19) return { label: 'critical_hit', heroDamage: 0, hit: true, damageDice: 2 };
+  return { label: 'hit', heroDamage: 0, hit: true, damageDice: 1 };
 }
 
 function normalizeSupport(value, available = MAX_SUPPORT) {
@@ -560,6 +561,7 @@ function resolveAttempt({
   reroll,
   damageRoll,
   criticalDamageRoll,
+  thirdDamageRoll,
   rng = () => 0,
   now = unixSeconds(),
   useSharedBuff = false,
@@ -581,23 +583,6 @@ function resolveAttempt({
   let rawRoll = rollD20(roll, rng);
   const encounterType = nextRoom.encounterType || nextRoom.type;
   const combatRoom = nextRoom.type === 'boss' || ['combat', 'boss'].includes(encounterType);
-  if (combatRoom && !artifactsDisabledForAction) {
-    const floorEffect = armedEffect(nextMember, 'combat_roll_floor', nextRoom.key);
-    if (floorEffect) {
-      rawRoll = Math.max(rawRoll, ARTIFACTS.bone_die.effect.floor);
-      consumeArmedEffect(nextMember, floorEffect);
-      events.push({ type: 'artifact_roll_floor', artifactId: floorEffect.artifactId, roll: rawRoll });
-    }
-    const advantage = armedEffect(nextMember, 'combat_advantage', nextRoom.key)
-      || armedEffect(nextMember, 'multi_combat_advantage', nextRoom.key);
-    if (advantage) {
-      const secondRoll = rollD20(reroll, rng);
-      rawRoll = Math.max(rawRoll, secondRoll);
-      consumeArmedEffect(nextMember, advantage);
-      events.push({ type: 'artifact_advantage', artifactId: advantage.artifactId, rolls: [roll, secondRoll], chosen: rawRoll });
-    }
-  }
-
   const modifiers = buildRollModifiers({
     expedition: nextExpedition,
     member: nextMember,
@@ -642,20 +627,8 @@ function resolveAttempt({
   nextMember.loadout = afterRoll.loadout;
   nextMember.triggerHistory = afterRoll.triggerHistory;
   modifiedRoll = rawRoll;
-  const criticalRawRoll = rawRoll === 20 || (
-    !artifactsDisabledForAction
-    && rawRoll === ARTIFACTS.crown_of_twenty.effect.threshold
-    && nextMember.loadout.some(slot => slot?.artifactId === 'crown_of_twenty')
-  );
-  const outcomeRawRoll = criticalRawRoll ? 20 : rawRoll;
-
-  const raiseModifiedRoll = nextMember.provisionState?.raiseModifiedRoll;
-  if (combatRoom && (raiseModifiedRoll?.uses ?? 0) > 0 && rawRoll < raiseModifiedRoll.below) {
-    raiseModifiedRoll.uses -= 1;
-    rawRoll = raiseModifiedRoll.value;
-    modifiedRoll = rawRoll;
-    modifiers.parts.push({ source: 'magic_squash_pie', amount: 0, attackFloor: rawRoll });
-  }
+  const criticalRawRoll = rawRoll === 20;
+  const outcomeRawRoll = rawRoll;
 
   const combatRollValue = Math.max(1, Math.min(20, rawRoll));
   const combatOutcomeValue = criticalRawRoll ? 20 : combatRollValue;
@@ -672,9 +645,28 @@ function resolveAttempt({
     } else if (selectedSharedBuff) {
       selectedSharedBuff.uses -= 1;
     }
+    const damageCandidates = [damageRoll, criticalDamageRoll, thirdDamageRoll];
     const damageRolls = combatOutcome.hit
-      ? [rollD6(damageRoll, rng), ...(combatOutcome.critical ? [rollD6(criticalDamageRoll, rng)] : [])]
+      ? Array.from({ length: combatOutcome.damageDice }, (_, index) => rollD6(damageCandidates[index], rng))
       : [];
+    const damageFloor = !artifactsDisabledForAction && combatOutcome.hit
+      ? armedEffect(nextMember, 'combat_roll_floor', nextRoom.key)
+      : null;
+    if (damageFloor && damageRolls.length > 0) {
+      damageRolls[0] = Math.max(damageRolls[0], ARTIFACTS.bone_die.effect.floor);
+      consumeArmedEffect(nextMember, damageFloor);
+      events.push({ type: 'artifact_damage_floor', artifactId: damageFloor.artifactId, roll: damageRolls[0] });
+    }
+    const damageBoost = !artifactsDisabledForAction && combatOutcome.hit
+      ? armedEffect(nextMember, 'combat_advantage', nextRoom.key)
+        || armedEffect(nextMember, 'multi_combat_advantage', nextRoom.key)
+      : null;
+    if (damageBoost) {
+      modifiers.total += 1;
+      modifiers.parts.push({ source: `artifact:${damageBoost.artifactId}`, amount: 1 });
+      consumeArmedEffect(nextMember, damageBoost);
+      events.push({ type: 'artifact_damage_boost', artifactId: damageBoost.artifactId, amount: 1 });
+    }
     const baseDamage = damageRolls.reduce((total, value) => total + value, 0);
     progressAwarded = baseDamage + modifiers.total;
     const passiveCombat = applyPassiveArtifactEffects({
@@ -1663,6 +1655,7 @@ function attemptRoom(options) {
     reroll,
     damageRoll,
     criticalDamageRoll,
+    thirdDamageRoll,
     rng = () => 0,
     now = Math.floor(Date.now() / 1000),
     useSharedBuff = false,
@@ -1688,6 +1681,7 @@ function attemptRoom(options) {
     reroll: reroll ?? null,
     damageRoll: damageRoll ?? null,
     criticalDamageRoll: criticalDamageRoll ?? null,
+    thirdDamageRoll: thirdDamageRoll ?? null,
     useSharedBuff,
   };
   const replay = findIdempotentAction(transaction, {
@@ -1718,6 +1712,7 @@ function attemptRoom(options) {
     reroll,
     damageRoll,
     criticalDamageRoll,
+    thirdDamageRoll,
     rng,
     now,
     useSharedBuff,
@@ -2048,7 +2043,7 @@ function useProvisionForMember(options) {
       member.heroHp = Math.min(3, member.heroHp + 1);
       break;
     case 'hearty_potato_meal':
-      state.minimumProgress = { uses: 1, from: 0, to: 1 };
+      state.damageBonus = { uses: 1, amount: 2 };
       break;
     case 'lucky_breakfast':
       state.damageBonus = { uses: 999, amount: 1, roomKey };
@@ -2063,7 +2058,7 @@ function useProvisionForMember(options) {
       state.upgradeLootRarity = { uses: 1, tiers: 1 };
       break;
     case 'magic_squash_pie':
-      state.raiseModifiedRoll = { uses: 1, below: 10, value: 10 };
+      state.damageBonus = { uses: 1, amount: 3 };
       break;
     default:
       throw new RangeError('unknown provision');

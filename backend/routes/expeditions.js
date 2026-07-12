@@ -505,6 +505,9 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
   const criticalDamageRoll = Number.isInteger(replayIntent?.criticalDamageRoll)
     ? replayIntent.criticalDamageRoll
     : secureD6();
+  const thirdDamageRoll = Number.isInteger(replayIntent?.thirdDamageRoll)
+    ? replayIntent.thirdDamageRoll
+    : secureD6();
 
   try {
     const snapshot = db.transaction(() => attemptRoom({
@@ -520,6 +523,7 @@ router.post('/:id/rooms/:roomKey/attempt', (req, res) => {
       reroll,
       damageRoll,
       criticalDamageRoll,
+      thirdDamageRoll,
       rng: secureRng,
       useSharedBuff: Boolean(req.body?.useSharedBuff),
     }))();

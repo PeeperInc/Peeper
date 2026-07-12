@@ -4,6 +4,8 @@ import test from 'node:test';
 
 const require = createRequire(import.meta.url);
 const {
+  chooseCombatTemplate,
+  createSeededRandom,
   generateExpeditionMap,
   isBossReachable,
   validateExpeditionMap,
@@ -166,8 +168,8 @@ test('generated room gameplay data comes from authored templates', () => {
 });
 
 test('combat and boss targets are harder without changing event targets', () => {
-  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.progressTarget), [21, 18]);
-  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.attackTarget), [11, 9]);
+  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.progressTarget), [14, 15, 16, 17, 18, 18, 19, 20, 21, 23, 25, 27]);
+  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.attackTarget), [6, 6, 6, 7, 7, 7, 8, 8, 9, 10, 11, 12]);
   assert.deepEqual(ROOM_TEMPLATES.boss.map(room => room.progressTarget), [36, 42, 48]);
   assert.deepEqual(ROOM_TEMPLATES.boss.map(room => room.attackTarget), [12, 13, 14]);
   assert.deepEqual(ROOM_TEMPLATES.trap.map(room => room.progressTarget), [4, 4]);
@@ -175,6 +177,18 @@ test('combat and boss targets are harder without changing event targets', () => 
   assert.deepEqual(ROOM_TEMPLATES.exploration.map(room => room.progressTarget), [5, 4]);
   assert.deepEqual(ROOM_TEMPLATES.shrine.map(room => room.progressTarget), [4, 4]);
   assert.deepEqual(ROOM_TEMPLATES.mystery.map(room => room.progressTarget), [4, 3]);
+});
+
+test('combat selection never repeats the previous enemy and strongly favors unseen enemies', () => {
+  const history = [];
+  const rng = createSeededRandom('enemy-rotation');
+  const selected = Array.from({ length: 40 }, () => chooseCombatTemplate(rng, history).enemyId);
+
+  for (let index = 1; index < selected.length; index += 1) {
+    assert.notEqual(selected[index], selected[index - 1]);
+  }
+  assert.ok(new Set(selected.slice(0, 12)).size >= 9, `expected broad opening rotation, got ${selected.slice(0, 12).join(', ')}`);
+  assert.equal(new Set(selected).size, 12);
 });
 
 test('validation reports backward edges and an unreachable boss', () => {

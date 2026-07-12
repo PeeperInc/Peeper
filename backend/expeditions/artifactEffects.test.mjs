@@ -63,7 +63,7 @@ test('effect dispatch exposes only the current-system kinds', () => {
 test('every active artifact applies to its valid current-system context', () => {
   const expected = {
     chalk_rune: ['minigameTimeBonus', 3],
-    bone_die: ['combatRollFloor', 10],
+    bone_die: ['combatRollFloor', 3],
     wooden_shield: ['personalDamageShield', 1],
     tiny_shovel: ['roomProgress', 3],
     ration_box: ['heroHp', 3],
@@ -154,7 +154,7 @@ test('passives apply for the whole expedition and preserve equipped slots', () =
   assert.deepEqual(reward.loadout, loadout);
 });
 
-test('Crown upgrades a natural 19 combat outcome without triggering Emerald Heart healing', () => {
+test('Crown adds damage only on a natural 20 while Emerald Heart still heals', () => {
   const loadout = [
     { artifactId: 'crown_of_twenty' },
     { artifactId: 'emerald_heart' },
@@ -169,8 +169,8 @@ test('Crown upgrades a natural 19 combat outcome without triggering Emerald Hear
     heroHp: 2,
     maxHeroHp: 3,
   });
-  assert.equal(combat.critical, true);
-  assert.equal(combat.progress, 3);
+  assert.equal(combat.critical, undefined);
+  assert.equal(combat.progress, 2);
   assert.equal(combat.heroHp, 2);
 
   const naturalTwenty = applyPassiveArtifactEffects({
@@ -184,6 +184,7 @@ test('Crown upgrades a natural 19 combat outcome without triggering Emerald Hear
     heroHp: 2,
     maxHeroHp: 3,
   });
+  assert.equal(naturalTwenty.progress, 5);
   assert.equal(naturalTwenty.heroHp, 3);
 });
 

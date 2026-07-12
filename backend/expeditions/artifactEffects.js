@@ -159,9 +159,8 @@ function applyPassiveArtifactEffects(context = {}) {
     state.coins = Math.floor(state.coins * ARTIFACTS.mimic_tooth.effect.multiplier);
   }
   if (state.phase === 'combat_roll') {
-    if (equipped.has('crown_of_twenty') && state.rawRoll === 19) {
-      state.critical = true;
-      state.progress = Math.max(state.progress || 0, 3);
+    if (equipped.has('crown_of_twenty') && state.rawRoll === 20) {
+      state.progress = (state.progress || 0) + ARTIFACTS.crown_of_twenty.effect.amount;
     }
     if (equipped.has('bent_sword') && state.roomType !== 'boss'
       && state.combatRoll >= 16 && state.combatRoll <= 19) {

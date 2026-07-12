@@ -3453,8 +3453,8 @@ button.expedition-loadout-slot:disabled {
 
 .expedition-hud-relics {
   display: grid;
-  grid-template-columns: repeat(3, 46px);
-  gap: 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
   align-items: center;
   padding: 4px;
   background: rgba(0, 0, 0, 0.28);
@@ -3464,8 +3464,9 @@ button.expedition-loadout-slot:disabled {
 .expedition-hud-relics > span {
   position: relative;
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: 56px;
+  height: 56px;
+  justify-self: center;
   min-width: 0;
   place-items: center;
   overflow: hidden;
@@ -3486,8 +3487,8 @@ button.expedition-loadout-slot:disabled {
 }
 
 .expedition-hud-relics img {
-  width: 41px;
-  height: 41px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
 }
 
@@ -3710,12 +3711,12 @@ button.expedition-loadout-slot:disabled {
 .expedition-guide-accordion details[open] summary i { transform: rotate(45deg); }
 .expedition-guide-accordion p { margin: 0; padding: 0 10px 11px 45px; color: rgba(233,223,189,.78); font-size: 11px; line-height: 1.42; }
 
-.expedition-player-hud { grid-template-columns: 50px 50px 62px minmax(0,1fr); }
+.expedition-player-hud { grid-template-columns: 44px 44px 56px minmax(0,1fr); }
 .expedition-hud-role { display: none; }
 .expedition-hud-stat span::before { margin-right: 3px; }
 .expedition-hud-stat.hp span::before { content: '❤️'; }
 .expedition-hud-stat.ap span::before { content: '⚡'; }
-.expedition-hud-provision { display: grid; width: 62px; min-width: 0; place-items: center; gap: 0; padding: 3px; border: 0; border-right: 1px solid rgba(233,223,189,.11); background: rgba(0,0,0,.2); color: rgba(233,223,189,.6); }
+.expedition-hud-provision { display: grid; width: 56px; min-width: 0; place-items: center; gap: 0; padding: 3px; border: 0; border-right: 1px solid rgba(233,223,189,.11); background: rgba(0,0,0,.2); color: rgba(233,223,189,.6); }
 .expedition-hud-provision.ready { background: rgba(183,255,79,.12); box-shadow: inset 0 0 0 1px rgba(183,255,79,.35); }
 .expedition-hud-provision img { width: 40px; height: 40px; object-fit: contain; }
 .expedition-hud-provision span { font-size: 0; font-weight: 950; text-transform: uppercase; }
@@ -3726,13 +3727,13 @@ button.expedition-loadout-slot:disabled {
 .expedition-provision-use p { margin: 0; color: rgba(233,223,189,.8); font-size: 13px; line-height: 1.4; }
 
 @media (max-width: 380px) {
-  .expedition-player-hud { grid-template-columns: 46px 46px 48px minmax(0,1fr); }
-  .expedition-hud-relics { grid-template-columns: repeat(3, 42px); gap: 4px; padding-inline: 5px; }
+  .expedition-player-hud { grid-template-columns: 42px 42px 52px minmax(0,1fr); }
+  .expedition-hud-relics { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; padding-inline: 6px; }
   .expedition-hud-relics > button,
-  .expedition-hud-relics > span { width: 42px; height: 44px; }
-  .expedition-hud-relics img { width: 38px; height: 38px; }
-  .expedition-hud-provision { width: 48px; }
-  .expedition-hud-provision img { width: 34px; height: 34px; }
+  .expedition-hud-relics > span { width: 52px; height: 52px; justify-self: center; }
+  .expedition-hud-relics img { width: 46px; height: 46px; }
+  .expedition-hud-provision { width: 52px; }
+  .expedition-hud-provision img { width: 40px; height: 40px; }
 }
 
 .expedition-archive-launchers { display: grid; grid-template-columns: 1fr; gap: 7px; }
@@ -3791,6 +3792,64 @@ button.expedition-loadout-slot:disabled {
   align-self: end;
   margin: 0 0 6px;
   font-size: 21px;
+}
+
+.expedition-live-die {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 68px;
+  border: 1px solid rgba(217,167,67,.34);
+  background: radial-gradient(circle, rgba(183,255,79,.12), rgba(0,0,0,.42) 68%);
+}
+.expedition-live-die i {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 2px solid var(--dungeon-gold);
+  border-radius: 7px;
+  background: linear-gradient(145deg, #1e3324, #071009);
+  box-shadow: 0 0 18px rgba(183,255,79,.24), inset 0 0 12px rgba(255,255,255,.08);
+  color: var(--dungeon-bone);
+  font-style: normal;
+  animation: expedition-die-tumble .22s linear infinite;
+}
+.expedition-live-die.damage i { border-radius: 4px; border-color: var(--accent); }
+.expedition-live-die i span { font-family: var(--font-display); font-size: 14px; font-weight: 950; text-transform: uppercase; }
+.expedition-live-die strong { font-family: var(--font-display); font-size: 13px; text-transform: uppercase; }
+.expedition-attack-result {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 68px;
+  padding: 7px;
+  border: 1px solid rgba(183,255,79,.38);
+  background: linear-gradient(90deg, rgba(183,255,79,.13), rgba(0,0,0,.38));
+}
+.expedition-attack-result > i {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-content: center;
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  color: var(--dungeon-bone);
+  font-style: normal;
+  text-align: center;
+  box-shadow: 0 0 15px rgba(183,255,79,.2);
+}
+.expedition-attack-result > i span { color: var(--dungeon-gold); font-size: 8px; font-weight: 950; text-transform: uppercase; }
+.expedition-attack-result > i strong { font-family: var(--font-display); font-size: 23px; line-height: .9; }
+.expedition-attack-result > div { display: grid; gap: 3px; min-width: 0; }
+.expedition-attack-result > div strong { font-family: var(--font-display); font-size: 14px; text-transform: uppercase; }
+.expedition-attack-result > div span { color: rgba(233,223,189,.72); font-size: 10px; line-height: 1.3; }
+@keyframes expedition-die-tumble {
+  0% { transform: perspective(90px) rotateX(0deg) rotateY(0deg) scale(.88); }
+  50% { transform: perspective(90px) rotateX(180deg) rotateY(125deg) scale(1.08); }
+  100% { transform: perspective(90px) rotateX(360deg) rotateY(250deg) scale(.88); }
 }
 
 @media (max-width: 620px) {
@@ -3867,15 +3926,15 @@ button.expedition-loadout-slot:disabled {
 
 @media (max-width: 340px), (max-height: 590px) {
   .expedition-game-title span { display: none; }
-  .expedition-player-hud { grid-template-columns: 42px 42px 42px minmax(0,1fr); }
+  .expedition-player-hud { grid-template-columns: 39px 39px 48px minmax(0,1fr); }
   .expedition-hud-stat,
   .expedition-hud-role { padding-inline: 6px; }
-  .expedition-hud-relics { grid-template-columns: repeat(3, 38px); gap: 3px; padding-inline: 4px; }
+  .expedition-hud-relics { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 4px; padding-inline: 4px; }
   .expedition-hud-relics > button,
-  .expedition-hud-relics > span { width: 38px; height: 40px; }
-  .expedition-hud-relics img { width: 34px; height: 34px; }
-  .expedition-hud-provision { width: 42px; padding-inline: 1px; }
-  .expedition-hud-provision img { width: 31px; height: 31px; }
+  .expedition-hud-relics > span { width: 48px; height: 48px; justify-self: center; }
+  .expedition-hud-relics img { width: 42px; height: 42px; }
+  .expedition-hud-provision { width: 48px; padding-inline: 1px; }
+  .expedition-hud-provision img { width: 38px; height: 38px; }
 
   .expedition-room-art,
   .expedition-room-bg,
