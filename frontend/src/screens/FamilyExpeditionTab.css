@@ -3397,3 +3397,272 @@ button.expedition-loadout-slot:disabled {
     animation: none;
   }
 }
+
+/* Mobile command view: keep decisions visible and move reference data behind Room info. */
+.expedition-player-hud {
+  display: grid;
+  grid-template-columns: 58px 58px minmax(0, 1fr) auto;
+  align-items: stretch;
+  min-height: 46px;
+  overflow: hidden;
+  border: 1px solid rgba(217, 167, 67, 0.3);
+  border-radius: 3px;
+  background:
+    linear-gradient(90deg, rgba(157, 206, 69, 0.1), transparent 44%),
+    rgba(3, 8, 5, 0.94);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+.expedition-hud-stat,
+.expedition-hud-role {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  padding: 5px 8px;
+  border-right: 1px solid rgba(233, 223, 189, 0.11);
+}
+
+.expedition-hud-stat span,
+.expedition-hud-role small {
+  color: rgba(233, 223, 189, 0.6);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.expedition-hud-stat strong,
+.expedition-hud-role span {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.expedition-hud-stat.hp strong { color: #ff9b89; }
+.expedition-hud-stat.ap strong { color: var(--dungeon-gold); }
+.expedition-hud-stat.danger { background: rgba(116, 24, 17, 0.45); }
+.expedition-hud-role small { margin-top: 4px; }
+
+.expedition-hud-finish {
+  display: grid;
+  align-items: stretch;
+  padding: 4px;
+}
+
+.expedition-hud-finish .expedition-finish-button {
+  min-height: 36px;
+  padding-inline: 9px;
+  font-size: 10px;
+}
+
+.expedition-room-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.expedition-room-toolbar .expedition-room-traits {
+  flex: 1;
+  margin-top: 0;
+}
+
+.expedition-room-info-toggle {
+  flex: 0 0 auto;
+  min-height: 28px;
+  border: 1px solid rgba(217, 167, 67, 0.34);
+  border-radius: 2px;
+  padding: 0 10px;
+  background: rgba(7, 12, 8, 0.92);
+  color: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.expedition-room-meter > div > span { flex: 1; }
+
+.expedition-room-meter > div > .expedition-room-info-toggle {
+  margin-left: 3px;
+}
+
+.expedition-room-info-toggle.active {
+  border-color: rgba(183, 255, 79, 0.62);
+  color: var(--accent);
+}
+
+.expedition-roll-preview-info { margin-top: 7px; }
+
+.expedition-mobile-menu {
+  display: grid;
+  gap: 7px;
+}
+
+.expedition-mobile-menu > button,
+.expedition-mobile-menu > div {
+  min-width: 0;
+  border: 1px solid rgba(217, 167, 67, 0.26);
+  border-radius: 3px;
+  padding: 11px;
+  background: rgba(4, 11, 6, 0.9);
+  color: var(--dungeon-bone);
+  text-align: left;
+}
+
+.expedition-mobile-menu strong,
+.expedition-mobile-menu span,
+.expedition-mobile-menu small {
+  display: block;
+}
+
+.expedition-mobile-menu strong {
+  font-family: var(--font-display);
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.expedition-mobile-menu span,
+.expedition-mobile-menu small {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* A readable d20 token replaces the clipped diamond labels. */
+.expedition-roll-score {
+  min-height: 58px;
+  aspect-ratio: auto;
+  border-radius: 50%;
+  clip-path: none;
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.52),
+    0 0 16px rgba(217, 167, 67, 0.12);
+}
+
+.expedition-roll-score span { font-size: 8px; }
+
+.expedition-last-roll-die {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  transform: none;
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.48);
+}
+
+.expedition-last-roll-die span,
+.expedition-last-roll-die strong {
+  grid-area: 1 / 1;
+  transform: none;
+}
+
+.expedition-last-roll-die span {
+  align-self: start;
+  margin-top: 7px;
+  font-size: 7px;
+}
+
+.expedition-last-roll-die strong {
+  align-self: end;
+  margin: 0 0 6px;
+  font-size: 21px;
+}
+
+@media (max-width: 620px) {
+  .expedition-shell {
+    padding: calc(env(safe-area-inset-top, 0px) + 6px) 7px calc(env(safe-area-inset-bottom, 0px) + 9px);
+  }
+
+  .expedition-dashboard { gap: 6px; }
+
+  .expedition-game-topbar {
+    min-height: 42px;
+    gap: 5px;
+    margin-bottom: 0;
+  }
+
+  .expedition-game-title strong { font-size: 15px; }
+  .expedition-game-title span { font-size: 8px; }
+  .expedition-game-actions { gap: 4px; }
+
+  .expedition-nav-button,
+  .expedition-icon-button {
+    min-height: 38px;
+    padding-inline: 8px;
+    font-size: 9px;
+  }
+
+  .expedition-room-panel { padding: 6px; }
+
+  .expedition-room-art,
+  .expedition-room-bg,
+  .expedition-room-art > span {
+    min-height: min(190px, 32vh);
+    height: min(190px, 32vh);
+  }
+
+  .expedition-room-foreground.enemy {
+    width: min(62%, 190px);
+    height: min(86%, 165px);
+  }
+
+  .expedition-room-foreground.boss {
+    width: min(88%, 270px);
+    height: min(100%, 190px);
+  }
+
+  .expedition-room-title { bottom: 7px; }
+  .expedition-room-title h3 { font-size: 17px; }
+  .expedition-room-meter { gap: 4px; margin-top: 6px; }
+  .expedition-room-meter > i { height: 8px; }
+  .expedition-room-traits span { padding: 4px 6px; font-size: 8px; }
+  .expedition-encounter-director { margin-top: 6px; padding: 6px; }
+  .expedition-encounter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .expedition-mechanic-card { margin-top: 5px; padding: 6px; }
+  .expedition-last-roll { margin-top: 6px; }
+  .expedition-support-picker { margin-top: 6px; padding: 6px; }
+  .expedition-power-grid { margin-top: 6px; }
+
+  .expedition-one-roll-card {
+    gap: 6px;
+    margin-top: 6px;
+    padding: 6px;
+  }
+
+  .expedition-one-roll-main {
+    grid-template-columns: minmax(0, 1fr) 58px;
+    gap: 6px;
+  }
+
+  .expedition-one-roll-main > div { padding: 6px; }
+  .expedition-one-roll-main strong { font-size: 13px; }
+  .expedition-roll-button { min-height: 44px; }
+  .expedition-assist-button { min-height: 38px; margin-top: 6px; padding-block: 6px; }
+}
+
+@media (max-width: 340px), (max-height: 590px) {
+  .expedition-game-title span { display: none; }
+  .expedition-player-hud { grid-template-columns: 50px 50px minmax(0, 1fr) auto; }
+  .expedition-hud-stat,
+  .expedition-hud-role { padding-inline: 6px; }
+
+  .expedition-room-art,
+  .expedition-room-bg,
+  .expedition-room-art > span {
+    min-height: 162px;
+    height: 162px;
+  }
+
+  .expedition-room-foreground.enemy { height: 144px; }
+  .expedition-room-foreground.boss { height: 162px; }
+}

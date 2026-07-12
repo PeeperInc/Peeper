@@ -755,7 +755,7 @@ function RoleAbilityControl({ member, room, mutating, onUse }) {
 
 function SupportPicker({ support, selected, onChange }) {
   const max = Math.max(0, Number(support || 0));
-  if (max <= 0) return <div className="expedition-support-empty">No family support banked.</div>;
+  if (max <= 0) return null;
 
   return (
     <div className="expedition-support-picker">
@@ -1573,6 +1573,7 @@ function RoomPanel({
 }) {
   const [selectedSupport, setSelectedSupport] = useState(0);
   const [useSharedBuff, setUseSharedBuff] = useState(false);
+  const [showRoomInfo, setShowRoomInfo] = useState(false);
   const selectedMechanicChoice = null;
   const roomArt = useLazyAsset(roomImages, roomArtFile(room));
   const bossArt = useLazyAsset(bossImages, bossArtFile(room));
@@ -1588,7 +1589,6 @@ function RoomPanel({
   const roomTraitChips = [
     room?.complication ? { key: 'complication', label: `Complication: ${titleize(room.complication)}`, danger: true } : null,
     member?.debuff?.type ? { key: 'debuff', label: `You: ${titleize(member.debuff.type)}`, danger: true } : null,
-    { key: 'support', label: `Support +${room?.support || 0}`, danger: false },
   ].filter(Boolean);
   const stageAction = lastRoll?.roomKey === room?.key ? lastRoll : null;
   const stageEvents = stageAction?.events || stageAction?.modifiers?.events || [];
@@ -1639,6 +1639,7 @@ function RoomPanel({
   useEffect(() => {
     setSelectedSupport(0);
     setUseSharedBuff(false);
+    setShowRoomInfo(false);
   }, [room?.key]);
 
   useEffect(() => {
@@ -1722,34 +1723,62 @@ function RoomPanel({
         <>
           <div className="expedition-room-meter">
             <div>
-              <span>Progress</span>
+              <span>Progress · Support +{room?.support || 0}</span>
               <strong>{room.progress || 0}/{progressTarget}</strong>
+              <button
+                type="button"
+                className={`expedition-room-info-toggle${showRoomInfo ? ' active' : ''}`}
+                onClick={() => setShowRoomInfo(value => !value)}
+                aria-expanded={showRoomInfo}
+              >
+                {showRoomInfo ? 'Hide info' : 'Room info'}
+              </button>
             </div>
             <i><b style={{ width: `${progressPercent}%` }} /></i>
           </div>
 
-          <div className="expedition-room-traits">
-            {roomTraitChips.map(chip => (
-              <span key={chip.key} className={chip.danger ? 'danger' : ''}>{chip.label}</span>
-            ))}
-          </div>
+          {roomTraitChips.length > 0 && (
+            <div className="expedition-room-traits">
+              {roomTraitChips.map(chip => (
+                <span key={chip.key} className={chip.danger ? 'danger' : ''}>{chip.label}</span>
+              ))}
+            </div>
+          )}
 
-          <div className="expedition-encounter-director">
-            <div className="expedition-encounter-row">
-              <div>
-                <span>Encounter</span>
-                <strong>{titleize(room.encounterType || room.type || 'room')}</strong>
+          {showRoomInfo && (
+            <div className="expedition-encounter-director">
+              <div className="expedition-encounter-row">
+                <div>
+                  <span>Encounter</span>
+                  <strong>{titleize(room.encounterType || room.type || 'room')}</strong>
+                </div>
+                <div>
+                  <span>Role advantage</span>
+                  <strong>{weakRoleLabels.length ? weakRoleLabels.join(' / ') : 'Any hero'}</strong>
+                </div>
               </div>
-              <div>
-                <span>Best roles</span>
-                <strong>{weakRoleLabels.length ? weakRoleLabels.join(' / ') : 'Any hero'}</strong>
+              <div className="expedition-mechanic-card">
+                <strong>{encounterGuide.title}</strong>
+                <span>{encounterGuide.body}</span>
               </div>
+              {primaryAction && !eventRoom && (
+                <div className="expedition-roll-preview expedition-roll-preview-info">
+                  {(combatRoom ? combatRollPreview() : expectedProgressForAction(
+                    primaryAction,
+                    member,
+                    roleMeta,
+                    selectedSupport,
+                    sharedBuffAmount,
+                  )).map(item => (
+                    <span key={item.roll}>
+                      <b>{item.roll}</b>
+                      {item.outcome.detail}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="expedition-mechanic-card">
-              <strong>{encounterGuide.title}</strong>
-              <span>{encounterGuide.body}</span>
-            </div>
-          </div>
+          )}
 
           <LastRollPanel action={lastRoll} />
 
@@ -1817,20 +1846,6 @@ function RoomPanel({
                           <span>Roll power</span>
                           <strong>{signedNumber(totalRollModifier)}</strong>
                         </div>
-                      </div>
-                      <div className="expedition-roll-preview">
-                        {(combatRoom ? combatRollPreview() : expectedProgressForAction(
-                          primaryAction,
-                          member,
-                          roleMeta,
-                          selectedSupport,
-                          sharedBuffAmount,
-                        )).map(item => (
-                          <span key={item.roll}>
-                            <b>{item.roll}</b>
-                            {item.outcome.detail}
-                          </span>
-                        ))}
                       </div>
                       <button
                         type="button"
@@ -1900,6 +1915,7 @@ function ExpeditionDashboard({
   const [showMap, setShowMap] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [artifactUseId, setArtifactUseId] = useState(null);
   const rooms = state.map?.rooms || [];
   const edges = state.map?.edges || [];
@@ -2008,25 +2024,29 @@ function ExpeditionDashboard({
         <button type="button" className="expedition-nav-button" onClick={onClose}>Back</button>
         <div className="expedition-game-title">
           <span>Family Expedition</span>
-          <strong>Crypt of the Root King</strong>
+          <strong>Root King</strong>
         </div>
         <div className="expedition-game-actions">
           <button type="button" className="expedition-nav-button" onClick={() => setShowMap(true)}>Map</button>
-          <button type="button" className="expedition-nav-button" onClick={() => setShowArchive(true)}>Vault</button>
-          <button type="button" className="expedition-nav-button" onClick={() => setShowGuide(true)}>Guide</button>
+          <button type="button" className="expedition-nav-button" onClick={() => setShowMenu(true)}>Menu</button>
         </div>
       </div>
 
-      <div className="expedition-card expedition-status-card">
-        <div>
-          <div className="expedition-kicker">Active Expedition</div>
-          <h2>{titleize(state.expedition?.status || 'running')}</h2>
-          {finishMessage && <p className="expedition-finish-hint">Expedition archived. History will show the final family record.</p>}
+      <div className="expedition-player-hud">
+        <div className={`expedition-hud-stat hp${heroRecovering ? ' danger' : ''}`}>
+          <span>HP</span>
+          <strong>{heroRecovering ? 'KO' : `${member?.heroHp ?? 3}/3`}</strong>
         </div>
-        <div className="expedition-status-actions">
-          <div className={`expedition-ap-chip${heroRecovering ? ' danger' : ''}`}>{heroRecovering ? 'Recovering' : `HP ${member?.heroHp ?? 3}/3`}</div>
-          <div className="expedition-ap-chip">{member?.ap ?? 0} AP</div>
-          {state.permissions?.canFinish && (
+        <div className="expedition-hud-stat ap">
+          <span>AP</span>
+          <strong>{member?.ap ?? 0}/5</strong>
+        </div>
+        <div className="expedition-hud-role">
+          <span>{titleize(member?.role || 'Hero')}</span>
+          <small>{loadout.length}/3 relics</small>
+        </div>
+        {state.permissions?.canFinish && (
+          <div className="expedition-hud-finish">
             <button
               type="button"
               className="btn btn-primary expedition-finish-button"
@@ -2035,17 +2055,11 @@ function ExpeditionDashboard({
             >
               {mutating ? 'Sealing...' : 'Finish Expedition'}
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      <div className="expedition-command-strip">
-        <span><b>{titleize(member?.role || 'Hero')}</b> role</span>
-        <span><b>{provision?.name || titleize(member?.provisionId || 'No provision')}</b></span>
-        <span><b>{loadout.length}/3</b> relics</span>
-        <span><b>{roomCounts.unlocked || 0}</b> open</span>
-        <span><b>{roomCounts.cleared || 0}</b> cleared</span>
-      </div>
+      {finishMessage && <p className="expedition-finish-hint">Expedition archived. History will show the final family record.</p>}
 
       {activeLoadout.length > 0 && (
         <div className="expedition-active-relics" aria-label="Active artifacts">
@@ -2094,6 +2108,26 @@ function ExpeditionDashboard({
               setShowMap(false);
             }}
           />
+        </ExpeditionOverlay>
+      )}
+
+      {showMenu && (
+        <ExpeditionOverlay title="Expedition Menu" kicker="Records & rules" onClose={() => setShowMenu(false)}>
+          <div className="expedition-mobile-menu">
+            <button type="button" onClick={() => { setShowMenu(false); setShowArchive(true); }}>
+              <strong>Vault</strong>
+              <span>Relics, family prep and expedition history.</span>
+            </button>
+            <button type="button" onClick={() => { setShowMenu(false); setShowGuide(true); }}>
+              <strong>Guide</strong>
+              <span>Combat, rooms, roles and rewards.</span>
+            </button>
+            <div>
+              <span>Dungeon progress</span>
+              <strong>{roomCounts.cleared || 0} cleared · {roomCounts.unlocked || 0} open</strong>
+              <small>{provision?.name || titleize(member?.provisionId || 'No provision')}</small>
+            </div>
+          </div>
         </ExpeditionOverlay>
       )}
 
