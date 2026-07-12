@@ -1520,8 +1520,10 @@ function RoomPanel({
   onMinigameStart,
   onMinigameFinish,
   onRoleAbility,
+  onCombatExit,
   onRollFxComplete,
   currentMinigameAttempt,
+  transitionPhase,
 }) {
   const [useSharedBuff, setUseSharedBuff] = useState(false);
   const [showRoomInfo, setShowRoomInfo] = useState(false);
@@ -1637,6 +1639,7 @@ function RoomPanel({
     setCombatReveal(current => ({ ...current, phase: 'rolling-damage' }));
     await animateRollNumbers(6, Math.max(1, revealDamageDice));
     setCombatReveal(current => ({ ...current, phase: 'resolved' }));
+    if (combatReveal.action?.roomCleared) onCombatExit?.(room.key);
   }
 
   if (!room) {
@@ -1660,7 +1663,7 @@ function RoomPanel({
   const actionable = isActionableRoom(room);
 
   return (
-    <div className={`expedition-card expedition-room-panel state-${room.state || 'unknown'}`}>
+    <div className={`expedition-card expedition-room-panel state-${room.state || 'unknown'}${transitionPhase ? ` transition-${transitionPhase}` : ''}`}>
       <div className={`expedition-room-art${bossArt ? ' has-boss-art' : ''}${foregroundArt ? ' has-foreground-art' : ''}${stageOutcome ? ` outcome-${stageOutcome}` : ''}`}>
         {roomArt ? <img className="expedition-room-bg" src={roomArt} alt="" /> : <span />}
         {foregroundArt && (
@@ -1690,6 +1693,13 @@ function RoomPanel({
           <div className="expedition-hero-hurt">
             <strong>-1 HP</strong>
             <span>hero hurt</span>
+          </div>
+        )}
+        {transitionPhase === 'defeat' && (
+          <div className="expedition-enemy-defeat" aria-live="polite">
+            <div>{Array.from({ length: 10 }, (_, index) => <i key={index} style={{ '--particle': index }} />)}</div>
+            <strong>Enemy defeated</strong>
+            <span>The path opens</span>
           </div>
         )}
         <ExpeditionCombatFx
@@ -1921,6 +1931,7 @@ function ExpeditionDashboard({
   ), [state.familyMembers]);
   const [selectedRoomKey, setSelectedRoomKey] = useState(null);
   const [lastRoll, setLastRoll] = useState(null);
+  const [roomTransition, setRoomTransition] = useState(null);
   const [showArchive, setShowArchive] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -1949,13 +1960,14 @@ function ExpeditionDashboard({
   const currentMinigameAttempt = state.currentMinigameAttempt || null;
 
   useEffect(() => {
+    if (lastRoll?.pending || roomTransition) return;
     if (currentMinigameAttempt?.roomKey && selectedRoomKey !== currentMinigameAttempt.roomKey) {
       setSelectedRoomKey(currentMinigameAttempt.roomKey);
       return;
     }
     const preferred = nextPreferredRoomKey(rooms, selectedRoomKey);
     if (preferred !== selectedRoomKey) setSelectedRoomKey(preferred);
-  }, [rooms, selectedRoomKey, currentMinigameAttempt?.roomKey]);
+  }, [rooms, selectedRoomKey, currentMinigameAttempt?.roomKey, lastRoll?.pending, roomTransition]);
 
   useEffect(() => {
     if (selectedRoom?.miniGame && lastRoll?.actionType === 'attempt') setLastRoll(null);
@@ -1967,12 +1979,17 @@ function ExpeditionDashboard({
       const next = await onAttempt(roomKey, actionId, options);
       const action = latestAction(next?.recentActions);
       if (action?.actionType === 'attempt') {
+        const resolvedRoom = next?.map?.rooms?.find(candidate => candidate.key === roomKey);
         const resolvedAction = {
           ...action,
           roomKey,
+          roomCleared: resolvedRoom?.state === 'cleared',
           events: next?.visualEvents || action.events || action.modifiers?.events || [],
         };
         setLastRoll(resolvedAction);
+        if (resolvedAction.roomCleared && isCombatRoom(resolvedRoom)) {
+          setRoomTransition({ phase: 'awaiting-damage', roomKey });
+        }
         return resolvedAction;
       } else {
         setLastRoll(null);
@@ -1982,6 +1999,20 @@ function ExpeditionDashboard({
       setLastRoll(null);
       throw error;
     }
+  }
+
+  async function handleCombatExit(roomKey) {
+    setRoomTransition({ phase: 'defeat', roomKey });
+    await new Promise(resolve => window.setTimeout(resolve, 900));
+    const nextRoomKey = nextPreferredRoomKey(rooms, roomKey);
+    setLastRoll(null);
+    if (!nextRoomKey || nextRoomKey === roomKey) {
+      setRoomTransition(null);
+      return;
+    }
+    setSelectedRoomKey(nextRoomKey);
+    setRoomTransition({ phase: 'enter', roomKey: nextRoomKey });
+    window.setTimeout(() => setRoomTransition(null), 480);
   }
 
   async function handleRoomMinigameFinish(roomKey, attempt, result) {
@@ -2096,8 +2127,10 @@ function ExpeditionDashboard({
         onMinigameStart={onMinigameStart}
         onMinigameFinish={handleRoomMinigameFinish}
         onRoleAbility={onRoleAbility}
+        onCombatExit={handleCombatExit}
         onRollFxComplete={() => {}}
         currentMinigameAttempt={currentMinigameAttempt}
+        transitionPhase={roomTransition?.roomKey === selectedRoomKey ? roomTransition.phase : null}
       />
 
       {showMenu && (

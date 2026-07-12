@@ -1088,6 +1088,106 @@ button.expedition-loadout-slot:disabled {
   animation: expedition-hero-camera-hit 380ms ease-out;
 }
 
+.expedition-room-panel.transition-defeat .expedition-room-foreground {
+  animation: expedition-enemy-defeat 880ms cubic-bezier(.2,.72,.18,1) forwards;
+  transform-origin: 50% 82%;
+}
+
+.expedition-room-panel.transition-defeat .expedition-enemy-hud {
+  animation: expedition-defeat-hud 260ms ease-out forwards;
+}
+
+.expedition-room-panel.transition-defeat .expedition-room-bg {
+  animation: expedition-defeat-camera 880ms ease-out both;
+}
+
+.expedition-room-panel.transition-enter {
+  animation: expedition-room-enter 460ms cubic-bezier(.18,.76,.2,1) both;
+}
+
+.expedition-enemy-defeat {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  pointer-events: none;
+  text-align: center;
+  text-transform: uppercase;
+  background: radial-gradient(circle at 50% 55%, rgba(183,255,79,.16), transparent 38%);
+}
+
+.expedition-enemy-defeat strong {
+  position: relative;
+  z-index: 2;
+  color: #fff2a8;
+  font-family: var(--font-display);
+  font-size: clamp(20px, 6vw, 30px);
+  line-height: 1;
+  text-shadow: 0 3px #1c0d05, 0 0 20px rgba(217,167,67,.65);
+  animation: expedition-defeat-title 820ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.expedition-enemy-defeat span {
+  position: relative;
+  z-index: 2;
+  margin-top: 5px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .16em;
+  animation: expedition-defeat-title 820ms 80ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.expedition-enemy-defeat > div {
+  position: absolute;
+  left: 50%;
+  top: 54%;
+  width: 1px;
+  height: 1px;
+}
+
+.expedition-enemy-defeat i {
+  --angle: calc(var(--particle) * 36deg);
+  position: absolute;
+  left: -3px;
+  top: -6px;
+  width: 6px;
+  height: 12px;
+  background: linear-gradient(#d9a743, #9dce45);
+  clip-path: polygon(50% 0,100% 35%,72% 100%,0 78%,18% 20%);
+  box-shadow: 0 0 8px rgba(183,255,79,.6);
+  animation: expedition-defeat-particle 760ms calc(var(--particle) * 18ms) ease-out both;
+}
+
+@keyframes expedition-enemy-defeat {
+  0% { opacity: 1; transform: translateX(-50%) scale(1); filter: brightness(1.7) drop-shadow(0 0 28px rgba(255,220,105,.72)); }
+  22% { transform: translateX(-50%) translateY(-5px) scale(1.06,.92); }
+  58% { opacity: .72; transform: translateX(-50%) translateY(12px) scale(.88,.72); filter: brightness(.7) saturate(.5); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(44px) scale(.48,.08); filter: brightness(0); }
+}
+
+@keyframes expedition-defeat-hud { to { opacity: 0; transform: translateY(-8px); } }
+@keyframes expedition-defeat-camera {
+  0% { filter: saturate(.95) contrast(1.1) brightness(.72); transform: scale(1.04); }
+  35% { filter: saturate(1.35) contrast(1.2) brightness(.92); transform: scale(1.07); }
+  100% { filter: saturate(.7) contrast(1.15) brightness(.5); transform: scale(1.09); }
+}
+@keyframes expedition-defeat-title {
+  0% { opacity: 0; transform: translateY(8px) scale(.88); letter-spacing: .03em; }
+  28%, 74% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-6px) scale(1.03); }
+}
+@keyframes expedition-defeat-particle {
+  0% { opacity: 0; transform: rotate(var(--angle)) translateY(0) scale(.3); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--angle)) translateY(-82px) rotate(180deg) scale(.1); }
+}
+@keyframes expedition-room-enter {
+  0% { opacity: 0; transform: translateY(12px) scale(.985); filter: brightness(.45); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
+}
+
 .expedition-enemy-fallback {
   position: absolute;
   z-index: 2;
