@@ -115,6 +115,16 @@ test('every active artifact rejects an inapplicable use without mutating state',
   }
 });
 
+test('Crooked Compass restores a spent Scout path choice', () => {
+  const result = applyActiveArtifact({
+    artifactId: 'crooked_compass',
+    state: { roomKey: 'room-a', roomState: 'unlocked', role: 'scout', roleCharge: 0 },
+  });
+  assert.equal(result.applied, true);
+  assert.equal(result.state.roleCharge, 1);
+  assert.equal(result.state.restoredScoutCharge, true);
+});
+
 test('active dispatch rejects passive and unknown artifacts', () => {
   assert.throws(() => applyActiveArtifact({ artifactId: 'old_torch', state: {} }), /not active/);
   assert.throws(() => applyActiveArtifact({ artifactId: 'removed_legacy_item', state: {} }), /Unknown artifact/);

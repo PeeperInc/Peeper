@@ -15,7 +15,7 @@ const ROLE_EFFECT_EVENTS = Object.freeze({
 const MAX_ROLE_CHARGE = 1;
 const DEFAULT_RECHARGE_THRESHOLD = 3;
 const TIMED_ROLE_COOLDOWN_SECONDS = 3 * 60 * 60;
-const TIMED_ROLES = new Set(['knight', 'cleric']);
+const TIMED_ROLES = new Set(['knight', 'mage', 'cleric']);
 
 function parseJson(text, fallback = {}) {
   if (!text) return JSON.parse(JSON.stringify(fallback));

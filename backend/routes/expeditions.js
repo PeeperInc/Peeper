@@ -112,7 +112,7 @@ function rowToMember(row) {
   const now = Math.floor(Date.now() / 1000);
   const recovered = heroRecoverAt && heroRecoverAt <= now;
   const roleChargeReadyAt = row.role_charge_ready_at ?? 0;
-  const timedRoleReady = ['knight', 'cleric'].includes(row.role)
+  const timedRoleReady = ['knight', 'mage', 'cleric'].includes(row.role)
     && Number(row.role_charge ?? 1) < 1
     && roleChargeReadyAt > 0
     && roleChargeReadyAt <= now;

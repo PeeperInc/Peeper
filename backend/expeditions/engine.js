@@ -158,8 +158,8 @@ function progressForRoll({ rawRoll, modifiedRoll, naturalOneProtected = false })
 }
 
 function combatRollOutcome(rawRoll) {
-  if (rawRoll <= 5) return { label: 'hero_hit', heroDamage: 1, progress: 0 };
-  if (rawRoll <= 8) return { label: 'standoff', heroDamage: 0, progress: 0 };
+  if (rawRoll <= 4) return { label: 'hero_hit', heroDamage: 1, progress: 0 };
+  if (rawRoll <= 7) return { label: 'standoff', heroDamage: 0, progress: 0 };
   if (rawRoll <= 15) return { label: 'enemy_hit', heroDamage: 0, progress: 1 };
   if (rawRoll <= 19) return { label: 'enemy_hit_hard', heroDamage: 0, progress: 2 };
   return { label: 'critical_hit', heroDamage: 0, progress: 3 };
@@ -613,21 +613,6 @@ function resolveAttempt({
   nextMember.loadout = modifiers.loadout;
   nextMember.triggerHistory = modifiers.triggerHistory;
 
-  const mageBlessing = nextExpedition.sharedBuffs.mageBlessing;
-  if (
-    combatRoom
-    && mageBlessing
-    && (!mageBlessing.roomKey || mageBlessing.roomKey === nextRoom.key)
-    && (mageBlessing.eligibleUserIds || []).includes(nextMember.userId)
-    && !(mageBlessing.usedUserIds || []).includes(nextMember.userId)
-  ) {
-    mageBlessing.roomKey ||= nextRoom.key;
-    mageBlessing.usedUserIds = [...(mageBlessing.usedUserIds || []), nextMember.userId];
-    modifiers.total += mageBlessing.amount || 3;
-    modifiers.parts.push({ source: 'mage_blessing', amount: mageBlessing.amount || 3 });
-    events.push({ type: 'mage_blessing_used', amount: mageBlessing.amount || 3, placedBy: mageBlessing.placedBy });
-  }
-
   if (useSharedBuff && (nextExpedition.sharedBuffs.rollBonus?.uses ?? 0) > 0) {
     const shared = nextExpedition.sharedBuffs.rollBonus;
     modifiers.total += shared.amount;
@@ -777,9 +762,6 @@ function resolveAttempt({
   } else if (nextRoom.progress >= nextRoom.progressTarget) {
     nextRoom.state = 'cleared';
     nextRoom.clearedAt = currentTime;
-  }
-  if (nextRoom.state === 'cleared' && nextExpedition.sharedBuffs.mageBlessing?.roomKey === nextRoom.key) {
-    delete nextExpedition.sharedBuffs.mageBlessing;
   }
 
   if (nextRoom.state === 'cleared') {
@@ -1108,7 +1090,7 @@ function rowToMember(row) {
   const loadoutState = parseLoadoutState(row.loadout_json);
   const heroRecoverAt = row.hero_recover_at ?? null;
   const roleChargeReadyAt = row.role_charge_ready_at ?? 0;
-  const timedRoleReady = ['knight', 'cleric'].includes(row.role)
+  const timedRoleReady = ['knight', 'mage', 'cleric'].includes(row.role)
     && Number(row.role_charge ?? 1) < 1
     && roleChargeReadyAt > 0
     && roleChargeReadyAt <= Math.floor(Date.now() / 1000);
@@ -1964,18 +1946,18 @@ function useRoleAbility(options) {
   } else if (member.role === 'mage') {
     consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'mage', now });
     const sharedBuffs = clone(snapshot.expedition.sharedBuffs || {});
-    if (sharedBuffs.mageBlessing) throw new RangeError('mage blessing is already waiting for combat');
-    sharedBuffs.mageBlessing = {
+    if ((sharedBuffs.rollBonus?.uses ?? 0) > 0) throw new RangeError('an Arcane Boost is already waiting to be used');
+    sharedBuffs.rollBonus = {
       amount: 3,
-      eligibleUserIds: snapshot.members.map(candidate => candidate.userId),
-      usedUserIds: [],
+      uses: 1,
+      source: 'mage',
       placedBy: userId,
       createdAt: now,
     };
     transaction.prepare(`
       UPDATE family_expeditions SET shared_buffs_json = ? WHERE id = ?
     `).run(stringifyJson(sharedBuffs), expeditionId);
-    visualEvents = [{ type: 'mage_blessing_placed', amount: 3, placedBy: userId }];
+    visualEvents = [{ type: 'mage_boost_placed', amount: 3, placedBy: userId }];
   } else if (ROLE_EFFECT_TYPES[member.role]) {
     const effect = placeRoleEffect(transaction, {
       expeditionId,
@@ -2683,6 +2665,7 @@ function useArtifactForMember(options) {
     roleCharge: member.roleCharge,
     roleChargeProgress: member.roleChargeProgress,
     roleChargeReadyAt: member.roleChargeReadyAt,
+    role: member.role,
     roomShield: roomEffects.some(effect => effect.effectType === ROLE_EFFECT_TYPES.knight),
     roomRetry: roomEffects.some(effect => effect.effectType === ROLE_EFFECT_TYPES.mage),
     scoutChoices: (room.scoutChoices || []).map(choice => choice.id),
@@ -2720,7 +2703,7 @@ function useArtifactForMember(options) {
     'multi_combat_advantage',
     'scout_choice',
   ]);
-  if (armedKinds.has(artifact.effect.kind)) {
+  if (armedKinds.has(artifact.effect.kind) && !applied.state.restoredScoutCharge) {
     member.triggerHistory.push(armedEffectFromState(artifact, roomKey, applied.state));
   }
   updateMember(transaction, expeditionId, member);

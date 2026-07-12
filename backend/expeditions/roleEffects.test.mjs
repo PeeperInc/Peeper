@@ -240,9 +240,10 @@ test('Scout charge is consumed once and does not recharge from AP spending', () 
   db.close();
 });
 
-test('Knight and Cleric abilities recover after a three-hour cooldown', () => {
+test('Knight, Mage and Cleric abilities recover after a three-hour cooldown', () => {
   const db = createDb();
   addMember(db, { userId: 10, role: 'knight' });
+  addMember(db, { userId: 11, role: 'mage' });
   const consumed = consumeRoleCharge(db, {
     expeditionId: 1,
     userId: 10,
@@ -263,5 +264,11 @@ test('Knight and Cleric abilities recover after a three-hour cooldown', () => {
     now: consumed.roleChargeReadyAt,
   });
   assert.equal(recovered.roleChargeReadyAt, consumed.roleChargeReadyAt + (3 * 60 * 60));
+  assert.equal(consumeRoleCharge(db, {
+    expeditionId: 1,
+    userId: 11,
+    expectedRole: 'mage',
+    now: 1000,
+  }).roleChargeReadyAt, 1000 + (3 * 60 * 60));
   db.close();
 });

@@ -459,10 +459,10 @@ test('combat rooms use simple d20 hit bands and only low rolls damage the hero',
 
 test('combat d20 outcome uses the exact public-test bands', () => {
   assert.deepEqual(combatRollOutcome(1), { label: 'hero_hit', heroDamage: 1, progress: 0 });
-  assert.deepEqual(combatRollOutcome(5), { label: 'hero_hit', heroDamage: 1, progress: 0 });
-  assert.deepEqual(combatRollOutcome(6), { label: 'standoff', heroDamage: 0, progress: 0 });
-  assert.deepEqual(combatRollOutcome(8), { label: 'standoff', heroDamage: 0, progress: 0 });
-  assert.deepEqual(combatRollOutcome(9), { label: 'enemy_hit', heroDamage: 0, progress: 1 });
+  assert.deepEqual(combatRollOutcome(4), { label: 'hero_hit', heroDamage: 1, progress: 0 });
+  assert.deepEqual(combatRollOutcome(5), { label: 'standoff', heroDamage: 0, progress: 0 });
+  assert.deepEqual(combatRollOutcome(7), { label: 'standoff', heroDamage: 0, progress: 0 });
+  assert.deepEqual(combatRollOutcome(8), { label: 'enemy_hit', heroDamage: 0, progress: 1 });
   assert.deepEqual(combatRollOutcome(15), { label: 'enemy_hit', heroDamage: 0, progress: 1 });
   assert.deepEqual(combatRollOutcome(16), { label: 'enemy_hit_hard', heroDamage: 0, progress: 2 });
   assert.deepEqual(combatRollOutcome(19), { label: 'enemy_hit_hard', heroDamage: 0, progress: 2 });
@@ -523,7 +523,7 @@ test('boss encounters use combat damage and progress bands', () => {
     member: member({ role: 'scout', heroHp: 3 }),
     room: bossRoom,
     action: { ...boss.actions[0], modifier: 0 },
-    roll: 5,
+    roll: 4,
     now: 1000,
   });
   const critical = resolveAttempt({

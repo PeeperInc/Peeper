@@ -897,7 +897,7 @@ test('member event acknowledgement validates ids, stays user-scoped, and is repl
   );
 });
 
-test('Mage grants a shared +3 combat roll and Knight blocks one family hit', async () => {
+test('Mage grants one selectable shared +3 roll and Knight blocks one family hit', async () => {
   createFamilyWithMembers(['tg-owner', 'tg-mage', 'tg-actor']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-combat-effects' });
   const expeditionId = started.body.expedition.id;
@@ -946,12 +946,11 @@ test('Mage grants a shared +3 combat roll and Knight blocks one family hit', asy
     crypto.randomInt = () => 8;
     const advantaged = await request(
       'POST', `/${expeditionId}/rooms/${combatRow.roomKey}/attempt`, 'tg-actor',
-      { idempotencyKey: 'combat-mage-roll', actionId: 'test_strike' },
+      { idempotencyKey: 'combat-mage-roll', actionId: 'test_strike', useSharedBuff: true },
     );
     assert.equal(advantaged.status, 200);
-    const mageEvent = advantaged.body.visualEvents.find(event => event.type === 'mage_blessing_used');
-    assert.equal(mageEvent.amount, 3);
-    assert.equal(advantaged.body.recentActions.at(-1).modifiers.parts.some(part => part.source === 'mage_blessing'), true);
+    assert.equal(advantaged.body.recentActions.at(-1).modifiers.parts.some(part => part.source === 'shared:mage' && part.amount === 3), true);
+    assert.equal(advantaged.body.expedition.sharedBuffs.rollBonus.uses, 0);
 
     crypto.randomInt = () => 0;
     const blocked = await request(
@@ -965,6 +964,12 @@ test('Mage grants a shared +3 combat roll and Knight blocks one family hit', asy
       blocked.body.map.rooms.find(room => room.key === combatRow.roomKey).activeEffects,
       [],
     );
+    const unshielded = await request(
+      'POST', `/${expeditionId}/rooms/${combatRow.roomKey}/attempt`, 'tg-actor',
+      { idempotencyKey: 'combat-after-shield', actionId: 'test_strike' },
+    );
+    assert.equal(unshielded.status, 200);
+    assert.equal(unshielded.body.member.heroHp, 2);
   } finally {
     crypto.randomInt = originalRandomInt;
   }

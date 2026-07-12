@@ -174,7 +174,7 @@ function roomRuleCopy(room = {}) {
   if (isCombatRoom(room)) {
     return {
       title: 'Combat roll',
-      body: 'Roll d20. 1-4 hurts your hero. 5-7 misses. 8-15 deals 1 damage, 16-19 deals 2, 20 deals 3.',
+      body: 'Roll d20, then add Roll Power. Final 1-4 hurts your hero, 5-7 misses, 8-15 deals 1 damage, 16-19 deals 2, and 20+ deals 3.',
     };
   }
   return mechanicCopy(room?.miniMechanic);
@@ -405,7 +405,7 @@ function PreparationFlow({ state, loading, onPrepare }) {
   const roleCopy = {
     knight: ['🛡️', 'Shield the family', 'Place a shield in the current battle. It blocks the next hit against any family hero. Recharges after 3 hours.'],
     scout: ['🧭', 'Choose the road', 'Once per expedition, reveal three possible next rooms and choose the family path. Warm Milk or a relic can restore it.'],
-    mage: ['✨', 'Empower the party', 'Once per expedition, grant every prepared hero +3 on one roll in the next combat. Warm Milk or a relic can restore it.'],
+    mage: ['✨', 'Empower one roll', 'Create one shared +3 boost. Any family hero can choose to spend it on a roll. Recharges after 3 hours.'],
     cleric: ['💚', 'Heal the wounded', 'Restore 1 HP to every wounded conscious hero. Knocked-out heroes still need their recovery time. Recharges after 3 hours.'],
   };
   const provisionCopy = {
@@ -437,17 +437,16 @@ function PreparationFlow({ state, loading, onPrepare }) {
     <div className="expedition-prep expedition-prep-compact">
       <div className="expedition-card expedition-prep-header">
         <div><div className="expedition-kicker">Preparation</div><h2>Pack for the dungeon</h2></div>
-        <div className="expedition-ap-chip">Tap to choose</div>
       </div>
 
       <div className="expedition-prep-selectors">
         <button type="button" className="expedition-prep-selector" onClick={() => setPicker('role')}>
-          <span>{roleCopy[role]?.[0] || '⚔️'}</span>
+          {roleImage(role) ? <img src={roleImage(role)} alt="" /> : <span>{roleCopy[role]?.[0] || '⚔️'}</span>}
           <div><small>Class</small><strong>{titleize(role)}</strong><em>{roleCopy[role]?.[1]}</em></div>
           <b>Change</b>
         </button>
         <button type="button" className="expedition-prep-selector" onClick={() => setPicker('provision')}>
-          <span>🍲</span>
+          {provisionId && assetById(provisionImages, provisionId) ? <img src={assetById(provisionImages, provisionId)} alt="" /> : <span>🍲</span>}
           <div><small>Provision</small><strong>{selectedProvision?.name || provisionNames.get(provisionId)?.name || 'Travel Light'}</strong><em>{provisionId ? provisionCopy[provisionId] : 'Enter without a consumable meal.'}</em></div>
           <b>Choose</b>
         </button>
@@ -614,10 +613,10 @@ function ExpeditionGuidePanel() {
   const sections = [
     ['Getting started', 'Every family member chooses a class, one provision and up to three artifacts. You can join and help at your own pace; an expedition never fails because the family is slow.'],
     ['AP and returning to play', 'Actions cost 1 AP. You can hold up to 5 AP and recover 1 AP every 3 hours. More active family members move the expedition faster, and active heroes receive a larger final reward.'],
-    ['Combat and the d20', 'Combat uses one d20. A result of 1-4 wounds you, 5-7 changes nothing, 8-15 deals 1 damage, 16-19 deals 2, and a natural 20 deals 3. A class favored by that enemy receives its class bonus.'],
+    ['Combat and the d20', 'The large die shows your raw d20. Roll Power is added before the result is checked. Final 1-4 wounds you, 5-7 changes nothing, 8-15 deals 1 damage, 16-19 deals 2, and 20 or more deals 3. A favored class receives its class bonus automatically.'],
     ['Room mini-games', 'Non-combat rooms replace the d20 with a skill challenge. Starting an attempt spends 1 AP. Failing costs that AP, but never removes HP. If the room still needs progress, you can begin another attempt immediately.'],
     ['HP and knockout', 'Heroes have 3 HP. HP does not refill between rooms. At 0 HP your hero is knocked out for 6 hours, then returns with 3 HP. A Knight shield can prevent a hit; a Cleric heals conscious wounded heroes.'],
-    ['Class abilities', 'Scout chooses one future path per expedition. Mage grants every prepared hero +3 on one roll in the next combat. Knight blocks the next family hit and Cleric restores 1 HP; Knight and Cleric recharge after 3 hours.'],
+    ['Class abilities', 'Scout chooses one future path per expedition. Mage creates one shared +3 boost for a family hero to spend. Knight blocks the next family hit and Cleric restores 1 HP. Mage, Knight and Cleric recharge after 3 hours.'],
     ['Provisions', 'Your chosen meal appears beside your relics. Tap it when you want to consume it. Meals are single-use: some heal or restore AP, while others empower one roll, one room, one reward, or restore your class ability.'],
     ['Artifacts', 'Only the three equipped slots work. Tap a relic in the top bar to read its exact effect and use it when allowed. Active relics disappear when used; expedition-long relics are consumed when the expedition ends.'],
     ['Scout paths and rewards', 'Future rooms remain hidden. A Scout can choose the next encounter from three paths once per expedition. Rooms pay rewards when cleared, and the final reward favors heroes who spent more AP helping the family.'],
@@ -642,10 +641,10 @@ function LastRollPanel({ action }) {
   const combatEvent = events.find(event => event.type === 'combat_roll');
   const damageEvent = events.find(event => event.type === 'hero_damaged');
   const combatCopy = combatEvent ? {
-    wounded: 'Wounded',
-    miss: 'Miss',
-    hit: 'Hit',
-    strong_hit: 'Heavy hit',
+    hero_hit: 'Wounded',
+    standoff: 'Miss',
+    enemy_hit: 'Hit',
+    enemy_hit_hard: 'Heavy hit',
     critical_hit: 'Critical hit',
   }[combatEvent.outcome] || titleize(combatEvent.outcome) : null;
 
@@ -660,7 +659,7 @@ function LastRollPanel({ action }) {
           <strong>Last Roll</strong>
           {combatEvent ? (
             <span>
-              {combatCopy} / {combatEvent.progress || 0} mob damage
+              {combatCopy} / raw {action.rawRoll ?? '?'} → total {action.modifiedRoll ?? '?'} / {combatEvent.progress || 0} damage
               {damageEvent ? ` / HP ${damageEvent.heroHp}/3` : ''}
             </span>
           ) : (
@@ -682,17 +681,19 @@ function LastRollPanel({ action }) {
   );
 }
 
-function RoleAbilityControl({ member, room, mutating, onUse }) {
+function RoleAbilityControl({ member, room, sharedBuffs, mutating, onUse }) {
   if (!member?.role || member.role === 'scout' || !isActionableRoom(room)) return null;
   const copy = {
-    mage: ['Cast Battle Spark', 'Every prepared hero gets +3 on one roll in the next combat.'],
+    mage: ['Create Arcane Boost', 'Adds one shared +3 boost that a family hero can spend on a roll.'],
     knight: ['Place Knight Shield', 'Blocks the next family hit in this room.'],
     cleric: ['Healing Prayer', 'Restores 1 HP to every conscious wounded hero.'],
   }[member.role];
   if (!copy) return null;
   const ready = Number(member.roleCharge || 0) > 0;
   const effectType = member.role === 'knight' ? 'knight_shield' : null;
-  const alreadyActive = effectType && (room.activeEffects || []).some(effect => effect.effectType === effectType);
+  const alreadyActive = member.role === 'mage'
+    ? (sharedBuffs?.rollBonus?.uses ?? 0) > 0
+    : effectType && (room.activeEffects || []).some(effect => effect.effectType === effectType);
 
   return (
     <button
@@ -1528,6 +1529,13 @@ function RoomPanel({
   const stageCombatEvent = stageEvents.find(event => event.type === 'combat_roll');
   const stageDamageEvent = stageEvents.find(event => event.type === 'hero_damaged');
   const stageOutcome = stageCombatEvent?.outcome || null;
+  const stageOutcomeCopy = {
+    hero_hit: ['Wounded', 'hero hit'],
+    standoff: ['Miss', 'no damage'],
+    enemy_hit: ['Hit', 'enemy damaged'],
+    enemy_hit_hard: ['Heavy hit', 'enemy damaged'],
+    critical_hit: ['Critical', 'enemy damaged'],
+  }[stageOutcome] || [titleize(stageOutcome), 'resolved'];
   const stageDamage = Number(stageCombatEvent?.progress || 0);
   const enemyName = bossArt
     ? 'The Root King'
@@ -1544,7 +1552,7 @@ function RoomPanel({
     : combatRoom
       ? {
           title: 'Combat roll',
-          body: 'Roll d20: 1-4 lose 1 HP, 5-7 miss, 8-15 deal 1 damage, 16-19 deal 2, 20 deals 3. Monsters do not counterattack.',
+          body: 'Roll d20 and add Roll Power: final 1-4 loses 1 HP, 5-7 misses, 8-15 deals 1 damage, 16-19 deals 2, and 20+ deals 3.',
         }
       : {
           title: mechanic.title,
@@ -1601,8 +1609,8 @@ function RoomPanel({
         )}
         {stageOutcome && (
           <div className={`expedition-stage-impact ${stageDamage > 0 ? 'damage' : stageOutcome}`}>
-            <strong>{stageDamage > 0 ? `-${stageDamage}` : stageOutcome === 'wounded' ? 'Ouch' : stageOutcome === 'miss' ? 'Miss' : 'Guarded'}</strong>
-            <span>{stageDamage > 0 ? 'enemy HP' : stageOutcome === 'wounded' ? 'hero hit' : 'no damage'}</span>
+            <strong>{stageDamage > 0 ? `-${stageDamage}` : stageOutcomeCopy[0]}</strong>
+            <span>{stageDamage > 0 ? 'enemy HP' : stageOutcomeCopy[1]}</span>
           </div>
         )}
         {stageDamageEvent && (
@@ -1697,7 +1705,7 @@ function RoomPanel({
             </div>
           )}
 
-          <LastRollPanel action={lastRoll} />
+          {!eventRoom && <LastRollPanel action={lastRoll} />}
 
           {heroRecovering && (
             <div className="expedition-room-locked expedition-hero-recovery" role="status">
@@ -1734,6 +1742,7 @@ function RoomPanel({
                     <RoleAbilityControl
                       member={member}
                       room={room}
+                      sharedBuffs={expedition?.sharedBuffs}
                       mutating={mutating}
                       onUse={onRoleAbility}
                     />
@@ -1857,6 +1866,10 @@ function ExpeditionDashboard({
     if (preferred !== selectedRoomKey) setSelectedRoomKey(preferred);
   }, [rooms, selectedRoomKey, currentMinigameAttempt?.roomKey]);
 
+  useEffect(() => {
+    if (selectedRoom?.miniGame && lastRoll?.actionType === 'attempt') setLastRoll(null);
+  }, [lastRoll?.actionType, selectedRoom?.key, selectedRoom?.miniGame]);
+
   async function handleAttempt(roomKey, actionId, options) {
     setLastRoll({ roomKey, pending: true });
     try {
@@ -1901,11 +1914,14 @@ function ExpeditionDashboard({
   }
 
   const artifactUse = equippedRelics.find(item => item?.artifactId === artifactUseId);
+  const compassRestoresScout = artifactUse?.artifactId === 'crooked_compass'
+    && member?.role === 'scout'
+    && Number(member?.roleCharge || 0) < 1;
   const artifactUseDisabledReason = artifactUse?.meta?.useType !== 'active'
     ? ''
     : !selectedRoom
     ? 'Select an open room first.'
-    : selectedRoom.state !== 'unlocked'
+    : selectedRoom.state !== 'unlocked' && !compassRestoresScout
       ? 'Active artifacts can only be used in the current open room.'
       : mutating
         ? 'Another expedition action is still resolving.'
@@ -2087,6 +2103,9 @@ function ExpeditionDashboard({
 
 function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers = [] }) {
   const { artifacts } = useCatalogMaps();
+  const [openPanel, setOpenPanel] = useState(null);
+  const [selectedArtifactId, setSelectedArtifactId] = useState(null);
+  const [selectedRun, setSelectedRun] = useState(null);
   const memberNameById = useMemo(() => new Map(
     (familyMembers || []).map(member => [member.userId, member.firstName || member.username || 'Family']),
   ), [familyMembers]);
@@ -2104,70 +2123,36 @@ function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers 
   const catalogCount = artifacts.size;
 
   return (
-    <section className="expedition-archive-grid">
-      <div className="expedition-card expedition-vault-card">
-        <div className="expedition-panel-heading">
-          <div>
-            <div className="expedition-kicker">Relics Vault</div>
-            <h3>{ownedCount}/{catalogCount} artifacts</h3>
-          </div>
-          <span className="expedition-ledger-stamp">Personal</span>
-        </div>
-        <div className="expedition-vault-grid">
-          {inventory.length > 0 ? inventory.slice(0, 8).map(item => {
-            const meta = artifacts.get(item.artifactId);
-            const image = artifactImage(item.artifactId);
-            return (
-              <div key={item.artifactId} className={`expedition-vault-item rarity-${meta?.rarity || 'common'}`}>
-                {image ? <img src={image} alt="" /> : <span />}
-                <div>
-                  <strong>{meta?.name || titleize(item.artifactId)}</strong>
-                  <small>{titleize(meta?.rarity || 'common')} / {item.charges ? `${item.charges} charges` : `x${item.quantity || 1}`}</small>
-                  <em>{meta?.effect || 'Dungeon artifact'}</em>
-                </div>
-              </div>
-            );
-          }) : (
-            <div className="expedition-empty expedition-vault-empty">
-              No relics yet. Critical rolls and boss rooms can bring the first one home.
-            </div>
-          )}
-        </div>
-      </div>
+    <>
+      <section className="expedition-archive-launchers">
+        <button type="button" onClick={() => setOpenPanel('vault')}><span>◆</span><div><small>Personal</small><strong>Relic Vault</strong><em>{ownedCount}/{catalogCount} discovered</em></div><b>Open</b></button>
+        <button type="button" onClick={() => setOpenPanel('archive')}><span>▤</span><div><small>Family</small><strong>Expedition Archive</strong><em>{history.length} completed runs</em></div><b>Open</b></button>
+      </section>
 
-      <div className="expedition-card expedition-ledger-card">
-        <div className="expedition-panel-heading">
-          <div>
-            <div className="expedition-kicker">Family Ledger</div>
-            <h3>{history.length > 0 ? `${history.length} sealed runs` : 'No sealed runs'}</h3>
+      {openPanel === 'vault' && (
+        <ExpeditionOverlay title="Relic Vault" kicker={`${ownedCount}/${catalogCount} discovered`} onClose={() => setOpenPanel(null)}>
+          <div className="expedition-vault-inventory">
+            {inventory.length ? inventory.map(item => {
+              const meta = artifacts.get(item.artifactId);
+              return <button type="button" key={item.artifactId} className={`rarity-${meta?.rarity || 'common'}`} onClick={() => setSelectedArtifactId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<strong>{meta?.name || titleize(item.artifactId)}</strong><small>x{item.quantity || 1}</small></button>;
+            }) : <div className="expedition-empty">No relics found yet.</div>}
           </div>
-          <span className="expedition-ledger-stamp">Archive</span>
-        </div>
-        <div className="expedition-ledger-list">
-          {history.length > 0 ? history.slice(0, 4).map(entry => {
-            const members = (entry.summary?.members || [])
-              .slice()
-              .sort((a, b) => (b.progress || 0) - (a.progress || 0));
-            const topMember = members[0];
-            return (
-              <div key={entry.id} className="expedition-ledger-row">
-                <div>
-                  <strong>Expedition #{entry.expeditionId}</strong>
-                  <small>{formatTime(entry.finishedAt)} / {entry.summary?.roomsCleared || 0} rooms cleared</small>
-                </div>
-                <span>
-                  {topMember ? `${memberNameById.get(topMember.userId) || 'Hero'} +${topMember.progress || 0}` : 'No progress'}
-                </span>
-              </div>
-            );
-          }) : (
-            <div className="expedition-empty">
-              The first victory will carve your family name into the Root King's ledger.
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
+        </ExpeditionOverlay>
+      )}
+      {openPanel === 'archive' && (
+        <ExpeditionOverlay title="Expedition Archive" kicker="Family history" onClose={() => { setOpenPanel(null); setSelectedRun(null); }}>
+          <div className="expedition-archive-list">
+            {history.length ? history.map(entry => <button type="button" key={entry.id} onClick={() => setSelectedRun(entry)}><div><strong>Expedition #{entry.expeditionId}</strong><small>{formatTime(entry.finishedAt)}</small></div><span>{entry.summary?.roomsCleared || 0} rooms</span></button>) : <div className="expedition-empty">No completed expeditions yet.</div>}
+          </div>
+        </ExpeditionOverlay>
+      )}
+      {selectedRun && (
+        <ExpeditionOverlay title={`Expedition #${selectedRun.expeditionId}`} kicker="Run details" onClose={() => setSelectedRun(null)}>
+          <div className="expedition-run-details"><strong>{selectedRun.summary?.roomsCleared || 0} rooms cleared</strong><small>Finished {formatTime(selectedRun.finishedAt)}</small>{(selectedRun.summary?.members || []).slice().sort((a,b) => (b.progress || 0) - (a.progress || 0)).map((row,index) => <div key={row.userId}><span>#{index + 1} {memberNameById.get(row.userId) || 'Hero'}</span><b>+{row.progress || 0} progress</b></div>)}</div>
+        </ExpeditionOverlay>
+      )}
+      {selectedArtifactId && artifacts.get(selectedArtifactId) && <ArtifactDetailSheet artifact={{ ...artifacts.get(selectedArtifactId), image: artifactImage(selectedArtifactId), quantity: inventory.find(item => item.artifactId === selectedArtifactId)?.quantity || 0 }} mode="inspect" onClose={() => setSelectedArtifactId(null)} />}
+    </>
   );
 }
 

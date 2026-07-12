@@ -3661,24 +3661,26 @@ button.expedition-loadout-slot:disabled {
   border-radius: 3px;
   background: linear-gradient(100deg, rgba(183, 255, 79, 0.08), transparent 55%), rgba(3, 9, 6, 0.94);
   color: var(--dungeon-bone);
-  padding: 11px;
+  padding: 14px;
 }
 
 .expedition-prep-selector {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   text-align: left;
+  min-height: 108px;
 }
 
-.expedition-prep-selector > span { font-size: 28px; text-align: center; }
+.expedition-prep-selector > span { font-size: 34px; text-align: center; }
+.expedition-prep-selector > img { width: 68px; height: 76px; object-fit: contain; filter: drop-shadow(0 8px 8px rgba(0,0,0,.45)); }
 .expedition-prep-selector > div { display: grid; min-width: 0; gap: 2px; }
 .expedition-prep-selector small,
 .expedition-prep-artifact-block small { color: var(--dungeon-gold); font-size: 9px; font-weight: 950; letter-spacing: .08em; text-transform: uppercase; }
 .expedition-prep-selector strong,
 .expedition-prep-artifact-block strong { font-family: var(--font-display); font-size: 15px; text-transform: uppercase; }
-.expedition-prep-selector em { overflow: hidden; color: rgba(233,223,189,.7); font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.expedition-prep-selector em { color: rgba(233,223,189,.7); font-size: 11px; font-style: normal; line-height: 1.3; }
 .expedition-prep-selector > b { color: var(--accent); font-size: 10px; text-transform: uppercase; }
 
 .expedition-prep-artifact-block > div:first-child { display: grid; gap: 2px; margin-bottom: 9px; }
@@ -3708,27 +3710,54 @@ button.expedition-loadout-slot:disabled {
 .expedition-guide-accordion details[open] summary i { transform: rotate(45deg); }
 .expedition-guide-accordion p { margin: 0; padding: 0 10px 11px 45px; color: rgba(233,223,189,.78); font-size: 11px; line-height: 1.42; }
 
-.expedition-player-hud { grid-template-columns: minmax(62px, .8fr) minmax(62px, .8fr) minmax(72px, 1fr) 42px auto; }
+.expedition-player-hud { grid-template-columns: minmax(68px, .8fr) minmax(68px, .8fr) 62px auto; }
+.expedition-hud-role { display: none; }
 .expedition-hud-stat span::before { margin-right: 3px; }
 .expedition-hud-stat.hp span::before { content: '❤️'; }
 .expedition-hud-stat.ap span::before { content: '⚡'; }
-.expedition-hud-provision { display: grid; width: 42px; min-width: 0; place-items: center; gap: 0; padding: 3px; border: 0; border-right: 1px solid rgba(233,223,189,.11); background: rgba(0,0,0,.2); color: rgba(233,223,189,.6); }
+.expedition-hud-provision { display: grid; width: 62px; min-width: 0; place-items: center; gap: 0; padding: 3px; border: 0; border-right: 1px solid rgba(233,223,189,.11); background: rgba(0,0,0,.2); color: rgba(233,223,189,.6); }
 .expedition-hud-provision.ready { background: rgba(183,255,79,.12); box-shadow: inset 0 0 0 1px rgba(183,255,79,.35); }
-.expedition-hud-provision img { width: 28px; height: 28px; object-fit: contain; }
-.expedition-hud-provision span { font-size: 20px; }
+.expedition-hud-provision img { width: 40px; height: 40px; object-fit: contain; }
+.expedition-hud-provision span { font-size: 0; font-weight: 950; text-transform: uppercase; }
+.expedition-hud-provision span::after { content: 'FOOD'; font-size: 9px; }
 .expedition-hud-provision small { font-size: 7px; font-weight: 950; text-transform: uppercase; }
 .expedition-provision-use { display: grid; justify-items: center; gap: 12px; text-align: center; }
 .expedition-provision-use img { width: 90px; height: 90px; object-fit: contain; }
 .expedition-provision-use p { margin: 0; color: rgba(233,223,189,.8); font-size: 13px; line-height: 1.4; }
 
 @media (max-width: 380px) {
-  .expedition-player-hud { grid-template-columns: 52px 52px minmax(58px, 1fr) 36px auto; }
-  .expedition-hud-relics { grid-template-columns: repeat(3, 32px); gap: 2px; padding-inline: 3px; }
+  .expedition-player-hud { grid-template-columns: 54px 54px 48px auto; }
+  .expedition-hud-relics { grid-template-columns: repeat(3, 38px); gap: 3px; padding-inline: 4px; }
   .expedition-hud-relics > button,
-  .expedition-hud-relics > span { width: 32px; height: 35px; }
-  .expedition-hud-relics img { width: 28px; height: 28px; }
-  .expedition-hud-provision { width: 36px; }
+  .expedition-hud-relics > span { width: 38px; height: 40px; }
+  .expedition-hud-relics img { width: 34px; height: 34px; }
+  .expedition-hud-provision { width: 48px; }
+  .expedition-hud-provision img { width: 34px; height: 34px; }
 }
+
+.expedition-archive-launchers { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
+.expedition-archive-launchers > button { display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 7px; min-width: 0; padding: 10px; border: 1px solid rgba(217,167,67,.3); border-radius: 3px; background: rgba(3,9,6,.92); color: var(--dungeon-bone); text-align: left; }
+.expedition-archive-launchers > button > span { grid-row: 1 / 3; align-self: center; color: var(--dungeon-gold); font-size: 24px; }
+.expedition-archive-launchers > button > div { display: grid; min-width: 0; }
+.expedition-archive-launchers small { color: var(--dungeon-gold); font-size: 8px; font-weight: 950; text-transform: uppercase; }
+.expedition-archive-launchers strong { overflow: hidden; font-family: var(--font-display); font-size: 13px; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.expedition-archive-launchers em { color: rgba(233,223,189,.65); font-size: 9px; font-style: normal; }
+.expedition-archive-launchers b { grid-column: 2; color: var(--accent); font-size: 9px; text-transform: uppercase; }
+.expedition-vault-inventory { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.expedition-vault-inventory button { display: grid; min-width: 0; min-height: 104px; place-items: center; gap: 3px; padding: 6px; border: 1px solid rgba(233,223,189,.15); border-radius: 2px; background: rgba(0,0,0,.26); color: var(--dungeon-bone); text-align: center; }
+.expedition-vault-inventory img { width: 54px; height: 54px; object-fit: contain; }
+.expedition-vault-inventory strong { max-width: 100%; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.expedition-vault-inventory small { color: var(--dungeon-gold); font-size: 9px; }
+.expedition-archive-list { display: grid; gap: 5px; }
+.expedition-archive-list button { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border: 1px solid rgba(233,223,189,.14); border-radius: 2px; background: rgba(0,0,0,.24); color: var(--dungeon-bone); text-align: left; }
+.expedition-archive-list button div { display: grid; gap: 2px; }
+.expedition-archive-list strong { font-family: var(--font-display); font-size: 13px; text-transform: uppercase; }
+.expedition-archive-list small { color: rgba(233,223,189,.6); font-size: 9px; }
+.expedition-archive-list button > span { color: var(--accent); font-size: 10px; font-weight: 900; }
+.expedition-run-details { display: grid; gap: 7px; }
+.expedition-run-details > strong { color: var(--dungeon-gold); font-family: var(--font-display); font-size: 18px; text-transform: uppercase; }
+.expedition-run-details > small { color: rgba(233,223,189,.65); }
+.expedition-run-details > div { display: flex; justify-content: space-between; gap: 8px; padding: 9px; border: 1px solid rgba(233,223,189,.12); background: rgba(0,0,0,.22); }
 
 .expedition-roll-score span { font-size: 8px; }
 
@@ -3832,15 +3861,15 @@ button.expedition-loadout-slot:disabled {
 
 @media (max-width: 340px), (max-height: 590px) {
   .expedition-game-title span { display: none; }
-  .expedition-player-hud { grid-template-columns: 48px 48px minmax(56px, 1fr) 34px auto; }
+  .expedition-player-hud { grid-template-columns: 48px 48px 42px auto; }
   .expedition-hud-stat,
   .expedition-hud-role { padding-inline: 6px; }
   .expedition-hud-relics { grid-template-columns: repeat(3, 31px); gap: 2px; padding-inline: 3px; }
   .expedition-hud-relics > button,
   .expedition-hud-relics > span { width: 31px; height: 34px; }
   .expedition-hud-relics img { width: 27px; height: 27px; }
-  .expedition-hud-provision { width: 34px; padding-inline: 1px; }
-  .expedition-hud-provision img { width: 25px; height: 25px; }
+  .expedition-hud-provision { width: 42px; padding-inline: 1px; }
+  .expedition-hud-provision img { width: 31px; height: 31px; }
 
   .expedition-room-art,
   .expedition-room-bg,
