@@ -3842,6 +3842,51 @@ button.expedition-loadout-slot:disabled {
 .expedition-last-roll-die.d6 span { margin-top: 13px; }
 .expedition-last-roll-die.d6 strong { margin-bottom: 4px; font-size: 18px; }
 
+.expedition-die-face {
+  display: block;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  overflow: visible;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .5));
+}
+.expedition-die-face__shell {
+  fill: #201707;
+  stroke: #6e531d;
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+.expedition-die-face__rim {
+  fill: none;
+  stroke: rgba(255, 220, 121, .55);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.expedition-die-face.d6 .expedition-die-face__shell {
+  fill: #10240f;
+  stroke: #467a2e;
+}
+.expedition-die-face.d6 .expedition-die-face__rim { stroke: rgba(185, 255, 103, .55); }
+.expedition-die-face__label,
+.expedition-die-face__value {
+  fill: var(--dungeon-bone);
+  font-family: var(--font-display);
+  font-weight: 950;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, .7);
+  stroke-width: 2px;
+}
+.expedition-die-face__label {
+  fill: var(--dungeon-gold);
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.expedition-die-face__value { font-size: 38px; }
+.expedition-die-face.d6 .expedition-die-face__label { fill: var(--accent); font-size: 11px; }
+.expedition-die-face.d6 .expedition-die-face__value { font-size: 34px; }
+
 .expedition-roll-ticker {
   display: flex;
   flex-direction: column;
@@ -3853,6 +3898,7 @@ button.expedition-loadout-slot:disabled {
   background: radial-gradient(circle, rgba(183,255,79,.12), rgba(0,0,0,.42) 68%);
 }
 .expedition-roll-ticker > div { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.expedition-roll-ticker .expedition-die-face { width: 52px; height: 52px; flex-basis: 52px; }
 .expedition-roll-ticker i {
   display: grid;
   width: 50px;
@@ -3898,6 +3944,7 @@ button.expedition-loadout-slot:disabled {
 }
 .expedition-attack-result > i span { color: var(--dungeon-gold); font-size: 8px; font-weight: 950; text-transform: uppercase; }
 .expedition-attack-result > i strong { font-family: var(--font-display); font-size: 23px; line-height: .9; }
+.expedition-attack-result > .expedition-die-face { width: 50px; height: 50px; flex-basis: 50px; }
 .expedition-attack-result > div { display: grid; gap: 3px; min-width: 0; }
 .expedition-attack-result > div strong { font-family: var(--font-display); font-size: 14px; text-transform: uppercase; }
 .expedition-attack-result > div span { color: rgba(233,223,189,.72); font-size: 10px; line-height: 1.3; }

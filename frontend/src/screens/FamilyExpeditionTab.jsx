@@ -627,6 +627,26 @@ function ExpeditionGuidePanel() {
   );
 }
 
+function DiceFace({ sides, value, className = '' }) {
+  const isD20 = Number(sides) === 20;
+  const points = isD20
+    ? '50,2 78,10 96,34 96,66 78,90 50,98 22,90 4,66 4,34 22,10'
+    : '50,3 97,94 3,94';
+  return (
+    <svg
+      className={`expedition-die-face ${isD20 ? 'd20' : 'd6'} ${className}`.trim()}
+      viewBox="0 0 100 100"
+      aria-label={`d${sides} result ${value}`}
+      role="img"
+    >
+      <polygon className="expedition-die-face__shell" points={points} />
+      <polygon className="expedition-die-face__rim" points={points} />
+      <text className="expedition-die-face__label" x="50" y={isD20 ? '28' : '39'}>d{sides}</text>
+      <text className="expedition-die-face__value" x="50" y={isD20 ? '69' : '76'}>{value}</text>
+    </svg>
+  );
+}
+
 function LastRollPanel({ action }) {
   if (!action || action.actionType !== 'attempt') return null;
   const loot = action.loot || {};
@@ -644,15 +664,9 @@ function LastRollPanel({ action }) {
 
   return (
     <div className="expedition-last-roll">
-      <div className="expedition-last-roll-die d20">
-        <span>d20</span>
-        <strong>{action.rawRoll ?? '?'}</strong>
-      </div>
+      <DiceFace sides={20} value={action.rawRoll ?? '?'} />
       {(combatEvent?.damageRolls || []).map((roll, index) => (
-        <div className="expedition-last-roll-die damage d6" key={`damage-${index}`}>
-          <span>d6</span>
-          <strong>{roll}</strong>
-        </div>
+        <DiceFace sides={6} value={roll} className="damage" key={`damage-${index}`} />
       ))}
       <div className="expedition-last-roll-copy">
         <div>
@@ -1821,10 +1835,11 @@ function RoomPanel({
                         <div className={`expedition-roll-ticker ${combatReveal.phase === 'rolling-damage' ? 'damage' : 'attack'}`} role="status">
                           <div>
                             {(rollingFaces.length ? rollingFaces : [1]).map((face, index) => (
-                              <i className={combatReveal.phase === 'rolling-damage' ? 'd6' : 'd20'} key={`${combatReveal.phase}-${index}`}>
-                                <span>{combatReveal.phase === 'rolling-damage' ? 'd6' : 'd20'}</span>
-                                <strong>{face}</strong>
-                              </i>
+                              <DiceFace
+                                sides={combatReveal.phase === 'rolling-damage' ? 6 : 20}
+                                value={face}
+                                key={`${combatReveal.phase}-${index}`}
+                              />
                             ))}
                           </div>
                           <small>{combatReveal.phase === 'rolling-damage' ? 'Damage' : 'Attack'}</small>
@@ -1832,7 +1847,7 @@ function RoomPanel({
                       )}
                       {combatReveal.phase === 'awaiting-damage' && revealCombatEvent && (
                         <div className="expedition-attack-result" role="status">
-                          <i><span>d20</span><strong>{revealCombatEvent.attackRoll}</strong></i>
+                          <DiceFace sides={20} value={revealCombatEvent.attackRoll} />
                           <div>
                             <strong>{revealCombatEvent.outcome === 'devastating_hit' ? 'Devastating hit' : revealCombatEvent.outcome === 'critical_hit' ? 'Critical hit' : 'Armor broken'}</strong>
                             <span>AC {revealCombatEvent.attackTarget} beaten. Roll {revealDamageDice}d6 damage.</span>
