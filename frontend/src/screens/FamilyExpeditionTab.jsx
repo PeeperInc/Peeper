@@ -1660,7 +1660,9 @@ function RoomPanel({
   const foregroundArt = bossArt || (combatRoom ? enemyArt : null);
   const locked = room.state === 'locked';
   const hidden = room.state === 'hidden';
-  const actionable = isActionableRoom(room);
+  const combatResolutionPending = combatRoom
+    && ['rolling-attack', 'awaiting-damage', 'rolling-damage'].includes(combatReveal.phase);
+  const actionable = isActionableRoom(room) || combatResolutionPending;
 
   return (
     <div className={`expedition-card expedition-room-panel state-${room.state || 'unknown'}${transitionPhase ? ` transition-${transitionPhase}` : ''}`}>
