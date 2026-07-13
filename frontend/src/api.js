@@ -132,6 +132,8 @@ export const createFamily = (name) => post('/family/create', { name });
 export const joinFamily = (inviteCode) => post('/family/join', { inviteCode });
 export const leaveFamily = () => post('/family/leave');
 export const kickMember = (userId) => post('/family/kick', { userId });
+export const renameFamily = (name) => post('/family/rename', { name });
+export const transferFamilyOwnership = (userId) => post('/family/transfer', { userId });
 export const feedFamilyMember = (targetUserId) => post('/family/feed', { targetUserId });
 export const triggerFamilyBigFeast = () => post('/family/big-feast', {});
 export const getFamilyMessages = () => get('/family/messages');

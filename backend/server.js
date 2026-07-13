@@ -26,6 +26,7 @@ app.use('/api/gifts', require('./routes/gifts'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/admin',   require('./routes/admin'));
 app.use('/api/webhook', require('./routes/webhook'));
+app.use('/api/family',  require('./routes/familyManagement'));
 app.use('/api/family',  require('./routes/family'));
 app.use('/api/home',    require('./routes/home'));
 app.use('/api/blackjack', require('./routes/blackjack'));

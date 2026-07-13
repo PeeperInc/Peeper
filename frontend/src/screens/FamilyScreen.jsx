@@ -450,17 +450,176 @@ function InviteSheet({ family, memberCount, onClose, onInvited }) {
 }
 
 // ── Members tab ───────────────────────────────────────────────────────────────
+function FamilyManagementSheet({ family, members, currentUserId, userCoins, onClose, onChanged }) {
+  const [view, setView] = useState('menu');
+  const [candidate, setCandidate] = useState(null);
+  const [renameName, setRenameName] = useState(family.name || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const otherMembers = members.filter(member => member.id !== currentUserId);
+
+  function openView(nextView) {
+    setView(nextView);
+    setCandidate(null);
+    setError('');
+  }
+
+  function memberLabel(member) {
+    return member.first_name || (member.username ? `@${member.username}` : 'Family member');
+  }
+
+  async function confirmAction() {
+    if (!candidate || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      let result;
+      if (candidate.type === 'kick') result = await api.kickMember(candidate.member.id);
+      if (candidate.type === 'rename') result = await api.renameFamily(candidate.name);
+      if (candidate.type === 'transfer') result = await api.transferFamilyOwnership(candidate.member.id);
+      await onChanged?.(result, candidate.type);
+      setCandidate(null);
+      if (candidate.type !== 'kick') onClose();
+    } catch (actionError) {
+      setError(actionError.message || 'Could not update the family');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const actionTitle = candidate?.type === 'kick'
+    ? `Remove ${memberLabel(candidate.member)}?`
+    : candidate?.type === 'transfer'
+      ? `Make ${memberLabel(candidate.member)} the owner?`
+      : candidate?.type === 'rename'
+        ? `Rename family to "${candidate.name}"?`
+        : '';
+
+  return (
+    <BottomSheet
+      onClose={busy ? undefined : onClose}
+      zIndex={230}
+      bodyStyle={{ padding: '18px 18px 32px', maxHeight: '82vh', overflowY: 'auto' }}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '68px 1fr 68px', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          {view !== 'menu' && (
+            <button type="button" className="btn btn-ghost" onClick={() => openView('menu')} disabled={busy}>Back</button>
+          )}
+        </div>
+        <strong style={{ textAlign: 'center', fontSize: 18, color: 'var(--text-primary)' }}>
+          {view === 'menu' ? 'Manage Family' : view === 'kick' ? 'Remove Member' : view === 'rename' ? 'Rename Family' : 'Transfer Ownership'}
+        </strong>
+        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Close</button>
+      </div>
+
+      {view === 'menu' && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {[
+            ['kick', 'Remove a member', 'Choose a member, then confirm their removal.'],
+            ['rename', 'Rename family', 'Change the family name for 300 coins.'],
+            ['transfer', 'Transfer ownership', 'Choose the new owner. This cannot be undone here.'],
+          ].map(([id, title, description]) => (
+            <button
+              type="button"
+              key={id}
+              className="card"
+              onClick={() => openView(id)}
+              style={{ width: '100%', padding: 14, textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)' }}
+            >
+              <strong style={{ display: 'block', color: id === 'kick' ? 'var(--danger)' : 'var(--text-primary)', fontSize: 15 }}>{title}</strong>
+              <span style={{ display: 'block', marginTop: 4, color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.4 }}>{description}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === 'rename' && !candidate && (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <input
+            className="search-input"
+            value={renameName}
+            onChange={event => setRenameName(event.target.value)}
+            maxLength={24}
+            placeholder="New family name"
+            autoFocus
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: 12 }}>
+            <span>2-24 characters</span>
+            <strong style={{ color: userCoins >= 300 ? 'var(--warning)' : 'var(--danger)' }}>300 coins</strong>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-full"
+            disabled={renameName.trim().length < 2 || renameName.trim() === family.name || userCoins < 300}
+            onClick={() => setCandidate({ type: 'rename', name: renameName.trim().replace(/\s+/g, ' ') })}
+          >
+            Review Rename
+          </button>
+        </div>
+      )}
+
+      {['kick', 'transfer'].includes(view) && !candidate && (
+        <div style={{ display: 'grid', gap: 7 }}>
+          {otherMembers.length === 0 && (
+            <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>There are no other members yet.</div>
+          )}
+          {otherMembers.map(member => (
+            <button
+              type="button"
+              key={member.id}
+              onClick={() => setCandidate({ type: view, member })}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 5, background: 'var(--bg-secondary)', color: 'var(--text-primary)', textAlign: 'left', cursor: 'pointer' }}
+            >
+              <Avatar telegramId={member.telegram_id} name={memberLabel(member)} size={38} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 14 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{memberLabel(member)}</span>
+                  <SupporterStar user={member} size={12} />
+                </strong>
+                {member.username && <small style={{ color: 'var(--text-secondary)' }}>@{member.username}</small>}
+              </span>
+              <strong style={{ color: view === 'kick' ? 'var(--danger)' : 'var(--accent)', fontSize: view === 'kick' ? 20 : 12 }}>
+                {view === 'kick' ? 'X' : 'Choose'}
+              </strong>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {candidate && (
+        <div style={{ border: `1px solid ${candidate.type === 'kick' ? 'var(--danger)' : 'var(--warning)'}`, background: 'var(--bg-secondary)', padding: 15, borderRadius: 5 }}>
+          <strong style={{ display: 'block', color: 'var(--text-primary)', fontSize: 16 }}>{actionTitle}</strong>
+          <span style={{ display: 'block', marginTop: 7, color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5 }}>
+            {candidate.type === 'kick'
+              ? 'They will immediately lose access to the family chat and expedition.'
+              : candidate.type === 'transfer'
+                ? 'You will remain a member, but only the new owner will be able to manage the family.'
+                : 'The new name will be visible everywhere. 300 coins will be charged from your balance.'}
+          </span>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button type="button" className="btn btn-secondary btn-full" onClick={() => setCandidate(null)} disabled={busy}>Cancel</button>
+            <button type="button" className={`btn btn-full ${candidate.type === 'kick' ? 'btn-secondary' : 'btn-primary'}`} onClick={confirmAction} disabled={busy} style={candidate.type === 'kick' ? { color: 'var(--danger)', borderColor: 'var(--danger)' } : undefined}>
+              {busy ? 'Saving...' : candidate.type === 'kick' ? 'Remove Member' : candidate.type === 'transfer' ? 'Transfer Ownership' : 'Rename for 300'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && <div style={{ marginTop: 10, color: 'var(--danger)', fontSize: 12, textAlign: 'center' }}>{error}</div>}
+    </BottomSheet>
+  );
+}
+
 function MembersTab({
   family,
   members,
   fedTodayUserId,
   currentUserId,
-  isFounder,
   userCoins,
   bigFeast,
   onOpenBigFeast,
   onFed,
-  onKick,
   onLeave,
   onViewProfile,
 }) {
@@ -490,12 +649,6 @@ function MembersTab({
       onFed(memberId, newHunger);
     } catch (e) { showToast(e.message); }
     finally { setFeeding(null); }
-  }
-
-  async function handleKick(memberId) {
-    if (!window.confirm('Remove this member from the family?')) return;
-    try { await api.kickMember(memberId); onKick(memberId); }
-    catch (e) { showToast(e.message); }
   }
 
   async function handleLeave() {
@@ -603,10 +756,6 @@ function MembersTab({
               )}
               {fedTodayUserId === m.id && !isMe && (
                 <span style={{ fontSize: 18 }}>✅</span>
-              )}
-              {isFounder && !isMe && (
-                <button className="btn btn-ghost" style={{ padding: '6px 8px', fontSize: 12, color: 'var(--danger)' }}
-                  onClick={e => { e.stopPropagation(); handleKick(m.id); }}>✕</button>
               )}
             </div>
           </div>
@@ -758,6 +907,7 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
   const [showHowItWorks, setShowHowItWorks]   = useState(false);
   const [copied, setCopied]                   = useState(false);
   const [showInvite, setShowInvite]           = useState(false);
+  const [showManagement, setShowManagement]   = useState(false);
   const [showBigFeast, setShowBigFeast]       = useState(false);
   const [bigFeastLoading, setBigFeastLoading] = useState(false);
 
@@ -881,6 +1031,12 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
             ✉️ Invite
           </button>
         )}
+        {isFounder && (
+          <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }}
+            onClick={() => setShowManagement(true)}>
+            Manage
+          </button>
+        )}
       </div>
 
       {showInvite && (
@@ -889,6 +1045,20 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
           memberCount={members.length}
           onClose={() => setShowInvite(false)}
           onInvited={() => setShowInvite(false)}
+        />
+      )}
+
+      {showManagement && (
+        <FamilyManagementSheet
+          family={family}
+          members={members}
+          currentUserId={user?.id}
+          userCoins={user?.coins ?? 0}
+          onClose={() => setShowManagement(false)}
+          onChanged={async (result) => {
+            showToast?.(result?.message || 'Family updated');
+            await Promise.all([load(), refreshGameState()]);
+          }}
         />
       )}
 
@@ -923,7 +1093,6 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
           family={family} members={members}
           fedTodayUserId={fedToday}
           currentUserId={user?.id}
-          isFounder={isFounder}
           userCoins={user?.coins ?? 0}
           bigFeast={bigFeast}
           onOpenBigFeast={() => setShowBigFeast(true)}
@@ -934,7 +1103,6 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
               m.id === memberId ? { ...m, liveHunger: Math.min(100, (m.liveHunger || 0) + 60) } : m
             ));
           }}
-          onKick={memberId => setMembers(prev => prev.filter(m => m.id !== memberId))}
           onLeave={() => {
             setFamily(null);
             setMembers([]);
