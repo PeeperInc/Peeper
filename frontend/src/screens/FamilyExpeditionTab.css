@@ -1742,7 +1742,7 @@ button.expedition-loadout-slot:disabled {
 
 .expedition-trap-safe-zone {
   position: absolute;
-  inset: 8px 40%;
+  inset: 8px 37%;
   border: 1px solid rgba(255, 209, 94, 0.76);
   background:
     linear-gradient(180deg, rgba(255, 209, 94, 0.16), rgba(183, 255, 79, 0.14)),

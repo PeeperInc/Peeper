@@ -5,8 +5,8 @@ import './ExpeditionMiniGames.css';
 
 const RUNES = ['rune', 'root', 'moon', 'skull', 'crown', 'fang', 'lantern', 'key', 'eye'];
 const PASS_SCORE = 60;
-const TIMING_TOLERANCE = 10;
-const FOCUS_TOLERANCE = 5;
+const TIMING_TOLERANCE = 13;
+const FOCUS_TOLERANCE = 7;
 
 function precisionScore(value, target, tolerance) {
   const pointsPerUnit = (100 - PASS_SCORE) / tolerance;
