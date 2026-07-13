@@ -4,6 +4,14 @@ import ShadeHuntGame from './ShadeHuntGame';
 import './ExpeditionMiniGames.css';
 
 const RUNES = ['rune', 'root', 'moon', 'skull', 'crown', 'fang', 'lantern', 'key', 'eye'];
+const PASS_SCORE = 60;
+const TIMING_TOLERANCE = 10;
+const FOCUS_TOLERANCE = 5;
+
+function precisionScore(value, target, tolerance) {
+  const pointsPerUnit = (100 - PASS_SCORE) / tolerance;
+  return Math.max(0, Math.round(100 - Math.abs(value - target) * pointsPerUnit));
+}
 
 function RuneGlyph({ symbol }) {
   const marks = {
@@ -239,9 +247,9 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   async function stopTiming() {
     if (phase !== 'timing') return;
     setPhase('resolving');
-    const score = Math.max(0, Math.round(100 - Math.abs(marker - 50) * 2));
+    const score = precisionScore(marker, 50, TIMING_TOLERANCE);
     try {
-      await resolve({ success: score >= 60, score, reason: 'timing_stop' });
+      await resolve({ success: true, score, reason: 'timing_stop' });
     } catch {}
   }
 
@@ -278,10 +286,10 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     const currentCharge = chargeRef.current;
     const score = currentCharge >= 99
       ? 0
-      : Math.max(0, Math.round(100 - Math.abs(currentCharge - focusTargetRef.current) * 2.25));
+      : precisionScore(currentCharge, focusTargetRef.current, FOCUS_TOLERANCE);
     try {
       await resolve(
-        { success: score >= 60, score, reason: 'focus_release' },
+        { success: true, score, reason: 'focus_release' },
         focusAttemptRef.current || attempt,
       );
     } catch {}

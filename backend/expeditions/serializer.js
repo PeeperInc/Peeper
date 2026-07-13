@@ -75,6 +75,7 @@ function visibleRoom(room) {
     ['state', room.state],
     ['progress', room.progress],
     ['progressTarget', room.progressTarget],
+    ['attackTarget', room.attackTarget],
     ['support', room.support],
     ['depth', room.depth],
     ['name', room.name],
