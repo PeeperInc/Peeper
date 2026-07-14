@@ -63,6 +63,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   const [choiceRunes, setChoiceRunes] = useState(RUNES);
   const [previewIndex, setPreviewIndex] = useState(-1);
   const [input, setInput] = useState([]);
+  const [pressedRune, setPressedRune] = useState(null);
   const [feedback, setFeedback] = useState('');
   const [pendingResult, setPendingResult] = useState(null);
   const [remainingMs, setRemainingMs] = useState(0);
@@ -74,6 +75,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   const focusHeldRef = useRef(false);
   const focusAttemptRef = useRef(null);
   const previewTimersRef = useRef([]);
+  const runePressTimerRef = useRef(null);
   const terminalResetTimerRef = useRef(null);
   const timingStartedAtRef = useRef(0);
 
@@ -84,6 +86,10 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
       window.clearTimeout(terminalResetTimerRef.current);
       terminalResetTimerRef.current = null;
     }
+    if (runePressTimerRef.current) {
+      window.clearTimeout(runePressTimerRef.current);
+      runePressTimerRef.current = null;
+    }
     setAttempt(initialAttempt || null);
     setRetryKey(0);
     setPhase('idle');
@@ -93,6 +99,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     setSequence([]);
     setChoiceRunes(RUNES);
     setInput([]);
+    setPressedRune(null);
     setFeedback('');
     setPendingResult(null);
     setRemainingMs(initialAttempt?.expiresAt
@@ -147,6 +154,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   useEffect(() => () => {
     previewTimersRef.current.forEach(window.clearTimeout);
     if (terminalResetTimerRef.current) window.clearTimeout(terminalResetTimerRef.current);
+    if (runePressTimerRef.current) window.clearTimeout(runePressTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -304,6 +312,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     setSequence(nextSequence);
     setChoiceRunes(choices);
     setInput([]);
+    setPressedRune(null);
     setPhase('preview');
     nextSequence.forEach((_, index) => {
       previewTimersRef.current.push(window.setTimeout(() => setPreviewIndex(index), index * 620));
@@ -314,8 +323,15 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
     }, nextSequence.length * 620));
   }
 
-  async function chooseRune(symbol) {
+  async function chooseRune(symbol, event) {
     if (phase !== 'runes' || finishingRef.current) return;
+    event?.currentTarget?.blur?.();
+    setPressedRune(symbol);
+    if (runePressTimerRef.current) window.clearTimeout(runePressTimerRef.current);
+    runePressTimerRef.current = window.setTimeout(() => {
+      runePressTimerRef.current = null;
+      setPressedRune(null);
+    }, 180);
     const nextInput = [...input, symbol];
     setInput(nextInput);
     if (nextInput.length === 3) {
@@ -369,11 +385,23 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
           </div>
           <button type="button" className="btn btn-secondary expedition-minigame-start" onClick={startRunes} disabled={disabled || mutating || !['idle', 'done'].includes(phase)}>Start Runes</button>
           <div className="expedition-event-choice-grid expedition-rune-choice-grid">
-            {choiceRunes.map(symbol => (
-              <button type="button" key={symbol} onClick={() => chooseRune(symbol)} disabled={phase !== 'runes' || mutating}>
-                <strong><RuneGlyph symbol={symbol} /></strong><span>{symbol}</span>
-              </button>
-            ))}
+            {choiceRunes.map(symbol => {
+              const enteredIndex = input.indexOf(symbol);
+              const selected = enteredIndex >= 0;
+              return (
+                <button
+                  type="button"
+                  key={symbol}
+                  className={`${selected ? 'is-entered' : ''}${pressedRune === symbol ? ' is-pressed' : ''}`.trim()}
+                  onClick={event => chooseRune(symbol, event)}
+                  disabled={phase !== 'runes' || mutating || selected}
+                  aria-pressed={selected}
+                >
+                  {selected && <b className="expedition-rune-order">{enteredIndex + 1}</b>}
+                  <strong><RuneGlyph symbol={symbol} /></strong><span>{symbol}</span>
+                </button>
+              );
+            })}
           </div>
         </>
       ) : kind === 'focus_hold' ? (

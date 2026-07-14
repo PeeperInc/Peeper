@@ -2427,6 +2427,7 @@ button.expedition-loadout-slot:disabled {
 }
 
 .expedition-rune-choice-grid button {
+  position: relative;
   min-height: 66px;
   padding: 5px;
 }
@@ -2439,6 +2440,60 @@ button.expedition-loadout-slot:disabled {
 .expedition-rune-choice-grid button .expedition-rune-glyph {
   width: 28px;
   height: 28px;
+}
+
+.expedition-rune-choice-grid button.is-entered,
+.expedition-rune-choice-grid button.is-entered:disabled {
+  border-color: rgba(183, 255, 79, 0.82);
+  background:
+    radial-gradient(circle at 50% 28%, rgba(183, 255, 79, 0.2), transparent 52%),
+    linear-gradient(180deg, rgba(27, 59, 27, 0.98), rgba(5, 18, 8, 0.98));
+  color: #efffd7;
+  opacity: 1;
+  box-shadow:
+    inset 0 0 0 1px rgba(183, 255, 79, 0.18),
+    0 0 14px rgba(183, 255, 79, 0.14);
+}
+
+.expedition-rune-choice-grid button.is-entered .expedition-rune-glyph {
+  color: var(--dungeon-acid);
+  filter: drop-shadow(0 0 8px rgba(183, 255, 79, 0.7));
+}
+
+.expedition-rune-choice-grid button.is-pressed {
+  animation: expedition-rune-press 180ms ease-out;
+}
+
+.expedition-rune-order {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid rgba(183, 255, 79, 0.65);
+  border-radius: 50%;
+  background: rgba(2, 12, 5, 0.92);
+  color: var(--dungeon-acid);
+  font-family: var(--font-display);
+  font-size: 9px;
+  line-height: 1;
+}
+
+@keyframes expedition-rune-press {
+  0% { transform: scale(1); }
+  45% { transform: scale(0.91); }
+  100% { transform: scale(1); }
+}
+
+@media (hover: none) {
+  .expedition-event-choice-grid.expedition-rune-choice-grid button:hover:not(:disabled) {
+    border-color: rgba(233, 223, 189, 0.16);
+    background: linear-gradient(180deg, rgba(22, 45, 24, 0.92), rgba(4, 12, 7, 0.96));
+    box-shadow: none;
+    transform: none;
+  }
 }
 
 .expedition-rune-sequence i.done {
