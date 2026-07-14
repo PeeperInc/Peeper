@@ -48,18 +48,43 @@ function HungerBar({ hunger, alive }) {
   );
 }
 
-export default function FamilyProfile({ familyId, onBack, onViewProfile }) {
+export default function FamilyProfile({ familyId, inviteCode = null, onBack, onViewProfile, onJoined }) {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
+  const [viewerFamily, setViewerFamily] = useState(null);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState('');
 
   useEffect(() => {
     setLoading(true);
-    api.getFamilyProfile(familyId)
-      .then(r => setData(r))
+    Promise.all([
+      api.getFamilyProfile(familyId),
+      inviteCode ? api.getMyFamily().catch(() => ({ family: null })) : Promise.resolve({ family: null }),
+    ])
+      .then(([profile, mine]) => {
+        setData(profile);
+        setViewerFamily(mine?.family || null);
+      })
       .catch(e => setError(e.message || 'Failed to load family'))
       .finally(() => setLoading(false));
-  }, [familyId]);
+  }, [familyId, inviteCode]);
+
+  async function handleJoin() {
+    if (!inviteCode || joining) return;
+    if (!window.confirm(`Join ${data?.family?.name || 'this family'}?`)) return;
+    setJoining(true);
+    setJoinError('');
+    try {
+      const result = await api.joinFamily(inviteCode);
+      setViewerFamily(result.family);
+      onJoined?.(result.family);
+    } catch (joinFailure) {
+      setJoinError(joinFailure.message || 'Could not join this family');
+    } finally {
+      setJoining(false);
+    }
+  }
 
   if (loading) return (
     <div style={{ padding: 16 }}>
@@ -92,7 +117,19 @@ export default function FamilyProfile({ familyId, onBack, onViewProfile }) {
             {stats.member_count}/10 members
           </div>
         </div>
+        {inviteCode && !viewerFamily && stats.member_count < 10 && (
+          <button type="button" className="btn btn-primary" onClick={handleJoin} disabled={joining}>
+            {joining ? 'Joining...' : 'Join Family'}
+          </button>
+        )}
       </div>
+
+      {inviteCode && viewerFamily && Number(viewerFamily.id) !== Number(family.id) && (
+        <div style={{ margin: '0 16px 12px', padding: 9, border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 11 }}>
+          Leave your current family before joining another one.
+        </div>
+      )}
+      {joinError && <div style={{ margin: '0 16px 12px', color: 'var(--danger)', fontSize: 11 }}>{joinError}</div>}
 
       {/* Stats */}
       <div style={{ display: 'flex', gap: 8, padding: '0 16px 14px' }}>

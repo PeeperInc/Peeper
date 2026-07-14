@@ -371,6 +371,34 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS global_messages (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message       TEXT NOT NULL,
+    message_type  TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'family_invite')),
+    reply_to_id   INTEGER REFERENCES global_messages(id) ON DELETE SET NULL,
+    family_id     INTEGER REFERENCES families(id) ON DELETE SET NULL,
+    sent_at       INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS global_chat_mutes (
+    user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    muted_by     INTEGER NOT NULL REFERENCES users(id),
+    muted_until  INTEGER,
+    created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS global_chat_reads (
+    user_id               INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    last_read_message_id  INTEGER NOT NULL DEFAULT 0,
+    read_at               INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_global_messages_sent ON global_messages(id DESC);
+  CREATE INDEX IF NOT EXISTS idx_global_messages_user_sent ON global_messages(user_id, sent_at DESC);
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS family_expeditions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,

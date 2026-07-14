@@ -14,6 +14,7 @@ import FamilyScreen   from './screens/FamilyScreen';
 import OutfitsScreen  from './screens/OutfitsScreen';
 import FamilyProfile  from './components/FamilyProfile';
 import AdminScreen      from './screens/AdminScreen';
+import GlobalChatScreen from './screens/GlobalChatScreen';
 
 // ── Tabs config ─────────────────────────────────────────────────────────────
 const BASE_TABS = [
@@ -22,6 +23,7 @@ const BASE_TABS = [
   { id: 'family',      label: 'Family',     icon: '👨‍👩‍👧' },
   { id: 'gift',        label: 'Gift',       icon: '🎁' },
   { id: 'leaderboard', label: 'Ranks',      icon: '🏆' },
+  { id: 'chat',        label: 'Chat',       icon: '💬' },
 ];
 
 // ── Telegram SDK initialization ──────────────────────────────────────────────
@@ -135,9 +137,11 @@ function AppContent() {
   const [activeTab,       setActiveTab]       = useState('home');
   const [showProfile,     setShowProfile]     = useState(false);
   const [viewingFamilyId, setViewingFamilyId] = useState(null);
+  const [viewingFamilyInviteCode, setViewingFamilyInviteCode] = useState(null);
   const [profileUserId,   setProfileUserId]   = useState(null);  // null = own profile
   const [giftRecipient,   setGiftRecipient]   = useState(null);  // pre-fill gift recipient
   const [familyUnreadCount, setFamilyUnreadCount] = useState(0);
+  const [globalUnreadCount, setGlobalUnreadCount] = useState(0);
   const [blackjackInviteToken, setBlackjackInviteToken] = useState(null);
   const [arenaInviteToken, setArenaInviteToken] = useState(null);
   const [gameplayOpen, setGameplayOpen] = useState(false);
@@ -182,6 +186,29 @@ function AppContent() {
     fetchFamilyUnread();
   }, [fetchFamilyUnread]);
 
+  const fetchGlobalUnread = useCallback(async () => {
+    if (!user?.id) {
+      setGlobalUnreadCount(0);
+      return;
+    }
+    try {
+      const result = await api.getGlobalUnread();
+      setGlobalUnreadCount(result?.unreadCount || 0);
+    } catch {
+      // ignore
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchGlobalUnread();
+  }, [fetchGlobalUnread]);
+
+  useEffect(() => {
+    if (!user?.id || activeTab === 'chat' || shouldPauseAppPolling({ gameplayOpen })) return;
+    const interval = setInterval(fetchGlobalUnread, 15000);
+    return () => clearInterval(interval);
+  }, [activeTab, fetchGlobalUnread, gameplayOpen, user?.id]);
+
   useEffect(() => {
     if (!user?.id || activeTab === 'family' || shouldPauseAppPolling({ gameplayOpen })) return;
     const interval = setInterval(fetchFamilyUnread, 15000);
@@ -197,9 +224,7 @@ function AppContent() {
 
   // isAdmin imported from adminConfig.js — single source of truth
   const userIsAdmin = isAdmin(user);
-  const TABS = userIsAdmin
-    ? [...BASE_TABS, { id: 'admin', label: 'Admin', icon: '🛠️' }]
-    : BASE_TABS;
+  const TABS = BASE_TABS;
 
   // Check Telegram environment
   // SDK loads async — wait up to 3s for window.Telegram to appear
@@ -304,6 +329,7 @@ function AppContent() {
             }}
             onViewFamily={(familyId) => {
               setViewingFamilyId(familyId);
+              setViewingFamilyInviteCode(null);
               setShowProfile(false);
             }}
           />
@@ -327,6 +353,7 @@ function AppContent() {
             topGifts={topGifts}
             hasNewGifts={hasNewGifts}
             onGiftSeen={handleGiftSeen}
+            onAdminOpen={userIsAdmin ? () => setActiveTab('admin') : null}
           />
         </div>
         {viewingFamilyId && (
@@ -339,9 +366,16 @@ function AppContent() {
         }}>
           <FamilyProfile
             familyId={viewingFamilyId}
-            onBack={() => setViewingFamilyId(null)}
+            inviteCode={viewingFamilyInviteCode}
+            onBack={() => { setViewingFamilyId(null); setViewingFamilyInviteCode(null); }}
+            onJoined={() => {
+              setViewingFamilyId(null);
+              setViewingFamilyInviteCode(null);
+              setActiveTab('family');
+            }}
             onViewProfile={(uid) => {
               setViewingFamilyId(null);
+              setViewingFamilyInviteCode(null);
               setProfileUserId(uid);
               setShowProfile(true);
             }}
@@ -358,6 +392,20 @@ function AppContent() {
         )}
         {activeTab === 'gift'        && <GiftScreen initialRecipient={giftRecipient} key={giftRecipient?.id ?? 'no-recipient'} />}
         {activeTab === 'leaderboard' && <LeaderboardScreen onViewProfile={(id) => openProfile(id)} />}
+        {activeTab === 'chat'        && (
+          <GlobalChatScreen
+            onViewProfile={(id) => openProfile(id)}
+            onSendGift={(recipient) => {
+              setGiftRecipient(recipient);
+              setActiveTab('gift');
+            }}
+            onOpenFamily={({ familyId, inviteCode }) => {
+              setViewingFamilyId(familyId);
+              setViewingFamilyInviteCode(inviteCode || null);
+            }}
+            onUnreadChange={setGlobalUnreadCount}
+          />
+        )}
         {activeTab === 'admin'       && <AdminScreen />}
       </div>
 
@@ -372,6 +420,7 @@ function AppContent() {
             <span className="tab-icon-wrap">
               <span className="tab-icon">{tab.icon}</span>
               {tab.id === 'family' && familyUnreadCount > 0 && <span className="tab-notification-dot" />}
+              {tab.id === 'chat' && globalUnreadCount > 0 && <span className="tab-notification-dot" />}
             </span>
             <span>{tab.label}</span>
           </button>

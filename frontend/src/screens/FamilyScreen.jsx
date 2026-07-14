@@ -345,6 +345,7 @@ function InviteSheet({ family, memberCount, onClose, onInvited }) {
   const [searching, setSearching] = useState(false);
   const [confirm, setConfirm]     = useState(null);
   const [sending, setSending]     = useState(false);
+  const [postingToChat, setPostingToChat] = useState(false);
   const [toast, setToast]         = useState('');
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 2500); }
@@ -375,6 +376,19 @@ function InviteSheet({ family, memberCount, onClose, onInvited }) {
     finally { setSending(false); }
   }
 
+  async function handlePostToChat() {
+    if (postingToChat) return;
+    setPostingToChat(true);
+    try {
+      const result = await api.postFamilyInviteToGlobalChat();
+      showToast(result.message || 'Invitation posted in Global Chat');
+    } catch (error) {
+      showToast(error.message || 'Could not post invitation');
+    } finally {
+      setPostingToChat(false);
+    }
+  }
+
   return (
     <BottomSheet
       onClose={onClose}
@@ -389,6 +403,18 @@ function InviteSheet({ family, memberCount, onClose, onInvited }) {
         <div style={{ fontSize: 13, color: 'var(--text-hint)', marginBottom: 16 }}>
           {memberCount}/10 members · {10 - memberCount} slot{10 - memberCount !== 1 ? 's' : ''} available
         </div>
+
+        <button
+          type="button"
+          className="btn btn-primary btn-full"
+          onClick={handlePostToChat}
+          disabled={postingToChat || memberCount >= 10}
+          style={{ marginBottom: 14 }}
+        >
+          {postingToChat ? 'Posting...' : '💬 Post Invitation in Global Chat'}
+        </button>
+
+        <div className="section-label" style={{ padding: 0, marginBottom: 8 }}>Invite a specific player</div>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <input className="search-input" style={{ flex: 1 }}
@@ -782,7 +808,9 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
   const [messages, setMessages]   = useState([]);
   const [input, setInput]         = useState('');
   const [sending, setSending]     = useState(false);
-  const bottomRef = useRef(null);
+  const messagesRef = useRef(null);
+  const stickToBottomRef = useRef(true);
+  const initializedRef = useRef(false);
   const intervalRef = useRef(null);
   const onMessagesReadRef = useRef(onMessagesRead);
 
@@ -793,10 +821,19 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
   const loadMessages = useCallback(async () => {
     try {
       const r = await api.getFamilyMessages();
-      setMessages(r.messages || []);
+      const nextMessages = r.messages || [];
+      const shouldScroll = !initializedRef.current || stickToBottomRef.current;
+      initializedRef.current = true;
+      setMessages(nextMessages);
+      if (shouldScroll) {
+        window.requestAnimationFrame(() => {
+          const container = messagesRef.current;
+          if (container) container.scrollTop = container.scrollHeight;
+        });
+      }
       await api.markFamilyMessagesRead();
       onMessagesReadRef.current?.();
-      return r.messages || [];
+      return nextMessages;
     } catch {}
   }, []);
 
@@ -806,10 +843,6 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
     return () => clearInterval(intervalRef.current);
   }, [loadMessages]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   async function handleSend() {
     const msg = input.trim();
     if (!msg || sending) return;
@@ -817,6 +850,7 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
     try {
       await api.sendFamilyMessage(msg);
       setInput('');
+      stickToBottomRef.current = true;
       await loadMessages();
     } catch (e) {
       // ignore
@@ -834,7 +868,16 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px' }}>
+      <div
+        ref={messagesRef}
+        onScroll={() => {
+          const container = messagesRef.current;
+          if (!container) return;
+          const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+          stickToBottomRef.current = distance < 72;
+        }}
+        style={{ flex: 1, overflowY: 'auto', padding: '8px 16px' }}
+      >
         {messages.length === 0 && (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-hint)', fontSize: 13 }}>
             No messages yet.<br/>Say hi to your family! 👋
@@ -870,7 +913,6 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
             </div>
           );
         })}
-        <div ref={bottomRef} />
       </div>
 
       {/* Input */}

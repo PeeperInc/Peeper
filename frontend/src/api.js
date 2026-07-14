@@ -120,6 +120,13 @@ export const sendGift = (recipientId, giftId, message = null, isPrivate = false)
 export const getUserGifts = (userId) => get(`/gifts/received/${userId}`);
 export const markGiftSeen = (giftId) => post(`/gifts/seen/${giftId}`, {});
 
+export const getGlobalMessages = () => get('/chat/messages');
+export const getGlobalUnread = () => get('/chat/unread');
+export const markGlobalMessagesRead = () => post('/chat/read', {});
+export const sendGlobalMessage = (message, replyToId = null) => post('/chat/message', { message, replyToId });
+export const postFamilyInviteToGlobalChat = () => post('/chat/family-invite', {});
+export const muteGlobalChatUser = (userId, duration) => post('/chat/mute', { userId, duration });
+
 export const searchUsers = (q) => get(`/users/search?q=${encodeURIComponent(q)}`);
 export const getUserProfile = (userId) => get(`/users/${userId}/profile`);
 export const getLongevityBoard = () => get('/users/leaderboard/longevity');

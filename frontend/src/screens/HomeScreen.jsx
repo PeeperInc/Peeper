@@ -380,7 +380,7 @@ function FoodMenu({ hunger, energy, coins, energyDrink, fridge, onSelect, onClos
   );
 }
 
-function HintSheet({ onClose, showToast, refreshGameState }) {
+function HintSheet({ onClose, showToast, refreshGameState, onAdminOpen }) {
   const [donationOpen, setDonationOpen] = useState(false);
   const [donationLoading, setDonationLoading] = useState(null);
 
@@ -517,6 +517,17 @@ function HintSheet({ onClose, showToast, refreshGameState }) {
       >
         📢 Game Updates Channel
       </button>
+
+      {onAdminOpen && (
+        <button
+          type="button"
+          className="btn btn-secondary btn-full"
+          onClick={() => { onClose(); onAdminOpen(); }}
+          style={{ marginTop: 12, minHeight: 42 }}
+        >
+          🛠️ Admin Panel
+        </button>
+      )}
 
       <button
         onClick={onClose}
@@ -808,6 +819,7 @@ export default function HomeScreen({
   isActive = true,
   topGifts = [],
   hasNewGifts = false,
+  onAdminOpen = null,
 }) {
   const {
     user,
@@ -1468,6 +1480,7 @@ export default function HomeScreen({
           onClose={() => setShowHint(false)}
           showToast={showToast}
           refreshGameState={refreshGameState}
+          onAdminOpen={onAdminOpen}
         />
       )}
       {loadingGame && <GameLoadingOverlay gameId={loadingGame} />}

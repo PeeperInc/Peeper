@@ -5,6 +5,7 @@ const fs       = require('fs');
 const multer   = require('multer');
 const db       = require('../database');
 const { validateTelegramInit } = require('../auth');
+const { isAdminTelegramId } = require('../adminAccess');
 const { bustAssetCache, getPublicAppSettings } = require('../appSettings');
 const {
   HOME_ALLOWED_SLOTS,
@@ -14,13 +15,7 @@ const {
 } = require('../homeConstants');
 
 // Admin access by Telegram ID — stable, works regardless of username privacy settings
-const ADMIN_IDS = ['179221945', '6041075358', '5331682988', '6290708617'];
 const PROD_HTML_DIR = '/var/www/peeper.frenzyradio.online/html';
-const DEV_ADMIN_ID = '999999';
-
-function isLocalDevAdmin(telegramId) {
-  return process.env.NODE_ENV !== 'production' && String(telegramId) === DEV_ADMIN_ID;
-}
 
 function getLocalAssetRoot() {
   const sharedHtml = path.join(__dirname, '../../html');
@@ -87,7 +82,7 @@ function validateHomeImageSize(filePath) {
 
 function requireAdmin(req, res, next) {
   const telegramId = String(req.telegramUser?.id || '');
-  if (!ADMIN_IDS.includes(telegramId) && !isLocalDevAdmin(telegramId)) {
+  if (!isAdminTelegramId(telegramId)) {
     return res.status(403).json({ error: 'Forbidden — admin only' });
   }
   next();
