@@ -141,6 +141,7 @@ function AppContent() {
   const [profileUserId,   setProfileUserId]   = useState(null);  // null = own profile
   const [giftRecipient,   setGiftRecipient]   = useState(null);  // pre-fill gift recipient
   const [familyUnreadCount, setFamilyUnreadCount] = useState(0);
+  const [familyAvailableAp, setFamilyAvailableAp] = useState(0);
   const [globalUnreadCount, setGlobalUnreadCount] = useState(0);
   const [blackjackInviteToken, setBlackjackInviteToken] = useState(null);
   const [arenaInviteToken, setArenaInviteToken] = useState(null);
@@ -172,19 +173,20 @@ function AppContent() {
   const fetchFamilyUnread = useCallback(async () => {
     if (!user?.id) {
       setFamilyUnreadCount(0);
+      setFamilyAvailableAp(0);
       return;
     }
     try {
-      const result = await api.getFamilyUnread();
-      setFamilyUnreadCount(result?.unreadCount || 0);
+      const [unreadResult, expeditionResult] = await Promise.all([
+        api.getFamilyUnread(),
+        api.getExpeditionBadge(),
+      ]);
+      setFamilyUnreadCount(unreadResult?.unreadCount || 0);
+      setFamilyAvailableAp(expeditionResult?.hasAvailableAp ? Number(expeditionResult.availableAp || 0) : 0);
     } catch {
       // ignore
     }
   }, [user?.id]);
-
-  useEffect(() => {
-    fetchFamilyUnread();
-  }, [fetchFamilyUnread]);
 
   const fetchGlobalUnread = useCallback(async () => {
     if (!user?.id) {
@@ -210,7 +212,8 @@ function AppContent() {
   }, [activeTab, fetchGlobalUnread, gameplayOpen, user?.id]);
 
   useEffect(() => {
-    if (!user?.id || activeTab === 'family' || shouldPauseAppPolling({ gameplayOpen })) return;
+    if (!user?.id || shouldPauseAppPolling({ gameplayOpen })) return;
+    fetchFamilyUnread();
     const interval = setInterval(fetchFamilyUnread, 15000);
     return () => clearInterval(interval);
   }, [user?.id, activeTab, fetchFamilyUnread, gameplayOpen]);
@@ -420,7 +423,14 @@ function AppContent() {
             <span className="tab-icon-wrap">
               <span className="tab-icon">{tab.icon}</span>
               {tab.id === 'family' && familyUnreadCount > 0 && <span className="tab-notification-dot" />}
-              {tab.id === 'chat' && globalUnreadCount > 0 && <span className="tab-notification-dot" />}
+              {tab.id === 'family' && familyAvailableAp > 0 && (
+                <span className="tab-expedition-ap-badge" aria-label={`${familyAvailableAp} expedition AP available`}>AP</span>
+              )}
+              {tab.id === 'chat' && globalUnreadCount > 0 && (
+                <span className="tab-unread-badge" aria-label={`${globalUnreadCount} unread Global Chat messages`}>
+                  {globalUnreadCount > 99 ? '99+' : globalUnreadCount}
+                </span>
+              )}
             </span>
             <span>{tab.label}</span>
           </button>

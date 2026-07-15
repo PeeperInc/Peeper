@@ -378,6 +378,33 @@ router.get('/current', (req, res) => {
   return res.json(serializeFor(req.currentUser, family, snapshot, !active));
 });
 
+router.get('/badge', (req, res) => {
+  const family = getCurrentFamily(req.currentUser.id);
+  if (!family) return res.json({ hasFamily: false, availableAp: 0, hasAvailableAp: false });
+
+  const expedition = getUnfinishedExpedition(family.id);
+  if (!expedition || expedition.status !== 'active') {
+    return res.json({ hasFamily: true, availableAp: 0, hasAvailableAp: false });
+  }
+
+  const member = db.prepare(`
+    SELECT ap, ap_regen_day, ap_regen_at
+    FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = ?
+  `).get(expedition.id, req.currentUser.id);
+  const availableAp = member ? regenerateAp({
+    ap: member.ap,
+    apRegenDay: member.ap_regen_day,
+    apRegenAt: member.ap_regen_at,
+  }).ap : 0;
+
+  return res.json({
+    hasFamily: true,
+    availableAp,
+    hasAvailableAp: availableAp > 0,
+  });
+});
+
 router.post('/events/ack', (req, res) => {
   const idempotencyKey = requireIdempotencyKey(req, res);
   if (!idempotencyKey) return;

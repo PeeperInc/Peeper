@@ -14,6 +14,96 @@ const MUTE_OPTIONS = [
   ['forever', 'Forever'],
 ];
 
+function ReplyIcon({ size = 17 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M9.5 7 4 12l5.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 12h7.25C16.53 12 20 15.1 20 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SwipeReplyMessage({ isMe, onReply, children }) {
+  const [offset, setOffset] = useState(0);
+  const gestureRef = useRef(null);
+  const suppressClickRef = useRef(false);
+
+  function resetGesture() {
+    gestureRef.current = null;
+    setOffset(0);
+  }
+
+  function handlePointerDown(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      horizontal: false,
+    };
+  }
+
+  function handlePointerMove(event) {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+
+    if (!gesture.horizontal) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+        resetGesture();
+        return;
+      }
+      if (dx > -8 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
+      gesture.horizontal = true;
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+
+    event.preventDefault();
+    setOffset(Math.min(68, Math.max(0, -dx)));
+  }
+
+  function handlePointerEnd(event) {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const swipeDistance = Math.max(0, gesture.startX - event.clientX);
+    const shouldReply = gesture.horizontal && swipeDistance >= 46;
+    suppressClickRef.current = gesture.horizontal;
+    window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    resetGesture();
+    if (shouldReply) {
+      window.Telegram?.WebApp?.HapticFeedback?.selectionChanged?.();
+      onReply();
+    }
+  }
+
+  function handleClickCapture(event) {
+    if (!suppressClickRef.current) return;
+    suppressClickRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  return (
+    <div
+      className={`global-chat-swipe-shell${isMe ? ' is-me' : ''}${offset >= 46 ? ' is-armed' : ''}`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={resetGesture}
+      onClickCapture={handleClickCapture}
+    >
+      <span className="global-chat-swipe-action"><ReplyIcon size={18} /></span>
+      <article
+        className={`global-chat-message${isMe ? ' is-me' : ''}`}
+        style={{ transform: `translate3d(${-offset}px, 0, 0)` }}
+      >
+        {children}
+      </article>
+    </div>
+  );
+}
+
 function formatMessageTime(value) {
   const date = new Date(Number(value) * 1000);
   const day = String(date.getDate()).padStart(2, '0');
@@ -218,15 +308,20 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
   return (
     <main className="global-chat-screen">
       <header className="global-chat-header">
-        <div>
-          <span>WORLD CHANNEL</span>
-          <h1>Global Chat</h1>
+        <div className="global-chat-header-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M7 8.5h18v12H14l-5.5 4v-4H7z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
+            <path d="M11 13h10M11 17h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
         </div>
-        <div className="global-chat-header-rules">
-          <strong>50</strong>
-          <span>messages</span>
-          <b>5s</b>
-          <span>slow mode</span>
+        <div className="global-chat-header-copy">
+          <span>PEEPER NETWORK</span>
+          <h1>Global Chat</h1>
+          <p>Talk with players across the world</p>
+        </div>
+        <div className="global-chat-live" aria-label="Global Chat is live">
+          <i />
+          <span>LIVE</span>
         </div>
       </header>
 
@@ -238,7 +333,7 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
         {messages.map(message => {
           const isMe = Number(message.user_id) === Number(user?.id);
           return (
-            <article key={message.id} className={`global-chat-message${isMe ? ' is-me' : ''}`}>
+            <SwipeReplyMessage key={message.id} isMe={isMe} onReply={() => setReplyTo(message)}>
               {!isMe && <ChatAvatar user={message} onClick={() => setSelectedUser(message)} />}
               <div className="global-chat-message-body">
                 {!isMe && (
@@ -272,10 +367,12 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
                 </div>
                 <div className="global-chat-message-meta">
                   <span>{formatMessageTime(message.sent_at)}</span>
-                  <button type="button" onClick={() => setReplyTo(message)}>Reply</button>
+                  <button type="button" onClick={() => setReplyTo(message)} aria-label={`Reply to ${message.first_name || 'message'}`}>
+                    <ReplyIcon />
+                  </button>
                 </div>
               </div>
-            </article>
+            </SwipeReplyMessage>
           );
         })}
       </section>
