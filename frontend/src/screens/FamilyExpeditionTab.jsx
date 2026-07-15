@@ -542,10 +542,10 @@ function PreparationFlow({ state, loading, onPrepare }) {
       {picker === 'role' && (
         <ExpeditionOverlay title="Choose Class" kicker="Your expedition role" onClose={() => setPicker(null)}>
           <div className="expedition-picker-list">
-            {roleEntries.map(([id, meta]) => (
+            {roleEntries.map(([id]) => (
               <button type="button" key={id} className={role === id ? 'selected' : ''} onClick={() => { setRole(id); setPicker(null); }}>
                 {roleImage(id) ? <img src={roleImage(id)} alt="" /> : <span>{roleCopy[id]?.[0]}</span>}
-                <div><strong>{titleize(id)}</strong><small>{titleize(meta?.stat)} +{meta?.bonus ?? 0}</small><p>{roleCopy[id]?.[2]}</p></div>
+                <div><strong>{titleize(id)}</strong><p>{roleCopy[id]?.[2]}</p></div>
               </button>
             ))}
           </div>
