@@ -74,17 +74,18 @@ function addBossRoom(expeditionId, state = 'locked') {
 
 function prepareMember(expeditionId, userId, overrides = {}) {
   const {
-    ap = 3,
+    ap = 5,
     apRegenDay = NOW_DAY_KEY,
+    apRegenAt = NOW,
     bossRewardClaimedAt = null,
     contributionAp = 3,
   } = overrides;
 
   db.prepare(`
     INSERT INTO family_expedition_members (
-      expedition_id, user_id, role, ap, ap_regen_day, role_ability_day, prepared_at, boss_reward_claimed_at, contribution_ap
-    ) VALUES (?, ?, 'scout', ?, ?, ?, ?, ?, ?)
-  `).run(expeditionId, userId, ap, apRegenDay, NOW_DAY_KEY, NOW - 1800, bossRewardClaimedAt, contributionAp);
+      expedition_id, user_id, role, ap, ap_regen_day, ap_regen_at, role_ability_day, prepared_at, boss_reward_claimed_at, contribution_ap
+    ) VALUES (?, ?, 'scout', ?, ?, ?, ?, ?, ?, ?)
+  `).run(expeditionId, userId, ap, apRegenDay, apRegenAt, NOW_DAY_KEY, NOW - 1800, bossRewardClaimedAt, contributionAp);
 }
 
 async function collectNotifications(now = NOW) {
@@ -111,7 +112,7 @@ test('expedition notifications respect the expedition_notifications setting', as
   const familyId = createFamilyWithUsers([userId]);
   const expeditionId = createExpedition({ familyId });
   addBossRoom(expeditionId, 'unlocked');
-  prepareMember(expeditionId, userId, { ap: 6 });
+  prepareMember(expeditionId, userId, { ap: 5 });
   db.prepare(`
     INSERT INTO user_notification_settings (user_id, expedition_notifications)
     VALUES (?, 0)
@@ -124,40 +125,40 @@ test('expedition notifications respect the expedition_notifications setting', as
   assert.equal(wasSent(userId, expeditionType('expedition_boss_ready', expeditionId)), false);
 });
 
-test('AP full notification is one-shot until AP drops below six', async () => {
+test('AP full notification is one-shot until AP drops below five', async () => {
   const userId = createUser('tg-ap', 'Nyx');
   const familyId = createFamilyWithUsers([userId]);
   const expeditionId = createExpedition({ familyId });
-  prepareMember(expeditionId, userId, { ap: 6 });
+  prepareMember(expeditionId, userId, { ap: 5 });
 
   assert.equal((await collectNotifications()).length, 1);
   assert.equal(wasSent(userId, expeditionType('expedition_ap_full', expeditionId)), true);
   assert.equal((await collectNotifications()).length, 0);
 
   db.prepare(`
-    UPDATE family_expedition_members SET ap = 5
+    UPDATE family_expedition_members SET ap = 4
     WHERE expedition_id = ? AND user_id = ?
   `).run(expeditionId, userId);
   assert.equal((await collectNotifications()).length, 0);
   assert.equal(wasSent(userId, expeditionType('expedition_ap_full', expeditionId)), false);
 
   db.prepare(`
-    UPDATE family_expedition_members SET ap = 6
+    UPDATE family_expedition_members SET ap = 5, ap_regen_at = ?
     WHERE expedition_id = ? AND user_id = ?
-  `).run(expeditionId, userId);
+  `).run(NOW, expeditionId, userId);
   assert.equal((await collectNotifications()).length, 1);
 });
 
-test('AP full notification uses lazily regenerated expedition AP', async () => {
+test('AP full notification uses hourly lazily regenerated expedition AP', async () => {
   const userId = createUser('tg-ap-regen', 'Lio');
   const familyId = createFamilyWithUsers([userId]);
   const expeditionId = createExpedition({ familyId });
-  prepareMember(expeditionId, userId, { ap: 5, apRegenDay: NOW_DAY_KEY - 1 });
+  prepareMember(expeditionId, userId, { ap: 4, apRegenAt: NOW - 3600 });
 
   const sent = await collectNotifications();
 
   assert.equal(sent.length, 1);
-  assert.match(sent[0].text, /AP is full/i);
+  assert.match(sent[0].text, /AP is full \(5\/5\)/i);
   assert.equal(wasSent(userId, expeditionType('expedition_ap_full', expeditionId)), true);
 });
 
@@ -166,7 +167,7 @@ test('boss ready notification sends to prepared members when the boss room is un
   const familyId = createFamilyWithUsers([userId]);
   const expeditionId = createExpedition({ familyId });
   addBossRoom(expeditionId, 'unlocked');
-  prepareMember(expeditionId, userId);
+  prepareMember(expeditionId, userId, { ap: 4 });
 
   const sent = await collectNotifications();
 
@@ -190,8 +191,8 @@ test('boss reward notification sends after victory until claimed', async () => {
   const familyId = createFamilyWithUsers([userId, inactiveUserId]);
   const expeditionId = createExpedition({ familyId, status: 'boss_defeated', bossDefeatedAt: NOW - 60 });
   addBossRoom(expeditionId, 'cleared');
-  prepareMember(expeditionId, userId, { bossRewardClaimedAt: null });
-  prepareMember(expeditionId, inactiveUserId, { bossRewardClaimedAt: null, contributionAp: 2 });
+  prepareMember(expeditionId, userId, { ap: 4, bossRewardClaimedAt: null });
+  prepareMember(expeditionId, inactiveUserId, { ap: 4, bossRewardClaimedAt: null, contributionAp: 2 });
 
   const sent = await collectNotifications();
 

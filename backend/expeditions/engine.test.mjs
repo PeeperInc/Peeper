@@ -352,33 +352,33 @@ function failMinigameAttempt(scenario, suffix, now) {
   }));
 }
 
-test('UTC day keys and AP regeneration add one AP every three hours and cap at five', () => {
+test('UTC day keys and AP regeneration add one AP every hour and cap at five', () => {
   assert.equal(utcDayKey(Date.UTC(2026, 5, 23, 23, 59, 59)), 20627);
   const startedAt = Math.floor(Date.UTC(2026, 5, 23, 0, 0, 0) / 1000);
-  assert.deepEqual(regenerateAp({ ap: 1, apRegenAt: startedAt }, startedAt + 6 * 60 * 60), {
+  assert.deepEqual(regenerateAp({ ap: 1, apRegenAt: startedAt }, startedAt + 2 * 60 * 60), {
     ap: 3,
-    apRegenAt: startedAt + 6 * 60 * 60,
-    apRegenDay: utcDayKey(startedAt + 6 * 60 * 60),
+    apRegenAt: startedAt + 2 * 60 * 60,
+    apRegenDay: utcDayKey(startedAt + 2 * 60 * 60),
   });
-  assert.deepEqual(regenerateAp({ ap: 4, apRegenAt: startedAt }, startedAt + 2 * 60 * 60), {
+  assert.deepEqual(regenerateAp({ ap: 4, apRegenAt: startedAt }, startedAt + 30 * 60), {
     ap: 4,
     apRegenAt: startedAt,
     apRegenDay: utcDayKey(startedAt),
   });
-  assert.deepEqual(regenerateAp({ ap: 4, apRegenAt: startedAt }, startedAt + 9 * 60 * 60), {
+  assert.deepEqual(regenerateAp({ ap: 4, apRegenAt: startedAt }, startedAt + 3 * 60 * 60), {
     ap: 5,
-    apRegenAt: startedAt + 9 * 60 * 60,
-    apRegenDay: utcDayKey(startedAt + 9 * 60 * 60),
+    apRegenAt: startedAt + 3 * 60 * 60,
+    apRegenDay: utcDayKey(startedAt + 3 * 60 * 60),
   });
-  assert.deepEqual(regenerateAp({ ap: 5, apRegenAt: startedAt }, startedAt + 9 * 60 * 60), {
+  assert.deepEqual(regenerateAp({ ap: 5, apRegenAt: startedAt }, startedAt + 3 * 60 * 60), {
     ap: 5,
-    apRegenAt: startedAt + 9 * 60 * 60,
-    apRegenDay: utcDayKey(startedAt + 9 * 60 * 60),
+    apRegenAt: startedAt + 3 * 60 * 60,
+    apRegenDay: utcDayKey(startedAt + 3 * 60 * 60),
   });
-  assert.deepEqual(regenerateAp({ ap: 1, apRegenAt: startedAt }, startedAt + 10 * 60 * 60), {
+  assert.deepEqual(regenerateAp({ ap: 1, apRegenAt: startedAt }, startedAt + 3 * 60 * 60 + 30 * 60), {
     ap: 4,
-    apRegenAt: startedAt + 9 * 60 * 60,
-    apRegenDay: utcDayKey(startedAt + 9 * 60 * 60),
+    apRegenAt: startedAt + 3 * 60 * 60,
+    apRegenDay: utcDayKey(startedAt + 3 * 60 * 60),
   });
 });
 

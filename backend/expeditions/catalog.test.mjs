@@ -36,7 +36,7 @@ test('root king catalog exposes the approved constants and role rules', () => {
   assert.equal(THEME_ID, 'root_king');
   assert.equal(DAILY_AP, 5);
   assert.equal(MAX_AP, 5);
-  assert.equal(AP_REGEN_SECONDS, 3 * 60 * 60);
+  assert.equal(AP_REGEN_SECONDS, 60 * 60);
   assert.deepEqual(ROLES, {
     knight: { ability: 'shield_wall' },
     scout: { ability: 'reveal_room' },

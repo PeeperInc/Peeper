@@ -15,7 +15,8 @@ const db      = require('./database');
 const { liveStats } = require('./gameLogic');
 const { isNotificationEnabled } = require('./notificationSettings');
 const { getFarmCropReadiness, getFarmAnimalReadiness } = require('./farmState');
-const { regenerateAp, utcDayKey } = require('./expeditions/engine');
+const { regenerateAp } = require('./expeditions/engine');
+const { MAX_AP } = require('./expeditions/catalog');
 
 const INTERVAL_MS = 60 * 1000;
 const APP_URL     = 'https://peeper.frenzyradio.online';
@@ -35,7 +36,7 @@ const COOLDOWNS = {
   expedition_finished: 0,   // once while a recent finish is visible
 };
 
-const EXPEDITION_AP_CAP = 6;
+const EXPEDITION_AP_CAP = MAX_AP;
 const EXPEDITION_FINISHED_RECENT_SECONDS = 24 * 3600;
 
 let botToken = null;
@@ -157,10 +158,10 @@ async function sendExpeditionRows({ type: baseType, rows, text, send }) {
   }
 }
 
-function getExpeditionApFullRows(currentDay = utcDayKey()) {
+function getExpeditionApFullRows(now = ts()) {
   const rows = db.prepare(`
     SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id,
-           m.ap, m.ap_regen_day AS apRegenDay
+           m.ap, m.ap_regen_day AS apRegenDay, m.ap_regen_at AS apRegenAt
     FROM family_expedition_members m
     JOIN family_expeditions e ON e.id = m.expedition_id
     JOIN users u ON u.id = m.user_id
@@ -169,7 +170,7 @@ function getExpeditionApFullRows(currentDay = utcDayKey()) {
   `).all();
 
   return rows.filter(row => (
-    regenerateAp({ ap: row.ap, apRegenDay: row.apRegenDay }, currentDay).ap >= EXPEDITION_AP_CAP
+    regenerateAp({ ap: row.ap, apRegenDay: row.apRegenDay, apRegenAt: row.apRegenAt }, now).ap >= EXPEDITION_AP_CAP
   ));
 }
 
@@ -215,15 +216,14 @@ function getExpeditionFinishedRows(now = ts()) {
 async function checkExpeditionNotifications(options = {}) {
   const now = options.now ?? ts();
   const send = options.send || sendMessage;
-  const currentDay = utcDayKey(now);
 
-  const apFullRows = getExpeditionApFullRows(currentDay);
+  const apFullRows = getExpeditionApFullRows(now);
   clearStaleExpeditionFlags('expedition_ap_full', apFullRows);
   await sendExpeditionRows({
     type: 'expedition_ap_full',
     rows: apFullRows,
     send,
-    text: () => `${String.fromCodePoint(0x26A1)} <b>Your expedition AP is full.</b>\n\nThe crypt is waiting. Spend your strength before it spoils.`,
+    text: () => `${String.fromCodePoint(0x26A1)} <b>Your expedition AP is full (${EXPEDITION_AP_CAP}/${EXPEDITION_AP_CAP}).</b>\n\nThe crypt is waiting. Spend your strength before it spoils.`,
   });
 
   const bossReadyRows = getExpeditionBossReadyRows();

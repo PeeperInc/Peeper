@@ -35,4 +35,8 @@ test('expedition notifications default to enabled', () => {
     notifications.NOTIFICATION_SETTING_META.expedition_notifications.label,
     'Expedition alerts',
   );
+  assert.match(
+    notifications.NOTIFICATION_SETTING_META.expedition_notifications.description,
+    /Full AP/,
+  );
 });

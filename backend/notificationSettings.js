@@ -38,7 +38,7 @@ const NOTIFICATION_SETTING_META = {
   },
   expedition_notifications: {
     label: 'Expedition alerts',
-    description: 'AP, boss, reward and completion alerts',
+    description: 'Full AP, boss, reward and completion alerts',
   },
 };
 

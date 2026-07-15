@@ -3,7 +3,7 @@
 const THEME_ID = 'root_king';
 const DAILY_AP = 5;
 const MAX_AP = 5;
-const AP_REGEN_SECONDS = 3 * 60 * 60;
+const AP_REGEN_SECONDS = 60 * 60;
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;

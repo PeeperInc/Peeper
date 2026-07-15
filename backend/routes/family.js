@@ -17,7 +17,7 @@ const { liveStats, FOOD_TYPES, HUNGER_DRAIN } = require('../gameLogic');
 const { syncPeeperRow } = require('../peeperState');
 const { isNotificationEnabled } = require('../notificationSettings');
 const { serializeFamilyMemberStats } = require('../familyMemberStats');
-const { regenerateAp, utcDayKey } = require('../expeditions/engine');
+const { regenerateAp } = require('../expeditions/engine');
 const { MAX_AP } = require('../expeditions/catalog');
 
 const BIG_FEAST_COST = 100;
@@ -166,14 +166,15 @@ function getFamilyExpeditionSummary(familyId, userId, nowTs = ts()) {
   }
 
   const member = db.prepare(`
-    SELECT ap, ap_regen_day, contribution_ap, boss_reward_claimed_at
+    SELECT ap, ap_regen_day, ap_regen_at, contribution_ap, boss_reward_claimed_at
     FROM family_expedition_members
     WHERE expedition_id = ? AND user_id = ?
   `).get(expedition.id, userId);
   const regenerated = member ? regenerateAp({
     ap: member.ap,
     apRegenDay: member.ap_regen_day,
-  }, utcDayKey(nowTs)) : null;
+    apRegenAt: member.ap_regen_at,
+  }, nowTs) : null;
   const boss = db.prepare(`
     SELECT state
     FROM family_expedition_rooms
