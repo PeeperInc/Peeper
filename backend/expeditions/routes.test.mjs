@@ -393,6 +393,8 @@ test('serializer returns stable camelCase state and redacts hidden/private field
       rarity: 'common',
       useType: 'expedition_passive',
       displayEffect: '+10% minigame limits and timing windows',
+      effect: { kind: 'minigame_time', multiplier: 1.1 },
+      useHint: null,
     },
   );
   assert.deepEqual(state.pendingRewards, [

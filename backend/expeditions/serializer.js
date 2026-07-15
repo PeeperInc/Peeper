@@ -249,6 +249,8 @@ function serializeArtifactCatalog() {
     rarity: artifact.rarity,
     useType: artifact.useType,
     displayEffect: artifact.displayEffect,
+    effect: clone(artifact.effect),
+    useHint: artifact.useHint,
   }));
 }
 

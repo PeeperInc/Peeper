@@ -76,6 +76,71 @@ function artifactIdFromLoadoutSlot(slot) {
   return slot?.artifactId ?? slot;
 }
 
+function hasArmedArtifact(member, effectKind, roomKey) {
+  return (member?.triggerHistory || []).some(entry => (
+    entry?.scope === 'armed'
+    && entry?.effectKind === effectKind
+    && entry?.roomKey === roomKey
+    && Number(entry?.remainingUses || 0) > 0
+  ));
+}
+
+function artifactUseReason({ artifact, room, member, mutating = false }) {
+  if (!artifact || artifact.useType !== 'active') return '';
+  if (mutating) return 'Another expedition action is still resolving.';
+  if (!room) return 'Choose a current open room first.';
+  if (room.state !== 'unlocked') return 'Active artifacts can only be used in the current open room.';
+  if (Number(member?.heroHp ?? 3) <= 0 && artifact.id !== 'phoenix_feather') {
+    return 'Your hero is knocked out. Only a Phoenix Feather can be used during recovery.';
+  }
+
+  const combat = room.type === 'boss' || ['combat', 'boss'].includes(room.encounterType || room.type);
+  const hasMinigame = Boolean(room.miniGame);
+  const armed = effectKind => hasArmedArtifact(member, effectKind, room.key);
+  const hasRoomEffect = effectType => (room.activeEffects || []).some(effect => (
+    effect?.effectType === effectType && Number(effect?.remainingUses || 0) > 0
+  ));
+  const rules = {
+    chalk_rune: () => !hasMinigame
+      ? 'Chalk Rune can only be used in a mini-game room.'
+      : armed('minigame_time_once')
+        ? 'A Chalk Rune bonus is already waiting for the next attempt in this room.'
+        : '',
+    bone_die: () => !combat
+      ? 'Bone Die can only be armed in a combat room.'
+      : armed('combat_roll_floor') ? 'A damage floor is already armed for this room.' : '',
+    wooden_shield: () => !combat
+      ? 'Wooden Shield can only be used in a combat room.'
+      : armed('prevent_personal_damage') ? 'Your hero already has personal protection armed in this room.' : '',
+    tiny_shovel: () => room.type === 'boss'
+      ? 'Tiny Shovel cannot damage a boss.'
+      : Number(room.progress || 0) >= Number(room.progressTarget || 0)
+        ? 'This room no longer needs progress.'
+        : '',
+    ration_box: () => Number(member?.heroHp ?? 3) >= 3 ? 'Your hero already has full HP.' : '',
+    rusty_lockpick: () => !hasMinigame || combat
+      ? 'Rusty Lockpick can only be used in a noncombat mini-game room.'
+      : armed('minigame_auto_success') ? 'An automatic mini-game success is already armed in this room.' : '',
+    loaded_die: () => !combat ? 'Loaded Die can only be used in a combat room.' : '',
+    warding_nail: () => !combat
+      ? 'Warding Nail can only be placed in a combat room.'
+      : hasRoomEffect('knight_shield') ? 'A shared shield is already active in this room.' : '',
+    second_chance_coin: () => !hasMinigame || combat
+      ? 'Second Chance Coin can only be placed in a noncombat mini-game room.'
+      : hasRoomEffect('bend_fate') ? 'A shared free retry is already active in this room.' : '',
+    campfire_charm: () => Number(member?.roleCharge || 0) >= 1 ? 'Your class ability is already ready.' : '',
+    phoenix_feather: () => Number(member?.heroHp ?? 3) > 0 || !member?.heroRecoverAt
+      ? 'Phoenix Feather can only be used while your hero is knocked out.'
+      : '',
+    hourglass_shard: () => Number(member?.ap || 0) >= 5 ? 'Your AP is already full.' : '',
+    crooked_compass: () => armed('bonus_artifact_roll')
+      ? 'An extra artifact reward is already armed for this room.'
+      : '',
+    fates_broken_die: () => !combat ? "Fate's Broken Die can only be used in a combat room." : '',
+  };
+  return rules[artifact.id]?.() || '';
+}
+
 function normalizeAssetId(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
@@ -615,15 +680,17 @@ function ExpeditionOverlay({ title, kicker, onClose, children, wide = false }) {
 
 function ExpeditionGuidePanel() {
   const sections = [
-    ['Getting started', 'Every family member chooses a class, one provision and up to three artifacts. You can join and help at your own pace; an expedition never fails because the family is slow.'],
-    ['AP and returning to play', 'Actions cost 1 AP. You can hold up to 5 AP and recover 1 AP every 3 hours. More active family members move the expedition faster, and active heroes receive a larger final reward.'],
-    ['Combat: d20 then damage', 'Every enemy has a visible Armor Class (AC). Roll d20 first: 1-3 lets the enemy counter for 1 HP, a result below AC misses, and AC or higher hits. Results up to 18 roll 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Only Arcane Link from another Mage can add +3 to this d20.'],
-    ['Room mini-games', 'Non-combat rooms replace the d20 with a skill challenge. Starting an attempt spends 1 AP. Failing costs that AP, but never removes HP. If the room still needs progress, you can begin another attempt immediately.'],
-    ['HP and knockout', 'Heroes have 3 HP. HP does not refill between rooms. At 0 HP your hero is knocked out for 6 hours, then returns with 3 HP. Family Prayer heals everyone and shortens active knockouts by 15%.'],
-    ['Class abilities', 'Abilities are teamwork tools. You cannot consume your own Thorn Guard or Arcane Link. Knight blocks the next hit against an ally and retaliates for 3 damage. Mage gives the next ally +3 d20 and +2 damage. Cleric heals every hero +1 HP and shortens knockouts. These three recharge in 3 hours, while Scout chooses one fully revealed future room once per expedition. Waiting buffs remain queued through mini-games.'],
-    ['Provisions', 'Your chosen meal appears beside your relics. Tap it when you want to consume it. Meals are single-use: some heal or restore AP, while others empower one roll, one room, one reward, or restore your class ability.'],
-    ['Artifacts', 'Only the three equipped slots work. Tap a relic in the top bar to read its exact effect and use it when allowed. Active relics disappear when used; expedition-long relics are consumed when the expedition ends.'],
-    ['Scout paths and rewards', 'Future rooms remain hidden. A Scout can choose the next encounter from three paths once per expedition. Rooms pay rewards when cleared, and the final reward favors heroes who spent more AP helping the family.'],
+    ['The family run', 'An expedition cannot fail or expire. One hero can finish it slowly, while an active family clears rooms much faster. Members may join after the run has started: they prepare a class, food and relics, then arrive in the family\'s current open room.'],
+    ['Preparation', 'Choose one class, one optional provision and up to three artifacts. Empty artifact slots may be filled by relics found during the run. Your choices are personal: family members do not share inventories or prepared loadouts.'],
+    ['AP and activity', 'Every combat roll or mini-game attempt costs 1 AP. You can hold 5 AP and recover 1 AP every 3 hours. AP is spent when a mini-game begins, not after it ends. The final reward quietly scales with how actively each hero helped.'],
+    ['Combat: d20 then damage', 'Each enemy shows its own Armor Class (AC). First roll d20: 1-3 causes a 1 HP counter, a final result below AC misses, and AC or higher hits. A hit up to 18 rolls 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Damage bonuses affect only the damage total; only Arcane Link from another Mage can add +3 to the d20.'],
+    ['Room mini-games', 'Noncombat rooms use one of five challenges: Dodge the Trap, Rune Sequence, Root Crossing, Focus Hold or Shade Hunt. Starting costs 1 AP. Success always adds exactly 1 room progress. Failure spends the AP but never damages HP, and another attempt becomes available immediately unless a free retry triggers.'],
+    ['HP and knockout', 'Every hero has 3 HP and HP does not refill when the family enters a new room. At 0 HP the hero is knocked out for 6 hours and cannot act, then returns with all 3 HP. A Phoenix Feather revives immediately. Family Prayer heals wounded heroes and shortens every active knockout by 15%.'],
+    ['Knight, Mage and Cleric', 'Thorn Guard protects the next ally who would take combat damage, blocks it and retaliates for 3 damage. Arcane Link gives the next ally +3 to one d20 and +2 damage if that attack hits. Family Prayer immediately heals every wounded hero by 1 HP, including the Cleric. These abilities recharge in 3 hours and cannot be consumed by their caster; queued ally buffs survive mini-game rooms.'],
+    ['Scout', 'Pathfinder is used once per expedition. It reveals three possible next rooms with the exact enemy and AC or the exact mini-game, then lets the Scout choose the family route. Warm Milk or Campfire Charm can restore the spent Pathfinder ability.'],
+    ['Provisions', 'Food is consumed only when you tap it. Carrots restore 1 AP; Tomato Soup heals 1 HP; Potato Meal adds +2 to the next hit; Lucky Breakfast adds +1 damage to every hit in the current room; Warm Milk restores the class ability; Truffle Treat upgrades the next artifact reward; Magic Squash Pie adds +3 to the next hit.'],
+    ['Artifacts', 'Only your three equipped relics work. Passive relics activate automatically for the whole expedition and are consumed when it ends. Active relics are consumed when used. Tap any relic in the top bar to see its exact effect, valid room and current availability; an unavailable relic remains safe in its slot.'],
+    ['Rooms and rewards', 'The map hides future rooms, while cleared and current rooms remain visible. Room loot is personal. Duplicate artifacts are kept as additional copies. When the Root King falls, unclaimed rewards remain available, and each hero can open a detailed reward summary later.'],
   ];
   return (
     <div className="expedition-guide-accordion">
@@ -2132,15 +2199,12 @@ function ExpeditionDashboard({
   }
 
   const artifactUse = equippedRelics.find(item => item?.artifactId === artifactUseId);
-  const artifactUseDisabledReason = artifactUse?.meta?.useType !== 'active'
-    ? ''
-    : !selectedRoom
-    ? 'Select an open room first.'
-    : selectedRoom.state !== 'unlocked'
-      ? 'Active artifacts can only be used in the current open room.'
-      : mutating
-        ? 'Another expedition action is still resolving.'
-        : '';
+  const artifactUseDisabledReason = artifactUseReason({
+    artifact: artifactUse ? { id: artifactUse.artifactId, ...artifactUse.meta } : null,
+    room: selectedRoom,
+    member,
+    mutating,
+  });
 
   return (
     <div className="expedition-dashboard">
@@ -2640,14 +2704,31 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
 
   async function handleUseArtifact(roomKey, artifactId) {
     const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, roomKey, artifactId });
-    const next = await mutateExpedition(expeditionId => api.useExpeditionArtifact(
-      expeditionId,
-      roomKey,
-      artifactId,
-      getPendingMutationKey(artifactUseIdempotencyKeysRef, signature, 'expedition-artifact'),
-    ), 'Could not use artifact');
-    if (next) clearPendingMutationKey(artifactUseIdempotencyKeysRef, signature);
-    return next;
+    if (!state?.expedition?.id) return null;
+    setMutating(true);
+    setError('');
+    try {
+      const next = await api.useExpeditionArtifact(
+        state.expedition.id,
+        roomKey,
+        artifactId,
+        getPendingMutationKey(artifactUseIdempotencyKeysRef, signature, 'expedition-artifact'),
+      );
+      setState(next);
+      setState(await api.getExpeditionCurrent());
+      clearPendingMutationKey(artifactUseIdempotencyKeysRef, signature);
+      onExpeditionChange?.();
+      return next;
+    } catch (err) {
+      if (err.status === 400 || err.status === 409) {
+        await load({ silent: true });
+        return null;
+      }
+      setError(err.message || 'Could not use artifact');
+      return null;
+    } finally {
+      setMutating(false);
+    }
   }
 
   async function handleRoleAbility(roomKey) {

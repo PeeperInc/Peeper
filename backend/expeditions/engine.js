@@ -708,6 +708,7 @@ function resolveAttempt({
       roomType: nextRoom.type,
       rawRoll,
       combatRoll: combatRollValue,
+      combatHit: combatOutcome.hit,
       critical: criticalRawRoll,
       progress: progressAwarded,
       heroHp: nextMember.heroHp,
@@ -2708,7 +2709,6 @@ function useArtifactForMember(options) {
   const artifact = ARTIFACTS[artifactId];
   if (!artifact) throw new RangeError(`Unknown artifact: ${artifactId}`);
   if (artifact.useType !== 'active') throw new RangeError(`Artifact is not active: ${artifactId}`);
-  if (artifactId !== 'phoenix_feather') assertHeroCanAct(member, now);
   const encounterType = room.encounterType || room.type;
   const roomEffects = listActiveRoomEffects(transaction, { expeditionId, roomId: room.id });
   const state = {
@@ -2730,10 +2730,15 @@ function useArtifactForMember(options) {
     role: member.role,
     roomShield: roomEffects.some(effect => effect.effectType === ROLE_EFFECT_TYPES.knight),
     roomRetry: roomEffects.some(effect => effect.effectType === ROLE_EFFECT_TYPES.mage),
+    minigameTimeBonus: Boolean(armedEffect(member, 'minigame_time_once', room.key)),
+    combatRollFloor: Boolean(armedEffect(member, 'combat_roll_floor', room.key)),
+    personalDamageShield: Boolean(armedEffect(member, 'prevent_personal_damage', room.key)),
+    minigameAutoSuccess: Boolean(armedEffect(member, 'minigame_auto_success', room.key)),
+    bonusArtifactRoll: Boolean(armedEffect(member, 'bonus_artifact_roll', room.key)),
     scoutChoices: (room.scoutChoices || []).map(choice => choice.id),
   };
   const applied = applyActiveArtifact({ artifactId, state });
-  if (!applied.applied) throw new RangeError(`artifact is not applicable: ${artifactId}`);
+  if (!applied.applied) throw new RangeError(applied.reason || 'This artifact cannot be used right now.');
 
   member.loadout[slotIndex] = null;
   member.heroHp = applied.state.heroHp ?? member.heroHp;

@@ -178,6 +178,7 @@
 }
 
 .expedition-artifact-facts > div,
+.expedition-artifact-usage,
 .expedition-sheet-protocol,
 .expedition-reward-ledger,
 .expedition-reward-artifacts {
@@ -196,6 +197,28 @@
   color: #edf5e6;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.expedition-artifact-usage {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.expedition-artifact-usage span {
+  color: var(--rarity-color, #9fb49d);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.expedition-artifact-usage p {
+  margin: 0;
+  color: #d5e4cc;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
 }
 
 .expedition-sheet-protocol {

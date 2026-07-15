@@ -2461,29 +2461,27 @@ test('finishing consumes reserved passives and returns unused active copies', ()
   db.close();
 });
 
-test('failed minigames preserve HP and do not consume an armed Wooden Shield', () => {
+test('Wooden Shield cannot be wasted in a minigame that never deals HP damage', () => {
   const scenario = minigameArtifactScenario({ userId: 31, artifactIds: ['wooden_shield'] });
-  inTx(scenario.db, () => useArtifactForMember({
-    transaction: scenario.db,
-    idempotencyKey: 'arm-wooden-shield-minigame',
-    expeditionId: scenario.expeditionId,
-    userId: scenario.userId,
-    roomKey: scenario.roomKey,
-    artifactId: 'wooden_shield',
-    now: 1_900,
-  }));
+  assert.throws(
+    () => inTx(scenario.db, () => useArtifactForMember({
+      transaction: scenario.db,
+      idempotencyKey: 'arm-wooden-shield-minigame',
+      expeditionId: scenario.expeditionId,
+      userId: scenario.userId,
+      roomKey: scenario.roomKey,
+      artifactId: 'wooden_shield',
+      now: 1_900,
+    })),
+    /only be used in a combat room/i,
+  );
 
   const first = failMinigameAttempt(scenario, 'wooden-shield-first', 2_000);
   const firstMember = first.snapshot.members.find(member => member.userId === scenario.userId);
   assert.equal(firstMember.heroHp, 3);
   assert.deepEqual(first.visualEvents, []);
-  assert.equal(firstMember.triggerHistory.some(entry => entry.artifactId === 'wooden_shield'), true);
-
-  const second = failMinigameAttempt(scenario, 'wooden-shield-second', 2_010);
-  const secondMember = second.snapshot.members.find(member => member.userId === scenario.userId);
-  assert.equal(secondMember.heroHp, 3);
-  assert.deepEqual(second.visualEvents, []);
-  assert.equal(secondMember.triggerHistory.some(entry => entry.artifactId === 'wooden_shield'), true);
+  assert.equal(firstMember.triggerHistory.some(entry => entry.artifactId === 'wooden_shield'), false);
+  assert.equal(firstMember.loadout.some(entry => entry?.artifactId === 'wooden_shield'), true);
   scenario.db.close();
 });
 

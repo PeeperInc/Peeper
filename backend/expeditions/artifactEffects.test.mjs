@@ -8,6 +8,7 @@ const {
   ALLOWED_EFFECT_KINDS,
   applyActiveArtifact,
   applyPassiveArtifactEffects,
+  artifactUseEligibility,
 } = require('./artifactEffects.js');
 
 const EXPECTED_KINDS = [
@@ -38,13 +39,13 @@ const EXPECTED_KINDS = [
 const ACTIVE_CONTEXTS = {
   chalk_rune: { roomKey: 'room-a', roomState: 'unlocked', hasMinigame: true },
   bone_die: { roomKey: 'room-a', roomState: 'unlocked', combat: true },
-  wooden_shield: { roomKey: 'room-a', roomState: 'unlocked' },
+  wooden_shield: { roomKey: 'room-a', roomState: 'unlocked', combat: true },
   tiny_shovel: { roomKey: 'room-a', roomState: 'unlocked', roomType: 'trap', roomProgress: 1, roomProgressTarget: 5 },
   ration_box: { roomKey: 'room-a', roomState: 'unlocked', heroHp: 2, maxHeroHp: 3 },
   rusty_lockpick: { roomKey: 'room-a', roomState: 'unlocked', hasMinigame: true, combat: false },
   loaded_die: { roomKey: 'room-a', roomState: 'unlocked', combat: true },
-  warding_nail: { roomKey: 'room-a', roomState: 'unlocked' },
-  second_chance_coin: { roomKey: 'room-a', roomState: 'unlocked' },
+  warding_nail: { roomKey: 'room-a', roomState: 'unlocked', combat: true },
+  second_chance_coin: { roomKey: 'room-a', roomState: 'unlocked', hasMinigame: true, combat: false },
   campfire_charm: { roomKey: 'room-a', roomState: 'unlocked', roleCharge: 0 },
   phoenix_feather: { roomKey: 'room-a', roomState: 'unlocked', heroHp: 0, heroRecoverAt: 999 },
   hourglass_shard: { roomKey: 'room-a', roomState: 'unlocked', ap: 2, maxAp: 5 },
@@ -112,6 +113,31 @@ test('every active artifact rejects an inapplicable use without mutating state',
     assert.equal(result.applied, false, artifactId);
     assert.deepEqual(result.state, state, artifactId);
     assert.equal(result.visualEvent, null, artifactId);
+  }
+});
+
+test('active artifact eligibility explains every blocked current-system use', () => {
+  const scenarios = {
+    chalk_rune: [{ roomKey: 'room-a', roomState: 'unlocked' }, /mini-game room/i],
+    bone_die: [{ roomKey: 'room-a', roomState: 'unlocked', combat: false }, /combat room/i],
+    wooden_shield: [{ roomKey: 'room-a', roomState: 'unlocked', combat: false }, /combat room/i],
+    tiny_shovel: [{ roomKey: 'room-a', roomState: 'unlocked', roomType: 'boss' }, /cannot damage a boss/i],
+    ration_box: [{ roomKey: 'room-a', roomState: 'unlocked', heroHp: 3, maxHeroHp: 3 }, /full HP/i],
+    rusty_lockpick: [{ roomKey: 'room-a', roomState: 'unlocked', combat: true }, /noncombat mini-game/i],
+    loaded_die: [{ roomKey: 'room-a', roomState: 'unlocked', combat: false }, /combat room/i],
+    warding_nail: [{ roomKey: 'room-a', roomState: 'unlocked', combat: true, roomShield: true }, /already active/i],
+    second_chance_coin: [{ roomKey: 'room-a', roomState: 'unlocked', combat: false }, /noncombat mini-game/i],
+    campfire_charm: [{ roomKey: 'room-a', roomState: 'unlocked', roleCharge: 1 }, /already ready/i],
+    phoenix_feather: [{ roomKey: 'room-a', roomState: 'unlocked', heroHp: 3 }, /only be used while/i],
+    hourglass_shard: [{ roomKey: 'room-a', roomState: 'unlocked', ap: 5, maxAp: 5 }, /already full/i],
+    crooked_compass: [{ roomKey: 'room-a', roomState: 'unlocked', bonusArtifactRoll: true }, /already armed/i],
+    fates_broken_die: [{ roomKey: 'room-a', roomState: 'unlocked', combat: false }, /combat room/i],
+  };
+
+  for (const [artifactId, [state, expectedReason]] of Object.entries(scenarios)) {
+    const eligibility = artifactUseEligibility({ artifactId, state });
+    assert.equal(eligibility.allowed, false, artifactId);
+    assert.match(eligibility.reason, expectedReason, artifactId);
   }
 });
 
@@ -231,6 +257,19 @@ test('boss bonus passives use their distinct success thresholds', () => {
   });
   assert.equal(lowSuccess.progress, 2);
   assert.equal(highSuccess.progress, 4);
+});
+
+test('Root King Signet never adds damage when the boss attack misses', () => {
+  const miss = applyPassiveArtifactEffects({
+    phase: 'combat_roll',
+    loadout: [{ artifactId: 'root_kings_signet' }],
+    roomType: 'boss',
+    rawRoll: 10,
+    combatRoll: 10,
+    combatHit: false,
+    progress: 0,
+  });
+  assert.equal(miss.progress, 0);
 });
 
 test('unsupported legacy loadout entries safely no-op', () => {

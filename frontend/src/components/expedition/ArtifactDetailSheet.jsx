@@ -25,29 +25,6 @@ const USE_TYPE_COPY = {
   expedition_passive: 'Expedition passive',
 };
 
-function formatEffectValue(value) {
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (value == null) return 'None';
-  return String(value).replaceAll('_', ' ');
-}
-
-function EffectProtocol({ effect }) {
-  if (!effect || typeof effect !== 'object' || Array.isArray(effect)) return null;
-  const entries = Object.entries(effect);
-  if (!entries.length) return null;
-
-  return (
-    <dl className="expedition-sheet-protocol" aria-label="Exact artifact effect data">
-      {entries.map(([key, value]) => (
-        <div key={key}>
-          <dt>{key.replaceAll('_', ' ')}</dt>
-          <dd>{formatEffectValue(value)}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 export default function ArtifactDetailSheet({
   artifact,
   mode,
@@ -68,6 +45,9 @@ export default function ArtifactDetailSheet({
   const consumption = useType === 'active'
     ? 'Consumed immediately when used.'
     : 'Equipped for the expedition and consumed when it ends.';
+  const useHint = artifact.useHint || (useType === 'active'
+    ? 'Open a valid room to activate this relic.'
+    : 'No button is needed. This effect works automatically while the relic is equipped.');
 
   const handlePrimary = () => {
     if (isInspect) {
@@ -119,7 +99,10 @@ export default function ArtifactDetailSheet({
           </div>
         </div>
 
-        <EffectProtocol effect={artifact.effect} />
+        <div className="expedition-artifact-usage">
+          <span>{useType === 'active' ? 'When to use' : 'How it works'}</span>
+          <p>{useHint}</p>
+        </div>
 
         {disabledReason ? (
           <p className="expedition-sheet-disabled" role="status">{disabledReason}</p>

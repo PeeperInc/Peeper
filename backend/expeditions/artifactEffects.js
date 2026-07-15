@@ -36,6 +36,77 @@ function roomIsCurrent(state) {
   return Boolean(state.roomKey) && !['hidden', 'locked', 'cleared'].includes(state.roomState);
 }
 
+function artifactUseEligibility({ artifactId, state = {} } = {}) {
+  const artifact = ARTIFACTS[artifactId];
+  if (!artifact) return { allowed: false, reason: 'This artifact no longer exists.' };
+  if (artifact.useType !== 'active') {
+    return { allowed: false, reason: 'This is a passive artifact. It works automatically while equipped.' };
+  }
+  if (!roomIsCurrent(state)) {
+    return { allowed: false, reason: 'Choose a current open room before using this artifact.' };
+  }
+  if (state.heroHp <= 0 && artifactId !== 'phoenix_feather') {
+    return { allowed: false, reason: 'Your hero is knocked out. Only a Phoenix Feather can be used during recovery.' };
+  }
+
+  const rules = {
+    chalk_rune: () => !state.hasMinigame
+      ? 'Chalk Rune can only be used in a mini-game room.'
+      : state.minigameTimeBonus
+        ? 'A Chalk Rune bonus is already waiting for the next attempt in this room.'
+        : null,
+    bone_die: () => !state.combat
+      ? 'Bone Die can only be armed in a combat room.'
+      : state.combatRollFloor
+        ? 'A damage floor is already armed for this room.'
+        : null,
+    wooden_shield: () => !state.combat
+      ? 'Wooden Shield can only be used in a combat room.'
+      : state.personalDamageShield
+        ? 'Your hero already has personal protection armed in this room.'
+        : null,
+    tiny_shovel: () => state.roomType === 'boss'
+      ? 'Tiny Shovel cannot damage a boss.'
+      : (state.roomProgress ?? 0) >= (state.roomProgressTarget ?? 0)
+        ? 'This room no longer needs progress.'
+        : null,
+    ration_box: () => state.heroHp >= state.maxHeroHp
+      ? 'Your hero already has full HP.'
+      : null,
+    rusty_lockpick: () => !state.hasMinigame || state.combat
+      ? 'Rusty Lockpick can only be used in a noncombat mini-game room.'
+      : state.minigameAutoSuccess
+        ? 'An automatic mini-game success is already armed in this room.'
+        : null,
+    loaded_die: () => !state.combat ? 'Loaded Die can only be used in a combat room.' : null,
+    warding_nail: () => !state.combat
+      ? 'Warding Nail can only be placed in a combat room.'
+      : state.roomShield
+        ? 'A shared shield is already active in this room.'
+        : null,
+    second_chance_coin: () => !state.hasMinigame || state.combat
+      ? 'Second Chance Coin can only be placed in a noncombat mini-game room.'
+      : state.roomRetry
+        ? 'A shared free retry is already active in this room.'
+        : null,
+    campfire_charm: () => (state.roleCharge ?? 0) >= 1
+      ? 'Your class ability is already ready.'
+      : null,
+    phoenix_feather: () => state.heroHp > 0 || !state.heroRecoverAt
+      ? 'Phoenix Feather can only be used while your hero is knocked out.'
+      : null,
+    hourglass_shard: () => state.ap >= state.maxAp ? 'Your AP is already full.' : null,
+    crooked_compass: () => state.bonusArtifactRoll
+      ? 'An extra artifact reward is already armed for this room.'
+      : null,
+    fates_broken_die: () => !state.combat
+      ? "Fate's Broken Die can only be used in a combat room."
+      : null,
+  };
+  const reason = rules[artifactId]?.() || null;
+  return { allowed: !reason, reason };
+}
+
 const ACTIVE_EFFECT_HANDLERS = Object.freeze({
   minigame_time_once(state, effect) {
     if (!roomIsCurrent(state) || !state.hasMinigame || state.minigameTimeBonus) return false;
@@ -117,11 +188,21 @@ function applyActiveArtifact({ artifactId, state = {} } = {}) {
   const artifact = ARTIFACTS[artifactId];
   if (!artifact) throw new RangeError(`Unknown artifact: ${artifactId}`);
   if (artifact.useType !== 'active') throw new RangeError(`Artifact is not active: ${artifactId}`);
+  const eligibility = artifactUseEligibility({ artifactId, state });
+  if (!eligibility.allowed) {
+    return {
+      applied: false,
+      reason: eligibility.reason,
+      state: clone(state),
+      visualEvent: null,
+    };
+  }
   const nextState = clone(state);
   const handler = ACTIVE_EFFECT_HANDLERS[artifact.effect.kind];
   const applied = Boolean(handler?.(nextState, artifact.effect));
   return {
     applied,
+    reason: applied ? null : 'This artifact cannot be activated in the current room state.',
     state: applied ? nextState : clone(state),
     visualEvent: applied ? { type: 'artifact_used', artifactId, effectKind: artifact.effect.kind } : null,
   };
@@ -168,7 +249,8 @@ function applyPassiveArtifactEffects(context = {}) {
     }
     for (const artifactId of ['rootcutters_axe', 'root_kings_signet']) {
       const effect = ARTIFACTS[artifactId].effect;
-      if (equipped.has(artifactId) && state.roomType === 'boss' && state.combatRoll >= effect.minRoll) {
+      if (equipped.has(artifactId) && state.roomType === 'boss'
+        && state.combatHit !== false && state.combatRoll >= effect.minRoll) {
         state.progress = (state.progress || 0) + effect.amount;
       }
     }
@@ -215,6 +297,7 @@ function applyArtifactEffects(context = {}) {
 module.exports = {
   ACTIVE_EFFECT_HANDLERS,
   ALLOWED_EFFECT_KINDS,
+  artifactUseEligibility,
   applyActiveArtifact,
   applyArtifactEffects,
   applyPassiveArtifactEffects,
