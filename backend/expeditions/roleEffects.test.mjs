@@ -194,9 +194,9 @@ test('Bend Fate exposes a one-shot free mini-game retry for the attempt state ma
   db.close();
 });
 
-test('Cleric prayer only heals conscious wounded heroes and persists personal events', () => {
+test('Cleric prayer heals the family and shortens knocked-out recovery by 15 percent', () => {
   const db = createDb();
-  addMember(db, { userId: 10, role: 'cleric' });
+  addMember(db, { userId: 10, role: 'cleric', hp: 2 });
   addMember(db, { userId: 11, role: 'mage', hp: 2 });
   addMember(db, { userId: 12, role: 'scout', hp: 0, recoverAt: 10_000 });
 
@@ -206,19 +206,20 @@ test('Cleric prayer only heals conscious wounded heroes and persists personal ev
     now: 1000,
   });
   assert.equal(result.events.length, 1);
+  assert.equal(db.prepare('SELECT hero_hp FROM family_expedition_members WHERE user_id = 10').pluck().get(), 3);
   assert.equal(db.prepare('SELECT hero_hp FROM family_expedition_members WHERE user_id = 11').pluck().get(), 3);
   assert.equal(db.prepare('SELECT hero_hp FROM family_expedition_members WHERE user_id = 12').pluck().get(), 0);
-  assert.equal(db.prepare('SELECT hero_recover_at FROM family_expedition_members WHERE user_id = 12').pluck().get(), 10000);
+  assert.equal(db.prepare('SELECT hero_recover_at FROM family_expedition_members WHERE user_id = 12').pluck().get(), 8650);
   assert.deepEqual(
     db.prepare('SELECT event_type FROM family_expedition_member_events ORDER BY user_id').pluck().all(),
-    ['cleric_heal'],
+    ['cleric_heal', 'cleric_heal', 'cleric_recovery_reduced'],
   );
   assert.equal(db.prepare('SELECT role_charge FROM family_expedition_members WHERE user_id = 10').pluck().get(), 0);
   assert.deepEqual(result.events, [{
     type: 'cleric_prayer',
     placedBy: { userId: 10, firstName: 'Nora', username: 'nora' },
-    healedCount: 1,
-    recoveryReducedCount: 0,
+    healedCount: 2,
+    recoveryReducedCount: 1,
   }]);
   db.close();
 });

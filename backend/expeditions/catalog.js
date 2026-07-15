@@ -314,18 +314,18 @@ function combatEnemyRoom(id, name, enemyId, hp, attackTarget, tags = []) {
 
 const ROOM_TEMPLATES = deepFreeze({
   combat: [
-    combatEnemyRoom('bone_rat_pack', 'Bone Rat Pack', 'bone_rat', 14, 6, ['undead']),
-    combatEnemyRoom('grave_slime_pool', 'Grave Slime', 'grave_slime', 15, 6, ['ooze']),
-    combatEnemyRoom('crypt_spider_nest', 'Crypt Spider', 'crypt_spider', 16, 6, ['beast']),
-    combatEnemyRoom('lantern_skull_watch', 'Lantern Skull', 'lantern_skull', 17, 7, ['undead']),
-    combatEnemyRoom('hollow_archer_watch', 'Hollow Archer', 'hollow_archer', 18, 7, ['undead']),
-    combatEnemyRoom('thorn_hound_lair', 'Thorn Hound', 'thorn_hound', 18, 7, ['root_creature']),
-    combatEnemyRoom('moss_wraith_hollow', 'Moss Wraith', 'moss_wraith', 19, 8, ['spirit']),
+    combatEnemyRoom('bone_rat_pack', 'Bone Rat Pack', 'bone_rat', 24, 6, ['undead']),
+    combatEnemyRoom('grave_slime_pool', 'Grave Slime', 'grave_slime', 23, 6, ['ooze']),
+    combatEnemyRoom('crypt_spider_nest', 'Crypt Spider', 'crypt_spider', 22, 6, ['beast']),
+    combatEnemyRoom('lantern_skull_watch', 'Lantern Skull', 'lantern_skull', 22, 7, ['undead']),
+    combatEnemyRoom('hollow_archer_watch', 'Hollow Archer', 'hollow_archer', 21, 7, ['undead']),
+    combatEnemyRoom('thorn_hound_lair', 'Thorn Hound', 'thorn_hound', 21, 7, ['root_creature']),
+    combatEnemyRoom('moss_wraith_hollow', 'Moss Wraith', 'moss_wraith', 20, 8, ['spirit']),
     combatEnemyRoom('root_cultist_ritual', 'Root Cultist', 'root_cultist', 20, 8, ['cultist']),
-    combatEnemyRoom('vine_mimic_den', 'Vine Mimic', 'vine_mimic', 21, 9, ['mimic']),
-    combatEnemyRoom('rootbound_guard_post', 'Rootbound Guard', 'rootbound_guard', 23, 10, ['root_creature']),
-    combatEnemyRoom('ossuary_golem_vault', 'Ossuary Golem', 'ossuary_golem', 25, 11, ['undead']),
-    combatEnemyRoom('rootbound_champion_gate', 'Rootbound Champion', 'rootbound_champion', 27, 12, ['root_creature']),
+    combatEnemyRoom('vine_mimic_den', 'Vine Mimic', 'vine_mimic', 19, 9, ['mimic']),
+    combatEnemyRoom('rootbound_guard_post', 'Rootbound Guard', 'rootbound_guard', 18, 10, ['root_creature']),
+    combatEnemyRoom('ossuary_golem_vault', 'Ossuary Golem', 'ossuary_golem', 17, 11, ['undead']),
+    combatEnemyRoom('rootbound_champion_gate', 'Rootbound Champion', 'rootbound_champion', 16, 12, ['root_creature']),
   ],
   trap: [
     room('thorn_snare', 'trap', 'Thorn Snare', 4, ['root', 'dark'], [

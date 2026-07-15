@@ -165,7 +165,7 @@ function roomRuleCopy(room = {}) {
   if (isCombatRoom(room)) {
     return {
       title: 'Combat roll',
-      body: `First roll a clean d20 against AC ${room.attackTarget || (room.type === 'boss' ? 12 : 10)}. Rolls 1-3 hurt your hero. A normal hit rolls 1d6, 19 rolls 2d6, and 20 rolls 3d6. Nothing modifies the attack d20.`,
+      body: `Roll d20 against AC ${room.attackTarget || (room.type === 'boss' ? 12 : 10)}. Rolls 1-3 hurt your hero. A normal hit rolls 1d6, 19 rolls 2d6, and 20 rolls 3d6. Only an ally's Arcane Link can raise the attack roll.`,
     };
   }
   return mechanicCopy(room?.miniMechanic);
@@ -402,6 +402,12 @@ function PreparationFlow({ state, loading, onPrepare }) {
     mage: ['✨', 'Empower one strike', 'Create one shared +1 damage boost. Any family hero can spend it after a successful attack. Recharges after 3 hours.'],
     cleric: ['💚', 'Heal the wounded', 'Restore 1 HP to every wounded conscious hero. Knocked-out heroes still need their recovery time. Recharges after 3 hours.'],
   };
+  Object.assign(roleCopy, {
+    knight: ['DEF', 'Guard the next ally', 'Queue Thorn Guard for another family hero. Their next incoming hit is blocked and the enemy takes 3 damage. Recharges after 3 hours.'],
+    scout: ['MAP', 'Choose the road', 'Once per expedition, inspect three exact encounters with enemies, AC and room challenges, then lock the family path.'],
+    mage: ['ARC', 'Link the next ally', 'Queue Arcane Link for another hero: +3 to their next combat d20 and +2 damage on that same attack. Recharges after 3 hours.'],
+    cleric: ['HP', 'Restore the whole party', 'Heal every family hero by 1 HP, including yourself, and shorten active knockouts by 15%. Recharges after 3 hours.'],
+  });
   const provisionCopy = {
     carrot_rations: 'Drink during the run to restore 1 AP.',
     tomato_soup: 'Restore 1 HP to your wounded hero.',
@@ -607,10 +613,10 @@ function ExpeditionGuidePanel() {
   const sections = [
     ['Getting started', 'Every family member chooses a class, one provision and up to three artifacts. You can join and help at your own pace; an expedition never fails because the family is slow.'],
     ['AP and returning to play', 'Actions cost 1 AP. You can hold up to 5 AP and recover 1 AP every 3 hours. More active family members move the expedition faster, and active heroes receive a larger final reward.'],
-    ['Combat: d20 then damage', 'Every enemy has a visible Armor Class (AC). First roll a clean, unmodified d20: 1-3 lets the enemy counter for 1 HP, a result below AC misses, and AC or higher hits. Results up to 18 roll 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Food, Mage magic and relics can modify damage, never the attack d20.'],
+    ['Combat: d20 then damage', 'Every enemy has a visible Armor Class (AC). Roll d20 first: 1-3 lets the enemy counter for 1 HP, a result below AC misses, and AC or higher hits. Results up to 18 roll 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Only Arcane Link from another Mage can add +3 to this d20.'],
     ['Room mini-games', 'Non-combat rooms replace the d20 with a skill challenge. Starting an attempt spends 1 AP. Failing costs that AP, but never removes HP. If the room still needs progress, you can begin another attempt immediately.'],
-    ['HP and knockout', 'Heroes have 3 HP. HP does not refill between rooms. At 0 HP your hero is knocked out for 6 hours, then returns with 3 HP. A Knight shield can prevent a hit; a Cleric heals conscious wounded heroes.'],
-    ['Class abilities', 'Scout chooses one future path per expedition. Mage creates one shared +1 damage boost for a family hero to spend after a hit. Knight blocks the next family hit and Cleric restores 1 HP. Mage, Knight and Cleric recharge after 3 hours.'],
+    ['HP and knockout', 'Heroes have 3 HP. HP does not refill between rooms. At 0 HP your hero is knocked out for 6 hours, then returns with 3 HP. Family Prayer heals everyone and shortens active knockouts by 15%.'],
+    ['Class abilities', 'Abilities are teamwork tools. You cannot consume your own Thorn Guard or Arcane Link. Knight blocks the next hit against an ally and retaliates for 3 damage. Mage gives the next ally +3 d20 and +2 damage. Cleric heals every hero +1 HP and shortens knockouts. These three recharge in 3 hours, while Scout chooses one fully revealed future room once per expedition. Waiting buffs remain queued through mini-games.'],
     ['Provisions', 'Your chosen meal appears beside your relics. Tap it when you want to consume it. Meals are single-use: some heal or restore AP, while others empower one roll, one room, one reward, or restore your class ability.'],
     ['Artifacts', 'Only the three equipped slots work. Tap a relic in the top bar to read its exact effect and use it when allowed. Active relics disappear when used; expedition-long relics are consumed when the expedition ends.'],
     ['Scout paths and rewards', 'Future rooms remain hidden. A Scout can choose the next encounter from three paths once per expedition. Rooms pay rewards when cleared, and the final reward favors heroes who spent more AP helping the family.'],
@@ -664,7 +670,7 @@ function LastRollPanel({ action }) {
 
   return (
     <div className="expedition-last-roll">
-      <DiceFace sides={20} value={action.rawRoll ?? '?'} />
+      <DiceFace sides={20} value={combatEvent?.attackRoll ?? action.rawRoll ?? '?'} />
       {(combatEvent?.damageRolls || []).map((roll, index) => (
         <DiceFace sides={6} value={roll} className="damage" key={`damage-${index}`} />
       ))}
@@ -673,7 +679,7 @@ function LastRollPanel({ action }) {
           <strong>Last Roll</strong>
           {combatEvent ? (
             <span>
-              {combatCopy} / d20 {action.rawRoll ?? '?'} vs AC {combatEvent.attackTarget || '?'} / {combatEvent.progress || 0} total damage
+              {combatCopy} / d20 {combatEvent.attackRoll ?? action.rawRoll ?? '?'}{combatEvent.attackBonus ? ` (${combatEvent.naturalRoll} + ${combatEvent.attackBonus})` : ''} vs AC {combatEvent.attackTarget || '?'} / {combatEvent.progress || 0} total damage
               {damageEvent ? ` / HP ${damageEvent.heroHp}/3` : ''}
             </span>
           ) : (
@@ -697,35 +703,109 @@ function LastRollPanel({ action }) {
   );
 }
 
+function RoleAbilityGlyph({ role }) {
+  if (role === 'knight') {
+    return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 5 52 13v17c0 13-8 23-20 29C20 53 12 43 12 30V13Z" /><path d="M22 29h20M32 18v24" /></svg>;
+  }
+  if (role === 'mage') {
+    return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="m32 5 5 17 17 5-17 5-5 17-5-17-17-5 17-5Z" /><path d="m48 41 2 7 7 2-7 2-2 7-2-7-7-2 7-2Z" /></svg>;
+  }
+  if (role === 'cleric') {
+    return <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="25" /><path d="M32 17v30M17 32h30" /></svg>;
+  }
+  return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M9 49 29 9l5 20 21 5-40 20Z" /><circle cx="39" cy="25" r="5" /></svg>;
+}
+
 function RoleAbilityControl({ member, room, sharedBuffs, mutating, onUse }) {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  const readyAt = Number(member?.roleChargeReadyAt || 0);
+  const ready = Number(member?.roleCharge || 0) > 0 || (readyAt > 0 && readyAt <= now);
+
+  useEffect(() => {
+    if (ready || !readyAt) return undefined;
+    const timer = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [ready, readyAt]);
+
   if (!member?.role || member.role === 'scout' || !isActionableRoom(room)) return null;
   const copy = {
-    mage: ['Create Arcane Edge', 'Adds one shared +1 damage boost that a family hero can spend after a hit.'],
-    knight: ['Place Knight Shield', 'Blocks the next family hit in this room.'],
-    cleric: ['Healing Prayer', 'Restores 1 HP to every conscious wounded hero.'],
+    mage: ['Arcane Link', 'Next ally gets +3 to d20 and +2 damage. Your own roll cannot consume it.'],
+    knight: ['Thorn Guard', 'Blocks the next hit against an ally and strikes back for 3 damage.'],
+    cleric: ['Family Prayer', 'Heals every hero +1 HP and shortens knockouts by 15%.'],
   }[member.role];
   if (!copy) return null;
-  const ready = Number(member.roleCharge || 0) > 0;
-  const effectType = member.role === 'knight' ? 'knight_shield' : null;
-  const alreadyActive = member.role === 'mage'
-    ? (sharedBuffs?.rollBonus?.uses ?? 0) > 0
-    : effectType && (room.activeEffects || []).some(effect => effect.effectType === effectType);
+  const queued = Array.isArray(sharedBuffs?.teamAbilities?.[member.role])
+    ? sharedBuffs.teamAbilities[member.role].length
+    : 0;
+
+  const cooldown = readyAt
+    ? formatDuration(Math.max(0, readyAt - now))
+    : 'Used for this expedition';
 
   return (
     <button
       type="button"
-      className={`expedition-toggle-tile${ready ? ' active' : ''}`}
+      className={`expedition-role-ability is-${member.role}${ready ? ' is-ready' : ' is-cooldown'}`}
       onClick={() => onUse(room.key)}
-      disabled={!ready || mutating || alreadyActive}
+      disabled={!ready || mutating}
     >
-      <strong>{copy[0]}</strong>
-      <span>{alreadyActive ? 'Already active in this room.' : ready ? copy[1] : member.roleChargeReadyAt ? `Ready in ${formatDuration(Math.max(0, member.roleChargeReadyAt - Math.floor(Date.now() / 1000)))}` : 'Used for this expedition'}</span>
+      <span className="expedition-role-ability-icon"><RoleAbilityGlyph role={member.role} /></span>
+      <span className="expedition-role-ability-copy">
+        <small>{ready ? 'Ability ready' : 'Recharging'}</small>
+        <strong>{copy[0]}</strong>
+        <em>{ready ? copy[1] : `Ready in ${cooldown}`}</em>
+      </span>
+      {queued > 0 && <b className="expedition-role-stack">{queued} queued</b>}
+    </button>
+  );
+}
+
+function ScoutMinigamePreview({ miniGame = {} }) {
+  const kind = miniGame.kind || miniGame.type || 'timing_window';
+  if (kind === 'rune_sequence') {
+    return <div className="expedition-scout-minigame runes">{Array.from({ length: 9 }, (_, index) => <i key={index}>{['◇', '△', '○'][index % 3]}</i>)}</div>;
+  }
+  if (kind === 'root_crossing') {
+    return <div className="expedition-scout-minigame crossing"><i>🐸</i>{Array.from({ length: 4 }, (_, index) => <b key={index} style={{ '--lane': index }} />)}</div>;
+  }
+  if (kind === 'shadow_hunt') {
+    return <div className="expedition-scout-minigame shadows">{Array.from({ length: 6 }, (_, index) => <i key={index}>••</i>)}</div>;
+  }
+  return <div className="expedition-scout-minigame timing"><i /><b /></div>;
+}
+
+function ScoutChoicePreview({ choice, selected, onSelect }) {
+  const choiceRoom = choice.room || {};
+  const roomArt = useLazyAsset(roomImages, roomArtFile(choiceRoom));
+  const enemyArt = useLazyAsset(enemyImages, enemyArtFile(choiceRoom));
+  const combat = isCombatRoom(choiceRoom);
+  return (
+    <button
+      type="button"
+      className={`expedition-scout-preview${selected ? ' selected' : ''}`}
+      onClick={onSelect}
+    >
+      <span className="expedition-scout-preview-art" style={roomArt ? { backgroundImage: `url(${roomArt})` } : undefined}>
+        {combat && enemyArt && <img src={enemyArt} alt="" />}
+        {!combat && <ScoutMinigamePreview miniGame={choiceRoom.miniGame} />}
+      </span>
+      <span className="expedition-scout-preview-copy">
+        <small>{combat ? 'Combat room' : 'Room challenge'}</small>
+        <strong>{choice.label || choiceRoom.name || titleize(choiceRoom.type || 'Path')}</strong>
+        {combat ? (
+          <em>{titleize(choiceRoom.enemyId || 'Dungeon enemy')} · AC {choiceRoom.attackTarget || 10}</em>
+        ) : (
+          <em>{choiceRoom.miniGame?.label || titleize(choiceRoom.miniGame?.kind || 'Unknown challenge')}</em>
+        )}
+      </span>
     </button>
   );
 }
 
 function ScoutChoicePanel({ room, member, roles, mutating, onScoutChoice }) {
   const choices = Array.isArray(room?.scoutChoices) ? room.scoutChoices : [];
+  const [open, setOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
   if (room?.scoutChoice?.choiceId) {
     return (
       <div className="expedition-scout-choice locked">
@@ -741,31 +821,48 @@ function ScoutChoicePanel({ room, member, roles, mutating, onScoutChoice }) {
   }
 
   return (
-    <div className="expedition-scout-choice">
-      <div className="expedition-scout-choice-head">
-        <div>
-          <strong>Scout the next room</strong>
-          <span>Pick one of three future encounters. This spends your one Scout choice for the expedition.</span>
-        </div>
-      </div>
-      <div className="expedition-scout-choice-grid">
-        {choices.map(choice => {
-          const choiceRoom = choice.room || {};
-          return (
+    <>
+      <button type="button" className="expedition-role-ability is-scout is-ready" onClick={() => setOpen(true)} disabled={mutating}>
+        <span className="expedition-role-ability-icon"><RoleAbilityGlyph role="scout" /></span>
+        <span className="expedition-role-ability-copy">
+          <small>Once per expedition</small>
+          <strong>Scout Ahead</strong>
+          <em>Reveal three exact encounters and lock the safest route for your family.</em>
+        </span>
+      </button>
+      {open && (
+        <div className="expedition-scout-modal" role="dialog" aria-modal="true" aria-label="Scout the next room" onClick={() => setOpen(false)}>
+          <div className="expedition-scout-modal-panel" onClick={event => event.stopPropagation()}>
+            <header>
+              <div><small>Scout ability</small><strong>Choose the next room</strong></div>
+              <button type="button" onClick={() => setOpen(false)} aria-label="Close">×</button>
+            </header>
+            <p>You see what waits behind every route. Your choice becomes the family's next room.</p>
+            <div className="expedition-scout-preview-list">
+              {choices.map(choice => (
+                <ScoutChoicePreview
+                  key={choice.id}
+                  choice={choice}
+                  selected={selectedId === choice.id}
+                  onSelect={() => setSelectedId(choice.id)}
+                />
+              ))}
+            </div>
             <button
               type="button"
-              key={choice.id}
-              onClick={() => onScoutChoice(room.key, choice.id)}
-              disabled={mutating}
+              className="btn btn-primary expedition-scout-confirm"
+              disabled={!selectedId || mutating}
+              onClick={async () => {
+                await onScoutChoice(room.key, selectedId);
+                setOpen(false);
+              }}
             >
-              <span>{titleize(choiceRoom.type || 'room')}</span>
-              <strong>{choice.label || choiceRoom.name || titleize(choiceRoom.type || 'Path')}</strong>
-              <small>The path locks for the whole family</small>
+              {mutating ? 'Locking route...' : 'Choose this route'}
             </button>
-          );
-        })}
-      </div>
-    </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1525,7 +1622,6 @@ function RoomPanel({
   currentMinigameAttempt,
   transitionPhase,
 }) {
-  const [useSharedBuff, setUseSharedBuff] = useState(false);
   const [showRoomInfo, setShowRoomInfo] = useState(false);
   const [combatReveal, setCombatReveal] = useState({ phase: 'idle', progressBefore: 0, action: null });
   const [rollingFaces, setRollingFaces] = useState([]);
@@ -1533,8 +1629,6 @@ function RoomPanel({
   const roomArt = useLazyAsset(roomImages, roomArtFile(room));
   const bossArt = useLazyAsset(bossImages, bossArtFile(room));
   const enemyArt = useLazyAsset(enemyImages, enemyArtFile(room));
-  const rollBonus = expedition?.sharedBuffs?.rollBonus;
-  const canUseSharedBuff = Boolean(rollBonus && (rollBonus.uses ?? 0) > 0 && isCombatRoom(room) && isActionableRoom(room));
   const primaryAction = useMemo(() => primaryActionForRoom(room, member, roles), [room, member, roles]);
   const weakRoleLabels = (room?.weakRoles || []).map(role => roles?.[role]?.name || titleize(role));
   const mechanic = roomRuleCopy(room);
@@ -1579,7 +1673,7 @@ function RoomPanel({
           title: mechanic.title,
           body: mechanic.body,
         };
-  const sharedBuffAmount = useSharedBuff ? Number(rollBonus?.amount || 0) : 0;
+  const sharedBuffAmount = 0;
   const provisionDamageBonus = member?.provisionState?.damageBonus
     && room?.key
     && member.provisionState.damageBonus.roomKey === room.key
@@ -1590,7 +1684,6 @@ function RoomPanel({
   const heroRecovering = heroRecoverAt > Math.floor(Date.now() / 1000) || Number(member?.heroHp ?? 3) <= 0;
   const heroRecoverLabel = heroRecoverAt > 0 ? `Recovering until ${formatTime(heroRecoverAt)}` : 'Hero is recovering';
   useEffect(() => {
-    setUseSharedBuff(false);
     setShowRoomInfo(false);
     setCombatReveal({ phase: 'idle', progressBefore: 0, action: null });
     setRollingFaces([]);
@@ -1618,7 +1711,7 @@ function RoomPanel({
         onAttempt(room.key, null, {
           selectedSupport: 0,
           mechanicChoice: selectedMechanicChoice,
-          useSharedBuff,
+          useSharedBuff: false,
         }),
         animateRollNumbers(20, 1),
       ]);
@@ -1722,7 +1815,7 @@ function RoomPanel({
         </div>
       </div>
 
-      <RoomEffectsBar effects={room.activeEffects || []} />
+      <RoomEffectsBar effects={room.activeEffects || []} sharedBuffs={expedition?.sharedBuffs} />
 
       {hidden || locked ? (
         <div className="expedition-room-locked">
@@ -1809,6 +1902,16 @@ function RoomPanel({
                 onScoutChoice={onScoutChoice}
               />
 
+              <div className="expedition-power-grid">
+                <RoleAbilityControl
+                  member={member}
+                  room={room}
+                  sharedBuffs={expedition?.sharedBuffs}
+                  mutating={mutating}
+                  onUse={onRoleAbility}
+                />
+              </div>
+
               {eventRoom ? (
                 <PersistedRoomMiniGame
                   room={room}
@@ -1820,27 +1923,6 @@ function RoomPanel({
                 />
               ) : (
                 <>
-                  <div className="expedition-power-grid">
-                    <RoleAbilityControl
-                      member={member}
-                      room={room}
-                      sharedBuffs={expedition?.sharedBuffs}
-                      mutating={mutating}
-                      onUse={onRoleAbility}
-                    />
-                    {rollBonus && (
-                      <button
-                        type="button"
-                        className={`expedition-toggle-tile${useSharedBuff ? ' active' : ''}`}
-                        onClick={() => canUseSharedBuff && setUseSharedBuff(value => !value)}
-                        disabled={!canUseSharedBuff}
-                      >
-                        <strong>Damage +{rollBonus.amount || 0}</strong>
-                        <span>{canUseSharedBuff ? `${rollBonus.uses || 0} use left` : 'No uses left'}</span>
-                      </button>
-                    )}
-                  </div>
-
                   {primaryAction ? (
                     <div className={`expedition-one-roll-card${mutating ? ' is-rolling' : ''}`}>
                       {['rolling-attack', 'rolling-damage'].includes(combatReveal.phase) && (
@@ -1870,7 +1952,7 @@ function RoomPanel({
                         <div>
                           <span>Attack check</span>
                           <strong>Hit on {room.attackTarget || (room.type === 'boss' ? 12 : 10)}+</strong>
-                          <small>Pure d20, then 1d6 / 2d6 / 3d6 damage · 1 AP</small>
+                          <small>d20 check, then 1d6 / 2d6 / 3d6 damage · 1 AP</small>
                         </div>
                         <div className="expedition-roll-score">
                           <span>Damage bonus</span>

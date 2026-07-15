@@ -249,6 +249,66 @@
   text-shadow: 0 2px 5px #000, 0 0 14px rgba(183, 255, 74, 0.48);
 }
 
+.expedition-combat-fx-arcane {
+  align-content: center;
+  gap: 5px;
+  background: radial-gradient(circle, rgba(91, 173, 255, 0.18), transparent 48%);
+  animation: expedition-fx-scene-in 1.35s ease-out both;
+}
+
+.expedition-fx-arcane-rings {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  width: min(54vw, 210px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+}
+
+.expedition-fx-arcane-rings i {
+  position: absolute;
+  inset: calc(var(--ring, 0) * 14px);
+  border: 2px solid rgba(130, 204, 255, 0.72);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  box-shadow: 0 0 18px rgba(88, 181, 255, 0.42);
+  animation: expedition-arcane-ring 1.2s ease-out both;
+}
+
+.expedition-fx-arcane-rings i:nth-child(2) { --ring: 1; animation-delay: 80ms; }
+.expedition-fx-arcane-rings i:nth-child(3) { --ring: 2; animation-delay: 160ms; }
+
+.expedition-combat-fx-arcane > span,
+.expedition-combat-fx-arcane > strong,
+.expedition-combat-fx-arcane > small {
+  position: relative;
+  z-index: 2;
+  display: block;
+  color: #e9f7ff;
+  text-align: center;
+  text-shadow: 0 2px 5px #000, 0 0 16px rgba(93, 184, 255, 0.72);
+}
+
+.expedition-combat-fx-arcane > span,
+.expedition-combat-fx-arcane > small {
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.expedition-combat-fx-arcane > strong {
+  margin-top: 4px;
+  font-family: var(--font-display);
+  font-size: clamp(19px, 6vw, 28px);
+  text-transform: uppercase;
+}
+
+@keyframes expedition-arcane-ring {
+  0% { opacity: 0; transform: scale(0.45) rotate(-28deg); }
+  42% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.18) rotate(32deg); }
+}
+
 .expedition-combat-fx-shield strong {
   top: 64%;
   color: #f3ffd8;

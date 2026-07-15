@@ -470,6 +470,73 @@ test('combat d20 outcome respects counter band, enemy AC, and damage dice bands'
   assert.deepEqual(combatRollOutcome(20, 14), { label: 'devastating_hit', heroDamage: 0, hit: true, damageDice: 3 });
 });
 
+test('Mage link buffs the next ally attack but never the caster own roll', () => {
+  const combatRoom = { ...hall, type: 'combat', encounterType: 'combat', progress: 0, progressTarget: 20, attackTarget: 10 };
+  const sharedBuffs = {
+    teamAbilities: {
+      mage: [{ sourceUserId: 10, placedBy: { userId: 10, firstName: 'Mage' }, createdAt: 900 }],
+    },
+  };
+  const caster = resolveAttempt({
+    expedition: { id: 54, status: 'active', sharedBuffs },
+    member: member({ userId: 10, role: 'mage' }),
+    room: combatRoom,
+    action: hall.actions[0],
+    roll: 7,
+    now: 1000,
+  });
+  assert.equal(caster.events.some(event => event.type === 'mage_boost_consumed'), false);
+  assert.equal(caster.expedition.sharedBuffs.teamAbilities.mage.length, 1);
+
+  const ally = resolveAttempt({
+    expedition: { id: 54, status: 'active', sharedBuffs },
+    member: member({ userId: 11, role: 'scout' }),
+    room: combatRoom,
+    action: hall.actions[0],
+    roll: 7,
+    damageRoll: 4,
+    now: 1000,
+  });
+  const combatEvent = ally.events.find(event => event.type === 'combat_roll');
+  assert.equal(combatEvent.naturalRoll, 7);
+  assert.equal(combatEvent.attackRoll, 10);
+  assert.equal(combatEvent.attackBonus, 3);
+  assert.equal(ally.progressAwarded, 6);
+  assert.equal(ally.expedition.sharedBuffs.teamAbilities.mage.length, 0);
+});
+
+test('Knight shield waits for ally damage, blocks it, and retaliates for three damage', () => {
+  const combatRoom = { ...hall, type: 'combat', encounterType: 'combat', progress: 0, progressTarget: 20, attackTarget: 10 };
+  const sharedBuffs = {
+    teamAbilities: {
+      knight: [{ sourceUserId: 10, placedBy: { userId: 10, firstName: 'Knight' }, createdAt: 900 }],
+    },
+  };
+  const caster = resolveAttempt({
+    expedition: { id: 54, status: 'active', sharedBuffs },
+    member: member({ userId: 10, role: 'knight', heroHp: 3 }),
+    room: combatRoom,
+    action: hall.actions[0],
+    roll: 2,
+    now: 1000,
+  });
+  assert.equal(caster.member.heroHp, 2);
+  assert.equal(caster.expedition.sharedBuffs.teamAbilities.knight.length, 1);
+
+  const ally = resolveAttempt({
+    expedition: { id: 54, status: 'active', sharedBuffs },
+    member: member({ userId: 11, role: 'scout', heroHp: 3 }),
+    room: combatRoom,
+    action: hall.actions[0],
+    roll: 2,
+    now: 1000,
+  });
+  assert.equal(ally.member.heroHp, 3);
+  assert.equal(ally.progressAwarded, 3);
+  assert.equal(ally.events.some(event => event.type === 'shield_blocked' && event.retaliationDamage === 3), true);
+  assert.equal(ally.expedition.sharedBuffs.teamAbilities.knight.length, 0);
+});
+
 test('knocked-out heroes recover to full HP only after six hours', () => {
   const recoverAt = 1000 + 6 * 60 * 60;
   const recovering = { heroHp: 0, heroRecoverAt: recoverAt };

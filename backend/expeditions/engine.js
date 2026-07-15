@@ -69,6 +69,34 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function teamAbilityQueue(sharedBuffs = {}, ability) {
+  const queue = sharedBuffs?.teamAbilities?.[ability];
+  return Array.isArray(queue) ? queue : [];
+}
+
+function queueTeamAbility(sharedBuffs = {}, ability, entry) {
+  if (!sharedBuffs.teamAbilities || typeof sharedBuffs.teamAbilities !== 'object') {
+    sharedBuffs.teamAbilities = {};
+  }
+  sharedBuffs.teamAbilities[ability] = [
+    ...teamAbilityQueue(sharedBuffs, ability),
+    entry,
+  ];
+  return sharedBuffs;
+}
+
+function consumeNextAllyAbility(sharedBuffs = {}, ability, userId) {
+  const queue = teamAbilityQueue(sharedBuffs, ability);
+  const index = queue.findIndex(entry => Number(entry?.sourceUserId) !== Number(userId));
+  if (index < 0) return null;
+  const [consumed] = queue.splice(index, 1);
+  if (!sharedBuffs.teamAbilities || typeof sharedBuffs.teamAbilities !== 'object') {
+    sharedBuffs.teamAbilities = {};
+  }
+  sharedBuffs.teamAbilities[ability] = queue;
+  return consumed;
+}
+
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   for (const child of Object.values(value)) deepFreeze(child);
@@ -596,13 +624,10 @@ function resolveAttempt({
   nextMember.loadout = modifiers.loadout;
   nextMember.triggerHistory = modifiers.triggerHistory;
 
-  let selectedSharedBuff = null;
-  if (combatRoom && useSharedBuff && (nextExpedition.sharedBuffs.rollBonus?.uses ?? 0) > 0) {
-    const shared = nextExpedition.sharedBuffs.rollBonus;
-    selectedSharedBuff = shared;
-    modifiers.total += shared.amount;
-    modifiers.parts.push({ source: `shared:${shared.source || 'roll_bonus'}`, amount: shared.amount });
-  }
+  const mageBuff = combatRoom
+    ? consumeNextAllyAbility(nextExpedition.sharedBuffs, 'mage', nextMember.userId)
+    : null;
+  const mageAttackBonus = mageBuff ? 3 : 0;
   let modifiedRoll = rawRoll;
   const afterRoll = applyArtifactEffects({
     phase: 'after_roll',
@@ -630,7 +655,7 @@ function resolveAttempt({
   const criticalRawRoll = rawRoll === 20;
   const outcomeRawRoll = rawRoll;
 
-  const combatRollValue = Math.max(1, Math.min(20, rawRoll));
+  const combatRollValue = Math.max(1, Math.min(20, rawRoll + mageAttackBonus));
   const combatOutcomeValue = criticalRawRoll ? 20 : combatRollValue;
   const attackTarget = Math.max(2, Math.min(20, Number(nextRoom.attackTarget || (nextRoom.type === 'boss' ? 12 : 10))));
   const combatOutcome = combatRoom ? combatRollOutcome(combatOutcomeValue, attackTarget) : null;
@@ -639,11 +664,17 @@ function resolveAttempt({
     modifiedRoll,
   });
   if (combatOutcome) {
-    if (selectedSharedBuff && !combatOutcome.hit) {
-      modifiers.total -= selectedSharedBuff.amount;
-      modifiers.parts = modifiers.parts.filter(part => !String(part.source).startsWith('shared:'));
-    } else if (selectedSharedBuff) {
-      selectedSharedBuff.uses -= 1;
+    if (mageBuff) {
+      events.push({
+        type: 'mage_boost_consumed',
+        placedBy: mageBuff.placedBy,
+        attackBonus: mageAttackBonus,
+        damageBonus: 2,
+      });
+      if (combatOutcome.hit) {
+        modifiers.total += 2;
+        modifiers.parts.push({ source: 'mage:arcane_link', amount: 2 });
+      }
     }
     const damageCandidates = [damageRoll, criticalDamageRoll, thirdDamageRoll];
     const damageRolls = combatOutcome.hit
@@ -685,7 +716,7 @@ function resolveAttempt({
     });
     progressAwarded = passiveCombat.progress;
     nextMember.heroHp = passiveCombat.heroHp;
-    const heroDamage = applyWearerDamageProtection({
+    let heroDamage = applyWearerDamageProtection({
       member: nextMember,
       expeditionId: nextExpedition.id,
       roomKey: nextRoom.key,
@@ -695,6 +726,20 @@ function resolveAttempt({
       artifactsDisabled: artifactsDisabledForAction,
     });
     if (heroDamage > 0) {
+      const knightBuff = consumeNextAllyAbility(nextExpedition.sharedBuffs, 'knight', nextMember.userId);
+      if (knightBuff) {
+        const preventedDamage = heroDamage;
+        heroDamage = 0;
+        progressAwarded += 3;
+        events.push({
+          type: 'shield_blocked',
+          placedBy: knightBuff.placedBy,
+          preventedDamage,
+          retaliationDamage: 3,
+        });
+      }
+    }
+    if (heroDamage > 0) {
       nextMember.heroHp = Math.max(0, Number(nextMember.heroHp ?? 3) - heroDamage);
       events.push({ type: 'hero_damaged', amount: heroDamage, heroHp: nextMember.heroHp });
     }
@@ -702,6 +747,8 @@ function resolveAttempt({
       type: 'combat_roll',
       outcome: combatOutcome.label,
       roll: combatOutcomeValue,
+      naturalRoll: rawRoll,
+      attackBonus: mageAttackBonus,
       attackRoll: combatOutcomeValue,
       attackTarget,
       damageRolls,
@@ -1961,30 +2008,26 @@ function useRoleAbility(options) {
   let visualEvents;
   if (member.role === 'cleric') {
     visualEvents = useClericPrayer(transaction, { expeditionId, userId, now }).events;
-  } else if (member.role === 'mage') {
-    consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: 'mage', now });
+  } else if (member.role === 'mage' || member.role === 'knight') {
+    consumeRoleCharge(transaction, { expeditionId, userId, expectedRole: member.role, now });
     const sharedBuffs = clone(snapshot.expedition.sharedBuffs || {});
-    if ((sharedBuffs.rollBonus?.uses ?? 0) > 0) throw new RangeError('an Arcane Boost is already waiting to be used');
-    sharedBuffs.rollBonus = {
-      amount: 1,
-      uses: 1,
-      source: 'mage',
-      placedBy: userId,
+    const owner = transaction.prepare(`
+      SELECT id AS userId, first_name AS firstName, username
+      FROM users WHERE id = ?
+    `).get(userId);
+    queueTeamAbility(sharedBuffs, member.role, {
+      sourceUserId: userId,
+      placedBy: owner,
       createdAt: now,
-    };
+    });
     transaction.prepare(`
       UPDATE family_expeditions SET shared_buffs_json = ? WHERE id = ?
     `).run(stringifyJson(sharedBuffs), expeditionId);
-    visualEvents = [{ type: 'mage_boost_placed', amount: 1, placedBy: userId }];
-  } else if (ROLE_EFFECT_TYPES[member.role]) {
-    const effect = placeRoleEffect(transaction, {
-      expeditionId,
-      roomId: room.id,
-      userId,
-      role: member.role,
-      now,
-    });
-    visualEvents = [{ type: 'role_effect_placed', effect }];
+    visualEvents = [{
+      type: member.role === 'mage' ? 'mage_boost_placed' : 'knight_shield_placed',
+      placedBy: owner,
+      stacks: teamAbilityQueue(sharedBuffs, member.role).length,
+    }];
   } else {
     throw new RangeError('role does not have a supported ability');
   }

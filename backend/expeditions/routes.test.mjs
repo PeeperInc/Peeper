@@ -706,7 +706,7 @@ test('legacy room attempts cannot activate daily role powers and legacy reveal i
   assert.match(reveal.body.error, /role-ability|update/i);
 });
 
-test('role ability endpoint places one shared room effect idempotently without burning duplicate charge', async () => {
+test('role ability endpoint queues stackable ally shields idempotently', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-role-effects' });
   const expeditionId = started.body.expedition.id;
@@ -728,9 +728,8 @@ test('role ability endpoint places one shared room effect idempotently without b
   );
   assert.equal(placed.status, 200);
   assert.equal(placed.body.member.roleCharge, 0);
-  assert.equal(placed.body.visualEvents[0].type, 'role_effect_placed');
-  const effect = placed.body.map.rooms.find(candidate => candidate.key === room.key).activeEffects[0];
-  assert.equal(effect.effectType, 'knight_shield');
+  assert.equal(placed.body.visualEvents[0].type, 'knight_shield_placed');
+  const effect = placed.body.expedition.sharedBuffs.teamAbilities.knight[0];
   assert.deepEqual(effect.placedBy, {
     userId: userIds[0],
     firstName: 'Member1',
@@ -744,7 +743,7 @@ test('role ability endpoint places one shared room effect idempotently without b
     { idempotencyKey: 'place-knight-shield' },
   );
   assert.equal(replay.status, 200);
-  assert.equal(replay.body.map.rooms.find(candidate => candidate.key === room.key).activeEffects.length, 1);
+  assert.equal(replay.body.expedition.sharedBuffs.teamAbilities.knight.length, 1);
 
   const duplicate = await request(
     'POST',
@@ -752,14 +751,14 @@ test('role ability endpoint places one shared room effect idempotently without b
     'tg-sibling',
     { idempotencyKey: 'duplicate-knight-shield' },
   );
-  assert.equal(duplicate.status, 400);
-  assert.match(duplicate.body.error, /already active/i);
+  assert.equal(duplicate.status, 200);
+  assert.equal(duplicate.body.expedition.sharedBuffs.teamAbilities.knight.length, 2);
   assert.equal(
     db.prepare(`
       SELECT role_charge FROM family_expedition_members
       WHERE expedition_id = ? AND user_id = ?
     `).pluck().get(expeditionId, userIds[1]),
-    1,
+    0,
   );
 });
 
@@ -897,7 +896,7 @@ test('member event acknowledgement validates ids, stays user-scoped, and is repl
   );
 });
 
-test('Mage grants one selectable +1 damage boost and Knight blocks one family hit', async () => {
+test('Mage links the next ally attack and Knight blocks then retaliates for the next ally', async () => {
   createFamilyWithMembers(['tg-owner', 'tg-mage', 'tg-actor']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-combat-effects' });
   const expeditionId = started.body.expedition.id;
@@ -946,11 +945,12 @@ test('Mage grants one selectable +1 damage boost and Knight blocks one family hi
     crypto.randomInt = max => max === 6 ? 0 : 10;
     const advantaged = await request(
       'POST', `/${expeditionId}/rooms/${combatRow.roomKey}/attempt`, 'tg-actor',
-      { idempotencyKey: 'combat-mage-roll', actionId: 'test_strike', useSharedBuff: true },
+      { idempotencyKey: 'combat-mage-roll', actionId: 'test_strike' },
     );
     assert.equal(advantaged.status, 200);
-    assert.equal(advantaged.body.recentActions.at(-1).modifiers.parts.some(part => part.source === 'shared:mage' && part.amount === 1), true);
-    assert.equal(advantaged.body.expedition.sharedBuffs.rollBonus.uses, 0);
+    assert.equal(advantaged.body.visualEvents.some(event => event.type === 'mage_boost_consumed' && event.attackBonus === 3), true);
+    assert.equal(advantaged.body.recentActions.at(-1).modifiers.parts.some(part => part.source === 'mage:arcane_link' && part.amount === 2), true);
+    assert.equal(advantaged.body.expedition.sharedBuffs.teamAbilities.mage.length, 0);
 
     crypto.randomInt = () => 0;
     const blocked = await request(
@@ -960,10 +960,8 @@ test('Mage grants one selectable +1 damage boost and Knight blocks one family hi
     assert.equal(blocked.status, 200);
     assert.equal(blocked.body.visualEvents.some(event => event.type === 'shield_blocked'), true);
     assert.equal(blocked.body.member.heroHp, 3);
-    assert.deepEqual(
-      blocked.body.map.rooms.find(room => room.key === combatRow.roomKey).activeEffects,
-      [],
-    );
+    assert.equal(blocked.body.visualEvents.some(event => event.type === 'shield_blocked' && event.retaliationDamage === 3), true);
+    assert.equal(blocked.body.expedition.sharedBuffs.teamAbilities.knight.length, 0);
     const unshielded = await request(
       'POST', `/${expeditionId}/rooms/${combatRow.roomKey}/attempt`, 'tg-actor',
       { idempotencyKey: 'combat-after-shield', actionId: 'test_strike' },

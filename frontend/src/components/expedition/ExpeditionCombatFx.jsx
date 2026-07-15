@@ -4,6 +4,7 @@ import './ExpeditionCombatFx.css';
 const FX_DURATION_MS = Object.freeze({
   dice: 1650,
   shield: 1250,
+  arcane: 1350,
   heal: 1550,
   recovery: 1650,
 });
@@ -29,6 +30,7 @@ function fxKind(event) {
   if (type === 'cleric_heal') return 'heal';
   if (type === 'cleric_recovery_reduced') return 'recovery';
   if (type === 'shield_blocked') return 'shield';
+  if (type === 'mage_boost_consumed') return 'arcane';
   if (isMageEvent(event)) return 'dice';
   return null;
 }
@@ -95,7 +97,18 @@ function ShieldFx({ event }) {
       </div>
       <div className="expedition-fx-impact-ring" aria-hidden="true" />
       <strong>Blocked</strong>
-      {prevented !== null && <small>{prevented} damage prevented</small>}
+      {prevented !== null && <small>{prevented} blocked · {event?.retaliationDamage || 3} returned</small>}
+    </div>
+  );
+}
+
+function ArcaneLinkFx({ event }) {
+  return (
+    <div className="expedition-combat-fx-scene expedition-combat-fx-arcane" role="status">
+      <div className="expedition-fx-arcane-rings" aria-hidden="true"><i /><i /><i /></div>
+      <span>Arcane Link</span>
+      <strong>+{event?.attackBonus || 3} d20 · +{event?.damageBonus || 2} damage</strong>
+      <small>Linked by {ownerName(event)}</small>
     </div>
   );
 }
@@ -114,7 +127,11 @@ function PersonalEventFx({ event, memberHp }) {
   const amount = finiteInteger(event?.amount);
   const displayedHp = finiteInteger(event?.heroHp) ?? finiteInteger(memberHp);
   const reducedSeconds = finiteInteger(event?.amountSeconds ?? event?.amount_seconds);
-  const reducedHours = reducedSeconds === null ? null : Math.max(1, Math.round(reducedSeconds / 3600));
+  const reducedLabel = reducedSeconds === null
+    ? '15%'
+    : reducedSeconds >= 3600
+      ? `${Math.max(1, Math.round(reducedSeconds / 3600))}h`
+      : `${Math.max(1, Math.round(reducedSeconds / 60))}m`;
 
   return (
     <div
@@ -130,7 +147,7 @@ function PersonalEventFx({ event, memberHp }) {
       )}
       <span>{isRecovery ? 'Recovery hastened' : 'Cleric prayer'}</span>
       <strong>
-        {isRecovery ? `-${reducedHours ?? 2}h recovery` : `+${amount ?? 1} HP`}
+        {isRecovery ? `-${reducedLabel} recovery` : `+${amount ?? 1} HP`}
       </strong>
       <small>
         {isRecovery
@@ -160,7 +177,7 @@ export default function ExpeditionCombatFx({
     }
     return (Array.isArray(visualEvents) ? visualEvents : [])
       .map(event => ({ source: 'visual', event, kind: fxKind(event) }))
-      .filter(item => ['dice', 'shield'].includes(item.kind));
+      .filter(item => ['dice', 'shield', 'arcane'].includes(item.kind));
   }, [personalEvent, visualEvents]);
   const sequenceId = items
     .map((item, index) => eventIdentity(item.source, item.event, index))
@@ -231,6 +248,7 @@ export default function ExpeditionCombatFx({
         <PersonalEventFx event={activeItem.event} memberHp={memberHp} />
       )}
       {activeItem.kind === 'shield' && <ShieldFx event={activeItem.event} />}
+      {activeItem.kind === 'arcane' && <ArcaneLinkFx event={activeItem.event} />}
       {activeItem.kind === 'dice' && <MageDiceFx event={activeItem.event} />}
     </div>
   );

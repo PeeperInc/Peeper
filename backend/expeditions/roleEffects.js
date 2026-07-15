@@ -303,7 +303,30 @@ function useClericPrayer(transaction, {
   let recoveryReducedCount = 0;
 
   for (const member of members) {
-    if (member.heroRecoverAt) continue;
+    if (member.heroRecoverAt && member.heroRecoverAt > now) {
+      const remainingSeconds = member.heroRecoverAt - now;
+      const amountSeconds = Math.max(1, Math.floor(remainingSeconds * 0.15));
+      const heroRecoverAt = Math.max(now, member.heroRecoverAt - amountSeconds);
+      transaction.prepare(`
+        UPDATE family_expedition_members SET hero_recover_at = ?
+        WHERE expedition_id = ? AND user_id = ?
+      `).run(heroRecoverAt, expeditionId, member.userId);
+      const event = {
+        type: 'cleric_recovery_reduced',
+        placedBy: owner,
+        amountSeconds,
+        heroRecoverAt,
+      };
+      enqueueMemberEvent(transaction, {
+        expeditionId,
+        userId: member.userId,
+        eventType: event.type,
+        payload: event,
+        now,
+      });
+      recoveryReducedCount += 1;
+      continue;
+    }
     if (member.heroHp <= 0 || member.heroHp >= 3) continue;
     const heroHp = Math.min(3, member.heroHp + 1);
     transaction.prepare(`

@@ -86,7 +86,7 @@ function SwipeReplyMessage({ isMe, onReply, children }) {
 
   return (
     <div
-      className={`global-chat-swipe-shell${isMe ? ' is-me' : ''}${offset >= 46 ? ' is-armed' : ''}`}
+      className={`global-chat-swipe-shell${isMe ? ' is-me' : ''}${offset > 0 ? ' is-swiping' : ''}${offset >= 46 ? ' is-armed' : ''}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
@@ -317,11 +317,6 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
         <div className="global-chat-header-copy">
           <span>PEEPER NETWORK</span>
           <h1>Global Chat</h1>
-          <p>Talk with players across the world</p>
-        </div>
-        <div className="global-chat-live" aria-label="Global Chat is live">
-          <i />
-          <span>LIVE</span>
         </div>
       </header>
 
@@ -367,9 +362,6 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
                 </div>
                 <div className="global-chat-message-meta">
                   <span>{formatMessageTime(message.sent_at)}</span>
-                  <button type="button" onClick={() => setReplyTo(message)} aria-label={`Reply to ${message.first_name || 'message'}`}>
-                    <ReplyIcon />
-                  </button>
                 </div>
               </div>
             </SwipeReplyMessage>

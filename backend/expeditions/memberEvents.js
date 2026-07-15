@@ -33,7 +33,17 @@ function sanitizeMemberEventPayload(payload, eventType = null) {
   const placedBy = safeActor(source.placedBy);
   if (placedBy) sanitized.placedBy = placedBy;
 
-  for (const key of ['amount', 'amountSeconds', 'heroHp', 'heroRecoverAt', 'preventedDamage']) {
+  for (const key of [
+    'amount',
+    'amountSeconds',
+    'heroHp',
+    'heroRecoverAt',
+    'preventedDamage',
+    'retaliationDamage',
+    'attackBonus',
+    'damageBonus',
+    'stacks',
+  ]) {
     const value = safeNumber(source[key]);
     if (value !== undefined) sanitized[key] = value;
   }
