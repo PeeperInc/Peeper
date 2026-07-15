@@ -25,13 +25,16 @@ app.use('/api/shop',  require('./routes/shop'));
 app.use('/api/gifts', require('./routes/gifts'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/admin',   require('./routes/admin'));
+app.use('/api/chat',    require('./routes/globalChat'));
 app.use('/api/webhook', require('./routes/webhook'));
+app.use('/api/family',  require('./routes/familyManagement'));
 app.use('/api/family',  require('./routes/family'));
 app.use('/api/home',    require('./routes/home'));
 app.use('/api/blackjack', require('./routes/blackjack'));
 app.use('/api/arena', require('./routes/arena'));
 app.use('/api/farm', require('./routes/farm'));
 app.use('/api/support', require('./routes/support'));
+app.use('/api/expeditions', require('./routes/expeditions'));
 
 // Items catalog (no auth needed for the list itself)
 const { CLOTHING_ITEMS, GIFT_ITEMS } = require('./items');

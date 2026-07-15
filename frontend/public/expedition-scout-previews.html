@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scout Room Preview Lab</title>
+  <style>
+    :root { color-scheme: dark; --lime: #b7ff4f; --gold: #d9a743; --bone: #e9dfbd; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 16px;
+      color: var(--bone);
+      font-family: "Trebuchet MS", sans-serif;
+      background:
+        linear-gradient(rgba(183,255,79,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(183,255,79,.025) 1px, transparent 1px),
+        #040806;
+      background-size: 16px 16px;
+    }
+    main { width: min(760px, 100%); margin: auto; }
+    header { margin-bottom: 14px; border-left: 3px solid var(--lime); padding: 4px 10px; }
+    header small { color: var(--lime); font-size: 10px; font-weight: 900; letter-spacing: .12em; }
+    h1 { margin: 3px 0 0; font-size: clamp(23px, 7vw, 40px); line-height: 1; text-transform: uppercase; }
+    p { margin: 6px 0 0; color: #9eafa0; font-size: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 9px; }
+    article {
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr);
+      min-height: 98px;
+      overflow: hidden;
+      border: 1px solid rgba(217,167,67,.32);
+      background: rgba(2,8,5,.92);
+    }
+    .shot { display: grid; min-height: 98px; place-items: center; overflow: hidden; background: #020604; }
+    .shot img { width: 100%; height: 100%; object-fit: cover; }
+    .copy { display: grid; align-content: center; min-width: 0; padding: 9px; }
+    .copy small { color: var(--gold); font-size: 8px; font-weight: 900; text-transform: uppercase; }
+    .copy strong { margin-top: 4px; color: #f5f7e9; font-size: 14px; text-transform: uppercase; }
+    .copy span { margin-top: 5px; color: #9eafa0; font-size: 10px; line-height: 1.3; }
+    .runes { display: grid; width: 86px; height: 72px; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 4px; border: 1px solid rgba(183,255,79,.3); }
+    .runes i { display: grid; place-items: center; border: 1px solid rgba(217,167,67,.35); color: var(--lime); font-style: normal; font-size: 15px; }
+    @media (max-width: 360px) {
+      body { padding: 8px; }
+      .grid { grid-template-columns: 1fr; }
+      article { grid-template-columns: 108px minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <small>DEV VIEW / SCOUT ABILITY</small>
+      <h1>Room Previews</h1>
+      <p>These are the compact challenge cards shown before the Scout locks the next room.</p>
+    </header>
+    <section class="grid">
+      <article>
+        <div class="shot"><img src="../src/assets/expeditions/root-king/ui/scout_root_crossing_preview.png" alt="Root Crossing"></div>
+        <div class="copy"><small>Exploration</small><strong>Root Crossing</strong><span>Cross six moving root lanes and reach the Crypt Gate.</span></div>
+      </article>
+      <article>
+        <div class="shot"><img src="../src/assets/expeditions/root-king/ui/scout_shade_hunt_preview.png" alt="Shade Hunt"></div>
+        <div class="copy"><small>Mystery</small><strong>Shade Hunt</strong><span>Remember the glowing eyes, then catch the moving shade.</span></div>
+      </article>
+      <article>
+        <div class="shot"><img src="../src/assets/expeditions/root-king/ui/scout_focus_hold_preview.png" alt="Focus Hold"></div>
+        <div class="copy"><small>Shrine</small><strong>Focus Hold</strong><span>Hold the rite and release close to its random target.</span></div>
+      </article>
+      <article>
+        <div class="shot"><img src="../src/assets/expeditions/root-king/ui/scout_timing_window_preview.png" alt="Timing Window"></div>
+        <div class="copy"><small>Trap</small><strong>Timing Window</strong><span>Stop the moving blade inside the safe window.</span></div>
+      </article>
+      <article>
+        <div class="shot"><div class="runes"><i>◇</i><i>△</i><i>◉</i><i>⌁</i><i>♢</i><i>☾</i><i>⌘</i><i>◌</i><i>♜</i></div></div>
+        <div class="copy"><small>Arcane</small><strong>Rune Sequence</strong><span>Watch three flashes, then repeat their order on a shuffled grid.</span></div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

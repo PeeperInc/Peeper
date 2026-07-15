@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import SupporterStar from '../components/SupporterStar';
 import * as api from '../api';
@@ -108,6 +108,8 @@ export default function GiftScreen({ initialRecipient = null }) {
   const [giftCatalog,   setGiftCatalog]   = useState([]);
   const [catalogLoading,setCatalogLoading]= useState(true);
   const [selectedGift,  setSelectedGift]  = useState(null);
+  const [giftQuery,     setGiftQuery]     = useState('');
+  const [giftSort,      setGiftSort]      = useState('price_asc');
   const [query,         setQuery]         = useState('');
   const [searchResults, setResults]       = useState([]);
   const [searching,     setSearching]     = useState(false);
@@ -128,6 +130,22 @@ export default function GiftScreen({ initialRecipient = null }) {
   }, []);
 
   const giftObj = giftCatalog.find(g => g.item_id === selectedGift);
+  const visibleGifts = useMemo(() => {
+    const normalizedQuery = giftQuery.trim().toLocaleLowerCase();
+    const filtered = normalizedQuery
+      ? giftCatalog.filter(gift => String(gift.name || '').toLocaleLowerCase().includes(normalizedQuery))
+      : giftCatalog;
+    return [...filtered].sort((left, right) => {
+      if (giftSort === 'price_asc' || giftSort === 'price_desc') {
+        const priceDifference = Number(left.price || 0) - Number(right.price || 0);
+        if (priceDifference !== 0) return giftSort === 'price_asc' ? priceDifference : -priceDifference;
+      } else {
+        const dateDifference = Number(left.created_at || 0) - Number(right.created_at || 0);
+        if (dateDifference !== 0) return giftSort === 'oldest' ? dateDifference : -dateDifference;
+      }
+      return String(left.name || '').localeCompare(String(right.name || ''));
+    });
+  }, [giftCatalog, giftQuery, giftSort]);
 
   // ── Step 1 handlers ───────────────────────────────────────────────────────
   function selectGift(giftId) {
@@ -212,6 +230,27 @@ export default function GiftScreen({ initialRecipient = null }) {
       {step === 1 && (
         <>
           <div className="section-label">Choose a Gift</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(112px, 0.48fr)', gap: 8, padding: '0 16px 12px' }}>
+            <input
+              className="search-input"
+              value={giftQuery}
+              onChange={event => setGiftQuery(event.target.value)}
+              placeholder="Search gifts..."
+              aria-label="Search gifts by name"
+            />
+            <select
+              className="search-input"
+              value={giftSort}
+              onChange={event => setGiftSort(event.target.value)}
+              aria-label="Sort gifts"
+              style={{ paddingInline: 10, minWidth: 0 }}
+            >
+              <option value="price_asc">Cheaper</option>
+              <option value="price_desc">Pricier</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+            </select>
+          </div>
           {catalogLoading && (
             <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-hint)', fontSize: 13 }}>
               Loading gifts…
@@ -222,8 +261,13 @@ export default function GiftScreen({ initialRecipient = null }) {
               No gifts available yet 🎁
             </div>
           )}
+          {!catalogLoading && giftCatalog.length > 0 && visibleGifts.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--text-hint)', fontSize: 13 }}>
+              No gifts match "{giftQuery.trim()}"
+            </div>
+          )}
           <div className="item-grid">
-            {giftCatalog.map(gift => {
+            {visibleGifts.map(gift => {
               const canAfford = (user?.coins ?? 0) >= gift.price;
               return (
                 <div

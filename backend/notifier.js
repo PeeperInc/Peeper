@@ -15,6 +15,8 @@ const db      = require('./database');
 const { liveStats } = require('./gameLogic');
 const { isNotificationEnabled } = require('./notificationSettings');
 const { getFarmCropReadiness, getFarmAnimalReadiness } = require('./farmState');
+const { regenerateAp } = require('./expeditions/engine');
+const { MAX_AP } = require('./expeditions/catalog');
 
 const INTERVAL_MS = 60 * 1000;
 const APP_URL     = 'https://peeper.frenzyradio.online';
@@ -28,7 +30,14 @@ const COOLDOWNS = {
   died:        0,           // once per death
   farm_crops_ready: 0,      // once until crops are harvested/replanted
   farm_animals_ready: 0,    // once until animal products are collected/new feed starts
+  expedition_ap_full: 0,    // once until AP is spent below cap
+  expedition_boss_ready: 0, // once until boss is no longer attackable
+  expedition_boss_reward: 0,// once until reward is claimed
+  expedition_finished: 0,   // once while a recent finish is visible
 };
+
+const EXPEDITION_AP_CAP = MAX_AP;
+const EXPEDITION_FINISHED_RECENT_SECONDS = 24 * 3600;
 
 let botToken = null;
 
@@ -81,6 +90,12 @@ async function sendFarmAnimalNotification(userId, telegramId, text) {
   await sendMessage(telegramId, text);
 }
 
+async function sendExpeditionNotification(userId, telegramId, text, send = sendMessage) {
+  if (!isNotificationEnabled(userId, 'expedition_notifications')) return false;
+  await send(telegramId, text);
+  return true;
+}
+
 // ── Dedup ───────────────────────────────────────────────────────────────────
 
 function getSentAt(userId, type) {
@@ -102,9 +117,141 @@ function clearFlag(userId, type) {
 function shouldSend(userId, type) {
   const sentAt   = getSentAt(userId, type);
   if (sentAt === null) return true;
-  const cooldown = COOLDOWNS[type] ?? 0;
+  const baseType = type.includes(':') ? type.slice(0, type.indexOf(':')) : type;
+  const cooldown = COOLDOWNS[type] ?? COOLDOWNS[baseType] ?? 0;
   if (cooldown === 0) return false;           // one-shot until cleared
   return (ts() - sentAt) >= cooldown;
+}
+
+function expeditionNotificationType(baseType, expeditionId) {
+  return `${baseType}:${expeditionId}`;
+}
+
+function expeditionFlagKey(userId, type) {
+  return `${Number(userId)}\u0000${type}`;
+}
+
+function clearStaleExpeditionFlags(baseType, activeRows) {
+  const activeFlags = new Set(activeRows.map(row => (
+    expeditionFlagKey(row.user_id, expeditionNotificationType(baseType, row.expedition_id))
+  )));
+  const prefix = `${baseType}:`;
+  const rows = db.prepare(`
+    SELECT user_id, type FROM notifications_sent
+    WHERE substr(type, 1, ?) = ?
+  `).all(prefix.length, prefix);
+
+  for (const row of rows) {
+    if (!activeFlags.has(expeditionFlagKey(row.user_id, row.type))) {
+      clearFlag(row.user_id, row.type);
+    }
+  }
+}
+
+async function sendExpeditionRows({ type: baseType, rows, text, send }) {
+  for (const row of rows) {
+    const userId = row.user_id;
+    const type = expeditionNotificationType(baseType, row.expedition_id);
+    if (!row.telegram_id || !shouldSend(userId, type)) continue;
+    const delivered = await sendExpeditionNotification(userId, row.telegram_id, text(row), send);
+    if (delivered) markSent(userId, type);
+  }
+}
+
+function getExpeditionApFullRows(now = ts()) {
+  const rows = db.prepare(`
+    SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id,
+           m.ap, m.ap_regen_day AS apRegenDay, m.ap_regen_at AS apRegenAt
+    FROM family_expedition_members m
+    JOIN family_expeditions e ON e.id = m.expedition_id
+    JOIN users u ON u.id = m.user_id
+    WHERE e.status != 'finished'
+      AND m.prepared_at IS NOT NULL
+  `).all();
+
+  return rows.filter(row => (
+    regenerateAp({ ap: row.ap, apRegenDay: row.apRegenDay, apRegenAt: row.apRegenAt }, now).ap >= EXPEDITION_AP_CAP
+  ));
+}
+
+function getExpeditionBossReadyRows() {
+  return db.prepare(`
+    SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id
+    FROM family_expeditions e
+    JOIN family_expedition_rooms r ON r.expedition_id = e.id
+    JOIN family_expedition_members m ON m.expedition_id = e.id
+    JOIN users u ON u.id = m.user_id
+    WHERE e.status = 'active'
+      AND r.room_type = 'boss'
+      AND r.state = 'unlocked'
+      AND m.prepared_at IS NOT NULL
+  `).all();
+}
+
+function getExpeditionBossRewardRows() {
+  return db.prepare(`
+    SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id
+    FROM family_expedition_members m
+    JOIN family_expeditions e ON e.id = m.expedition_id
+    JOIN users u ON u.id = m.user_id
+    WHERE e.status = 'boss_defeated'
+      AND m.prepared_at IS NOT NULL
+      AND m.contribution_ap >= 3
+      AND m.boss_reward_claimed_at IS NULL
+  `).all();
+}
+
+function getExpeditionFinishedRows(now = ts()) {
+  return db.prepare(`
+    SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id, e.finished_at
+    FROM family_expeditions e
+    JOIN family_members fm ON fm.family_id = e.family_id
+    JOIN users u ON u.id = fm.user_id
+    WHERE e.status = 'finished'
+      AND e.finished_at IS NOT NULL
+      AND e.finished_at >= ?
+  `).all(now - EXPEDITION_FINISHED_RECENT_SECONDS);
+}
+
+async function checkExpeditionNotifications(options = {}) {
+  const now = options.now ?? ts();
+  const send = options.send || sendMessage;
+
+  const apFullRows = getExpeditionApFullRows(now);
+  clearStaleExpeditionFlags('expedition_ap_full', apFullRows);
+  await sendExpeditionRows({
+    type: 'expedition_ap_full',
+    rows: apFullRows,
+    send,
+    text: () => `${String.fromCodePoint(0x26A1)} <b>Your expedition AP is full (${EXPEDITION_AP_CAP}/${EXPEDITION_AP_CAP}).</b>\n\nThe crypt is waiting. Spend your strength before it spoils.`,
+  });
+
+  const bossReadyRows = getExpeditionBossReadyRows();
+  clearStaleExpeditionFlags('expedition_boss_ready', bossReadyRows);
+  await sendExpeditionRows({
+    type: 'expedition_boss_ready',
+    rows: bossReadyRows,
+    send,
+    text: () => `${String.fromCodePoint(0x1F409)} <b>The expedition boss is exposed.</b>\n\nGather the family and strike before the shadows regroup.`,
+  });
+
+  const bossRewardRows = getExpeditionBossRewardRows();
+  clearStaleExpeditionFlags('expedition_boss_reward', bossRewardRows);
+  await sendExpeditionRows({
+    type: 'expedition_boss_reward',
+    rows: bossRewardRows,
+    send,
+    text: () => `${String.fromCodePoint(0x1F3C6)} <b>A boss reward is waiting.</b>\n\nClaim your spoils from the fallen horror.`,
+  });
+
+  const finishedRows = getExpeditionFinishedRows(now);
+  clearStaleExpeditionFlags('expedition_finished', finishedRows);
+  await sendExpeditionRows({
+    type: 'expedition_finished',
+    rows: finishedRows,
+    send,
+    text: () => `${String.fromCodePoint(0x1F56F)} <b>Your family expedition is finished.</b>\n\nThe dungeon grows quiet. Open Peeper to read the final tale.`,
+  });
 }
 
 // ── Main check ──────────────────────────────────────────────────────────────
@@ -254,6 +401,8 @@ async function checkAll() {
       clearFlag(userId, 'hp10');
     }
   }
+
+  await checkExpeditionNotifications();
 }
 
 // ── Start / Stop ────────────────────────────────────────────────────────────
@@ -275,4 +424,14 @@ function stop() {
   if (timer) clearInterval(timer);
 }
 
-module.exports = { start, stop };
+module.exports = {
+  start,
+  stop,
+  checkExpeditionNotifications,
+  _expeditionNotificationInternals: {
+    getExpeditionApFullRows,
+    getExpeditionBossReadyRows,
+    getExpeditionBossRewardRows,
+    getExpeditionFinishedRows,
+  },
+};

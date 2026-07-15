@@ -1,4 +1,5 @@
 const Database = require('better-sqlite3');
+const crypto = require('node:crypto');
 const path = require('path');
 const {
   HOME_FRIDGE_DECOR_ITEM_ID,
@@ -6,7 +7,7 @@ const {
 } = require('./homeConstants');
 const DEFAULT_ASSET_VERSION = '20260330-1';
 
-const db = new Database(path.join(__dirname, 'peeper.db'));
+const db = new Database(process.env.PEEPER_DB_PATH || path.join(__dirname, 'peeper.db'));
 
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL');
@@ -192,6 +193,7 @@ db.exec(`
     jackpot_notifications    INTEGER NOT NULL DEFAULT 1,
     farm_notifications       INTEGER NOT NULL DEFAULT 1,
     farm_animal_notifications INTEGER NOT NULL DEFAULT 0,
+    expedition_notifications INTEGER NOT NULL DEFAULT 1,
     updated_at               INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   );
 
@@ -260,6 +262,7 @@ addColumnIfMissing('users',   'supporter_stars', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users',   'casino_free_spins', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('user_notification_settings', 'farm_notifications', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('user_notification_settings', 'farm_animal_notifications', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('user_notification_settings', 'expedition_notifications', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('peepers', 'critical_start','INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'regen_start',   'INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'hp_at_regen',   'REAL DEFAULT NULL');
@@ -366,6 +369,402 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_family_messages     ON family_messages(family_id, sent_at);
   CREATE INDEX IF NOT EXISTS idx_family_chat_reads_family_user ON family_chat_reads(family_id, user_id);
 `);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS global_messages (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message       TEXT NOT NULL,
+    message_type  TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'family_invite')),
+    reply_to_id   INTEGER REFERENCES global_messages(id) ON DELETE SET NULL,
+    family_id     INTEGER REFERENCES families(id) ON DELETE SET NULL,
+    sent_at       INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS global_chat_mutes (
+    user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    muted_by     INTEGER NOT NULL REFERENCES users(id),
+    muted_until  INTEGER,
+    created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS global_chat_reads (
+    user_id               INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    last_read_message_id  INTEGER NOT NULL DEFAULT 0,
+    read_at               INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_global_messages_sent ON global_messages(id DESC);
+  CREATE INDEX IF NOT EXISTS idx_global_messages_user_sent ON global_messages(user_id, sent_at DESC);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS family_expeditions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    theme_id TEXT NOT NULL,
+    seed TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('active','boss_defeated','finished')),
+    map_json TEXT NOT NULL,
+    shared_buffs_json TEXT NOT NULL DEFAULT '{}',
+    started_by INTEGER NOT NULL REFERENCES users(id),
+    started_at INTEGER NOT NULL,
+    boss_defeated_at INTEGER,
+    finished_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_rooms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    room_key TEXT NOT NULL,
+    room_type TEXT NOT NULL,
+    state TEXT NOT NULL,
+    progress INTEGER NOT NULL DEFAULT 0,
+    progress_target INTEGER NOT NULL,
+    support INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    unlocked_at INTEGER,
+    cleared_at INTEGER,
+    UNIQUE(expedition_id, room_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_members (
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    ap INTEGER NOT NULL DEFAULT 3,
+    ap_regen_day INTEGER NOT NULL,
+    ap_regen_at INTEGER NOT NULL DEFAULT 0,
+    hero_hp INTEGER NOT NULL DEFAULT 3,
+    hero_recover_at INTEGER,
+    role_ability_day INTEGER NOT NULL,
+    role_ability_used INTEGER NOT NULL DEFAULT 0,
+    role_charge INTEGER NOT NULL DEFAULT 1,
+    role_charge_progress INTEGER NOT NULL DEFAULT 0,
+    role_charge_ready_at INTEGER NOT NULL DEFAULT 0,
+    room_coins_earned INTEGER NOT NULL DEFAULT 0,
+    provision_id TEXT,
+    provision_state_json TEXT NOT NULL DEFAULT '{}',
+    loadout_json TEXT NOT NULL DEFAULT '[]',
+    debuff_json TEXT NOT NULL DEFAULT '{}',
+    contribution_ap INTEGER NOT NULL DEFAULT 0,
+    contribution_progress INTEGER NOT NULL DEFAULT 0,
+    prepared_at INTEGER NOT NULL,
+    boss_reward_claimed_at INTEGER,
+    PRIMARY KEY(expedition_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_room_effects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL,
+    effect_type TEXT NOT NULL,
+    placed_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    remaining_uses INTEGER NOT NULL DEFAULT 1,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    consumed_at INTEGER,
+    FOREIGN KEY(room_id, expedition_id)
+      REFERENCES family_expedition_rooms(id, expedition_id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_minigame_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    attempt_token TEXT NOT NULL,
+    expedition_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_type TEXT NOT NULL,
+    seed TEXT NOT NULL,
+    status TEXT NOT NULL,
+    ap_spent INTEGER NOT NULL DEFAULT 0,
+    retry_available INTEGER NOT NULL DEFAULT 0,
+    started_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    finished_at INTEGER,
+    result_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY(room_id, expedition_id)
+      REFERENCES family_expedition_rooms(id, expedition_id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_minigame_idempotency (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    idempotency_key TEXT NOT NULL CHECK(
+      length(idempotency_key) BETWEEN 1 AND 128 AND length(trim(idempotency_key)) > 0
+    ),
+    operation TEXT NOT NULL CHECK(operation IN ('start', 'finish')),
+    attempt_id INTEGER NOT NULL REFERENCES family_expedition_minigame_attempts(id) ON DELETE CASCADE,
+    intent_json TEXT NOT NULL,
+    response_json TEXT,
+    http_response_json TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(user_id, idempotency_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_pending_rewards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    claimed_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_member_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    acknowledged_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS expedition_artifact_inventory (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    artifact_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    charges INTEGER NOT NULL DEFAULT 0,
+    first_acquired_at INTEGER NOT NULL,
+    last_acquired_at INTEGER NOT NULL,
+    PRIMARY KEY(user_id, artifact_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idempotency_key TEXT NOT NULL,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    room_id INTEGER NOT NULL REFERENCES family_expedition_rooms(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action_type TEXT NOT NULL,
+    stat TEXT,
+    raw_roll INTEGER,
+    modifier_json TEXT NOT NULL DEFAULT '{}',
+    modified_roll INTEGER,
+    progress_awarded INTEGER NOT NULL DEFAULT 0,
+    loot_json TEXT NOT NULL DEFAULT '{}',
+    narration_key TEXT,
+    created_at INTEGER NOT NULL,
+    UNIQUE(user_id, idempotency_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS family_expedition_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES family_expeditions(id) ON DELETE CASCADE,
+    family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    summary_json TEXT NOT NULL,
+    finished_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_family_expeditions_family_status
+    ON family_expeditions(family_id, status);
+  CREATE INDEX IF NOT EXISTS idx_family_expedition_rooms_expedition
+    ON family_expedition_rooms(expedition_id, state);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_room_identity
+    ON family_expedition_rooms(id, expedition_id);
+  CREATE INDEX IF NOT EXISTS idx_family_expedition_actions_chronology
+    ON family_expedition_actions(expedition_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_family_expedition_history_family
+    ON family_expedition_history(family_id, finished_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_room_effect_active
+    ON family_expedition_room_effects(expedition_id, room_id, effect_type)
+    WHERE consumed_at IS NULL;
+  CREATE INDEX IF NOT EXISTS idx_expedition_room_effect_room
+    ON family_expedition_room_effects(room_id);
+  CREATE INDEX IF NOT EXISTS idx_expedition_room_effect_placed_by
+    ON family_expedition_room_effects(placed_by);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_attempt_token
+    ON family_expedition_minigame_attempts(attempt_token);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_open_attempt
+    ON family_expedition_minigame_attempts(expedition_id, room_id, user_id)
+    WHERE status IN ('ready', 'active', 'retry');
+  CREATE INDEX IF NOT EXISTS idx_expedition_attempt_room
+    ON family_expedition_minigame_attempts(room_id);
+  CREATE INDEX IF NOT EXISTS idx_expedition_attempt_user
+    ON family_expedition_minigame_attempts(user_id);
+  CREATE INDEX IF NOT EXISTS idx_expedition_minigame_idempotency_attempt
+    ON family_expedition_minigame_idempotency(attempt_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_expedition_pending_reward
+    ON family_expedition_pending_rewards(expedition_id, user_id);
+  CREATE INDEX IF NOT EXISTS idx_expedition_pending_reward_user
+    ON family_expedition_pending_rewards(user_id, claimed_at);
+  CREATE INDEX IF NOT EXISTS idx_expedition_member_events_expedition_user
+    ON family_expedition_member_events(expedition_id, user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_expedition_member_events_user
+    ON family_expedition_member_events(user_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_expedition_member_events_pending_user
+    ON family_expedition_member_events(user_id, created_at)
+    WHERE acknowledged_at IS NULL;
+`);
+db.exec('DROP INDEX IF EXISTS idx_expedition_artifacts_user');
+addColumnIfMissing('family_expedition_members', 'ap_regen_at', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('family_expedition_members', 'hero_hp', 'INTEGER NOT NULL DEFAULT 3');
+addColumnIfMissing('family_expedition_members', 'hero_recover_at', 'INTEGER');
+addColumnIfMissing('family_expedition_members', 'role_charge', 'INTEGER NOT NULL DEFAULT 1');
+addColumnIfMissing('family_expedition_members', 'role_charge_progress', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('family_expedition_members', 'role_charge_ready_at', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('family_expedition_members', 'room_coins_earned', 'INTEGER NOT NULL DEFAULT 0');
+
+const CURATED_ARTIFACTS_BY_RARITY = Object.freeze({
+  common: ['old_torch', 'bent_sword', 'chalk_rune', 'rabbit_foot', 'bone_die', 'wooden_shield', 'tiny_shovel', 'ration_box'],
+  rare: ['rusty_lockpick', 'loaded_die', 'family_banner', 'rootcutters_axe', 'warding_nail', 'second_chance_coin', 'campfire_charm'],
+  epic: ['phoenix_feather', 'hourglass_shard', 'last_stand_banner', 'emerald_heart', 'crooked_compass', 'mimic_tooth'],
+  legendary: ['fates_broken_die', 'crown_of_twenty', 'root_kings_signet'],
+});
+const LEGACY_ARTIFACT_RARITY = Object.freeze(Object.fromEntries([
+  ...['rusty_buckle', 'map_scrap', 'cracked_compass', 'grave_salt', 'copper_bell', 'worn_gloves', 'moss_amulet', 'candle_stub', 'lucky_button', 'crow_feather', 'empty_vial', 'rope_knot'].map(id => [id, 'common']),
+  ...['clerics_bell', 'mirror_shard', 'silver_lantern', 'mapmakers_lens', 'goblin_coin', 'thornward_ring', 'echo_flute', 'mimic_whistle', 'scouts_monocle'].map(id => [id, 'rare']),
+  ...['blackroot_key', 'moonlit_d20', 'witch_bottle', 'gravekeepers_crown', 'hungry_satchel', 'chain_of_favors'].map(id => [id, 'epic']),
+  ...['eye_of_dungeon', 'endless_candle', 'door_without_key'].map(id => [id, 'legendary']),
+]));
+const CURATED_ARTIFACT_IDS = new Set(Object.values(CURATED_ARTIFACTS_BY_RARITY).flat());
+const MAX_LEGACY_ARTIFACT_COPIES = 1_000_000;
+
+function isExplicitZero(value) {
+  return value === 0 || value === '0';
+}
+
+function normalizeLegacyArtifactCopies(quantity, charges) {
+  if (isExplicitZero(quantity) && isExplicitZero(charges)) return 0;
+  const numericQuantity = Number(quantity);
+  const numericCharges = Number(charges);
+  const positiveQuantity = Number.isFinite(numericQuantity) && numericQuantity > 0
+    ? numericQuantity
+    : 0;
+  const chargedCopy = Number.isFinite(numericCharges) && numericCharges > 0 ? 1 : 0;
+  return Math.min(
+    MAX_LEGACY_ARTIFACT_COPIES,
+    Math.max(1, Math.round(Math.max(positiveQuantity, chargedCopy))),
+  );
+}
+
+function deterministicArtifactReplacement(userId, artifactId, rarity) {
+  const candidates = CURATED_ARTIFACTS_BY_RARITY[rarity];
+  const digest = crypto.createHash('sha256').update(`${userId}:${artifactId}`).digest();
+  return candidates[digest.readUInt32BE(0) % candidates.length];
+}
+
+const migrateExpeditionArtifactCatalog = db.transaction(() => {
+  const rows = db.prepare(`
+    SELECT user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    FROM expedition_artifact_inventory ORDER BY user_id, artifact_id
+  `).all();
+  const merge = db.prepare(`
+    INSERT INTO expedition_artifact_inventory (
+      user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
+    ) VALUES (?, ?, ?, 0, ?, ?)
+    ON CONFLICT(user_id, artifact_id) DO UPDATE SET
+      quantity = quantity + excluded.quantity,
+      charges = 0,
+      first_acquired_at = MIN(first_acquired_at, excluded.first_acquired_at),
+      last_acquired_at = MAX(last_acquired_at, excluded.last_acquired_at)
+  `);
+  const remove = db.prepare(`
+    DELETE FROM expedition_artifact_inventory WHERE user_id = ? AND artifact_id = ?
+  `);
+  for (const row of rows.filter(item => CURATED_ARTIFACT_IDS.has(item.artifact_id))) {
+    const copies = normalizeLegacyArtifactCopies(row.quantity, row.charges);
+    if (copies <= 0) {
+      remove.run(row.user_id, row.artifact_id);
+      continue;
+    }
+    db.prepare(`
+      UPDATE expedition_artifact_inventory SET quantity = ?, charges = 0
+      WHERE user_id = ? AND artifact_id = ?
+    `).run(copies, row.user_id, row.artifact_id);
+  }
+  for (const row of rows.filter(item => !CURATED_ARTIFACT_IDS.has(item.artifact_id))) {
+    const copies = normalizeLegacyArtifactCopies(row.quantity, row.charges);
+    if (copies <= 0) {
+      remove.run(row.user_id, row.artifact_id);
+      continue;
+    }
+    const rarity = LEGACY_ARTIFACT_RARITY[row.artifact_id];
+    if (!rarity) continue;
+    remove.run(row.user_id, row.artifact_id);
+    merge.run(
+      row.user_id,
+      deterministicArtifactReplacement(row.user_id, row.artifact_id, rarity),
+      copies,
+      row.first_acquired_at,
+      row.last_acquired_at,
+    );
+  }
+  db.prepare(`
+    INSERT OR REPLACE INTO app_settings (key, value, updated_at)
+    VALUES ('expedition_artifact_catalog_v2', '1', strftime('%s','now'))
+  `).run();
+});
+const expeditionArtifactCatalogMigrated = db.prepare(`
+  SELECT 1 FROM app_settings WHERE key = 'expedition_artifact_catalog_v2'
+`).get();
+if (!expeditionArtifactCatalogMigrated) migrateExpeditionArtifactCatalog();
+
+const migrateExpeditionMinigameIdempotency = db.transaction(() => {
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO family_expedition_minigame_idempotency (
+      user_id, idempotency_key, operation, attempt_id, intent_json,
+      response_json, http_response_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const addRecord = (row, operation, key, intent, response, httpResponse) => {
+    if (typeof key !== 'string' || key.trim().length === 0 || key.length > 128 || !intent) return;
+    insert.run(
+      row.user_id,
+      key,
+      operation,
+      row.id,
+      JSON.stringify(intent),
+      response === undefined ? null : JSON.stringify(response),
+      httpResponse === undefined ? null : JSON.stringify(httpResponse),
+      row.started_at,
+      row.finished_at || row.started_at,
+    );
+  };
+
+  for (const row of db.prepare(`
+    SELECT * FROM family_expedition_minigame_attempts ORDER BY id
+  `).all()) {
+    let metadata;
+    try {
+      metadata = JSON.parse(row.result_json || '{}');
+    } catch {
+      continue;
+    }
+    const fallbackAttempt = {
+      attemptToken: row.attempt_token,
+      gameType: row.game_type,
+      seed: row.seed,
+      startedAt: row.started_at,
+      expiresAt: row.expires_at,
+      retry: row.status === 'retry',
+    };
+    addRecord(
+      row,
+      'start',
+      metadata.startIdempotencyKey,
+      metadata.startIntent,
+      metadata.startResponse || { attempt: fallbackAttempt },
+      metadata.startHttpResponse,
+    );
+    for (const replay of metadata.startReplays || []) {
+      addRecord(row, 'start', replay.idempotencyKey, replay.intent, replay.response, replay.httpResponse);
+    }
+    for (const finish of metadata.finishes || []) {
+      addRecord(row, 'finish', finish.idempotencyKey, finish.intent, finish.response, finish.httpResponse);
+    }
+  }
+  db.prepare(`
+    INSERT OR REPLACE INTO app_settings (key, value, updated_at)
+    VALUES ('expedition_minigame_idempotency_backfilled_v1', '1', strftime('%s','now'))
+  `).run();
+});
+const expeditionIdempotencyBackfilled = db.prepare(`
+  SELECT 1 FROM app_settings
+  WHERE key = 'expedition_minigame_idempotency_backfilled_v1'
+`).get();
+if (!expeditionIdempotencyBackfilled) migrateExpeditionMinigameIdempotency();
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS blackjack_lobbies (
@@ -609,5 +1008,20 @@ db.prepare(`
   SET file_path = '/sprites/basewall.png'
   WHERE item_id = ?
 `).run(HOME_STARTER_WALL_ITEM_ID);
+
+const expeditionRewardsBackfilled = db.prepare(`
+  SELECT 1 FROM app_settings
+  WHERE key = 'expedition_pending_rewards_backfilled_v1'
+`).get();
+if (!expeditionRewardsBackfilled) {
+  const { backfillLegacyRewards } = require('./expeditions/rewards');
+  db.transaction(() => {
+    backfillLegacyRewards(db);
+    db.prepare(`
+      INSERT INTO app_settings (key, value)
+      VALUES ('expedition_pending_rewards_backfilled_v1', '1')
+    `).run();
+  })();
+}
 
 module.exports = db;

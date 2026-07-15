@@ -7,6 +7,7 @@ const NOTIFICATION_SETTING_KEYS = [
   'jackpot_notifications',
   'farm_notifications',
   'farm_animal_notifications',
+  'expedition_notifications',
 ];
 
 const NOTIFICATION_SETTING_META = {
@@ -34,6 +35,10 @@ const NOTIFICATION_SETTING_META = {
     label: 'Animal farm alerts',
     description: 'Telegram messages when fed animals have products ready',
     defaultEnabled: 0,
+  },
+  expedition_notifications: {
+    label: 'Expedition alerts',
+    description: 'Full AP, boss, reward and completion alerts',
   },
 };
 
@@ -67,6 +72,7 @@ function getNotificationSettings(userId) {
     jackpot_notifications: Number(row?.jackpot_notifications ?? 1),
     farm_notifications: Number(row?.farm_notifications ?? 1),
     farm_animal_notifications: Number(row?.farm_animal_notifications ?? 0),
+    expedition_notifications: Number(row?.expedition_notifications ?? 1),
   };
 }
 

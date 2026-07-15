@@ -1,0 +1,501 @@
+.expedition-minigame {
+  --mg-lime: #b8ff52;
+  --mg-gold: #f4c75d;
+  --mg-ink: #050807;
+  --mg-panel: #0a1310;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  overflow: hidden;
+  color: #f5f7e9;
+  background:
+    linear-gradient(180deg, rgba(17, 36, 25, 0.98), rgba(3, 8, 7, 0.99)),
+    repeating-linear-gradient(90deg, transparent 0 22px, rgba(184, 255, 82, 0.035) 23px 24px);
+  border: 1px solid rgba(244, 199, 93, 0.38);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(184, 255, 82, 0.06);
+  box-sizing: border-box;
+  isolation: isolate;
+}
+
+.expedition-minigame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 0, rgba(184, 255, 82, 0.08), transparent 45%);
+  z-index: -1;
+}
+
+.expedition-minigame__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin-bottom: 8px;
+  padding: 0 2px 7px;
+  border-bottom: 1px solid rgba(244, 199, 93, 0.22);
+}
+
+.expedition-minigame__header > div:first-child {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.expedition-minigame__header span,
+.expedition-minigame__header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expedition-minigame__header span {
+  color: var(--mg-lime);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.expedition-minigame__header strong {
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.expedition-minigame__timer {
+  display: flex;
+  align-items: baseline;
+  flex: 0 0 auto;
+  gap: 2px;
+  min-width: 42px;
+  justify-content: flex-end;
+  color: var(--mg-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.expedition-minigame__timer b { font-size: 20px; line-height: 1; }
+.expedition-minigame__timer small { font-size: 8px; font-weight: 900; }
+
+.root-crossing-field,
+.shade-hunt-field {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: #030706;
+  border: 1px solid rgba(184, 255, 82, 0.16);
+  border-radius: 5px;
+  touch-action: manipulation;
+}
+
+.shade-hunt-field::after {
+  content: '';
+  position: absolute;
+  z-index: 24;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.shade-hunt-game.is-success .shade-hunt-field::after {
+  background: rgba(108, 255, 104, 0.3);
+  animation: shade-result-flash 420ms ease-out;
+}
+
+.shade-hunt-game.is-failed .shade-hunt-field::after {
+  background: rgba(255, 66, 66, 0.32);
+  animation: shade-result-flash 420ms ease-out;
+}
+
+.root-crossing-field {
+  height: clamp(250px, 49vh, 390px);
+  background:
+    linear-gradient(90deg, rgba(4, 15, 8, 0.8), transparent 28% 72%, rgba(4, 15, 8, 0.8)),
+    repeating-linear-gradient(0deg, rgba(40, 70, 48, 0.16) 0 1px, transparent 1px 12.45%),
+    radial-gradient(ellipse at 50% 100%, #17331e 0, #07110c 46%, #020504 100%);
+}
+
+.root-crossing-exit,
+.root-crossing-start {
+  position: absolute;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  color: rgba(245, 247, 233, 0.68);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.root-crossing-exit {
+  top: 3px;
+  width: 44%;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  color: var(--mg-lime);
+  border: 1px solid rgba(184, 255, 82, 0.45);
+  border-bottom: 3px solid rgba(184, 255, 82, 0.65);
+  background: linear-gradient(180deg, rgba(184, 255, 82, 0.12), rgba(184, 255, 82, 0.02));
+  clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%);
+}
+
+.root-crossing-start { bottom: 3px; }
+
+.root-crossing-lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 11.8%;
+  z-index: 3;
+}
+
+.root-crossing-lane__line {
+  position: absolute;
+  inset: 45% 0 auto;
+  border-top: 1px dashed rgba(244, 199, 93, 0.14);
+}
+
+.root-crossing-hazard {
+  position: absolute;
+  top: 50%;
+  height: 58%;
+  min-width: 38px;
+  transform: translateY(-50%);
+  border: 1px solid #58351f;
+  border-radius: 45% 12% 40% 15%;
+  background: linear-gradient(180deg, #895132, #3d251b 48%, #1b130e);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.72), inset 0 1px rgba(255, 193, 101, 0.25);
+}
+
+.root-crossing-hazard::after {
+  content: '';
+  position: absolute;
+  inset: -15% 9%;
+  border-left: 3px solid #72502f;
+  border-right: 2px solid #2e2115;
+  transform: skewX(-20deg);
+}
+
+.root-crossing-hazard i {
+  position: absolute;
+  width: 4px;
+  height: 10px;
+  top: -7px;
+  background: #a66e35;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.root-crossing-hazard i:nth-child(1) { left: 18%; }
+.root-crossing-hazard i:nth-child(2) { left: 51%; height: 14px; top: -11px; }
+.root-crossing-hazard i:nth-child(3) { right: 13%; }
+.root-crossing-hazard--1 { filter: hue-rotate(14deg) brightness(0.9); }
+.root-crossing-hazard--2 { filter: hue-rotate(-12deg) brightness(1.08); }
+
+.root-crossing-hero {
+  position: absolute;
+  left: 50%;
+  z-index: 8;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, 50%);
+  transition: bottom 130ms cubic-bezier(.2,.8,.2,1);
+}
+
+.root-crossing-hero > span {
+  position: relative;
+  z-index: 2;
+  font-size: 22px;
+  line-height: 1;
+  filter: drop-shadow(0 0 5px rgba(184, 255, 82, 0.9)) drop-shadow(0 2px 1px #000);
+}
+
+.root-crossing-hero__aura {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--mg-lime);
+  border-radius: 50%;
+  background: rgba(78, 135, 50, 0.58);
+  box-shadow: 0 0 14px rgba(184, 255, 82, 0.65);
+}
+
+.root-crossing-callout,
+.shade-hunt-start-panel,
+.shade-hunt-flash-copy,
+.shade-hunt-hunt-copy {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.root-crossing-callout {
+  bottom: 12%;
+  width: min(85%, 270px);
+  padding: 7px 9px;
+  color: #d9e5cc;
+  background: rgba(4, 9, 7, 0.88);
+  border: 1px solid rgba(184, 255, 82, 0.26);
+  font-size: 10px;
+}
+
+.root-crossing-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9px minmax(0, 1fr);
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.root-crossing-controls button,
+.shade-hunt-start-panel button {
+  min-width: 0;
+  min-height: 46px;
+  border: 1px solid rgba(184, 255, 82, 0.6);
+  border-radius: 4px;
+  color: #071006;
+  background: linear-gradient(180deg, #c9ff65, #77d82f);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.45), 0 3px 0 #315f1a;
+  font: inherit;
+  font-weight: 900;
+  touch-action: manipulation;
+}
+
+.root-crossing-controls button { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.root-crossing-controls button span { font-size: 13px; }
+.root-crossing-controls button b { font-size: 11px; letter-spacing: 0.08em; }
+.root-crossing-controls button:active:not(:disabled),
+.shade-hunt-start-panel button:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 1px rgba(255,255,255,.25), 0 1px 0 #315f1a; }
+.root-crossing-controls button:disabled,
+.shade-hunt-start-panel button:disabled { opacity: 0.42; filter: grayscale(0.5); }
+
+.expedition-focus-hold {
+  display: grid;
+  width: 100%;
+  min-height: 56px;
+  margin-top: 8px;
+  place-items: center;
+  touch-action: none;
+  user-select: none;
+}
+
+.expedition-focus-hold strong,
+.expedition-focus-hold span { pointer-events: none; }
+
+.expedition-focus-hold strong {
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+
+.expedition-focus-hold span {
+  font-size: 9px;
+  font-weight: 800;
+  opacity: 0.72;
+}
+
+.expedition-focus-hold.is-holding {
+  color: #081006;
+  background: linear-gradient(180deg, #e5ff87, #86e637);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.28), 0 0 18px rgba(184, 255, 82, 0.22);
+  transform: translateY(1px);
+}
+
+.root-crossing-progress {
+  position: relative;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.root-crossing-progress i {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(0deg, var(--mg-lime), var(--mg-gold));
+  transition: height 130ms ease;
+}
+
+.shade-hunt-field {
+  height: clamp(275px, 52vh, 410px);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(65, 91, 75, 0.32), transparent 42%),
+    linear-gradient(145deg, #101a18, #030706 62%);
+}
+
+.shade-hunt-mist {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  opacity: 0.28;
+  background:
+    radial-gradient(ellipse at 25% 40%, rgba(156, 183, 158, 0.22), transparent 24%),
+    radial-gradient(ellipse at 75% 65%, rgba(156, 183, 158, 0.18), transparent 27%);
+  animation: shade-mist-drift 7s ease-in-out infinite alternate;
+}
+
+.shade-hunt-target {
+  position: absolute;
+  z-index: 5;
+  width: 42px;
+  height: 46px;
+  margin: -23px 0 0 -21px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  transform: translateZ(0);
+  touch-action: manipulation;
+}
+
+.shade-hunt-target:disabled { opacity: 1; }
+
+.shade-hunt-body {
+  position: absolute;
+  inset: 5px 4px 2px;
+  display: block;
+  border: 1px solid rgba(132, 151, 139, 0.18);
+  border-radius: 46% 52% 35% 42%;
+  background: radial-gradient(circle at 50% 30%, #25312d, #0a0e0d 58%, #020303);
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.6);
+}
+
+.shade-shape-1 .shade-hunt-body { border-radius: 34% 55% 48% 29%; transform: rotate(10deg); }
+.shade-shape-2 .shade-hunt-body { border-radius: 55% 34% 31% 52%; transform: rotate(-8deg); }
+
+.shade-hunt-eyes {
+  position: absolute;
+  z-index: 2;
+  top: 17px;
+  left: 12px;
+  display: flex;
+  gap: 5px;
+}
+
+.shade-hunt-eyes i {
+  width: 5px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(150, 174, 157, 0.25);
+}
+
+.shade-hunt-game.is-flash .shade-hunt-target .shade-hunt-eyes i {
+  background: rgba(129, 150, 136, 0.24);
+}
+
+/* The marked target is selected by inline React state; only its eyes receive this brief class. */
+.shade-hunt-game.is-flash .shade-hunt-target[data-marked='true'] .shade-hunt-eyes i {
+  background: #eaffc7;
+  box-shadow: 0 0 4px #fff, 0 0 10px var(--mg-lime);
+}
+
+.shade-hunt-start-panel {
+  position: relative;
+  z-index: 1;
+  left: auto;
+  display: grid;
+  width: 100%;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 8px;
+  transform: none;
+  color: #dce7d9;
+  background: rgba(3, 8, 7, 0.72);
+  border: 1px solid rgba(244, 199, 93, 0.35);
+}
+
+.shade-hunt-start-panel span { font-size: 10px; text-align: center; }
+.shade-hunt-start-panel button { min-height: 42px; font-size: 11px; letter-spacing: 0.08em; }
+
+.shade-hunt-flash-copy,
+.shade-hunt-hunt-copy {
+  top: 8px;
+  padding: 5px 8px;
+  color: var(--mg-gold);
+  background: rgba(3, 8, 7, 0.78);
+  border: 1px solid rgba(244, 199, 93, 0.25);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}
+
+.shade-hunt-hunt-copy { color: #d9e5d8; border-color: rgba(184, 255, 82, 0.18); }
+
+.expedition-minigame__result {
+  position: absolute;
+  z-index: 30;
+  inset: 50% auto auto 50%;
+  display: grid;
+  width: min(76%, 260px);
+  gap: 3px;
+  padding: 14px;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  background: rgba(2, 6, 5, 0.95);
+  border: 1px solid currentColor;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+
+.expedition-minigame__result b { font-size: 14px; letter-spacing: 0.06em; }
+.expedition-minigame__result span { color: #c8d1c4; font-size: 10px; }
+.expedition-minigame__result.success { color: var(--mg-lime); }
+.expedition-minigame__result.failed { color: #ff6d63; }
+
+.expedition-minigame__error {
+  margin: 7px 0 0;
+  color: #ff8c83;
+  font-size: 10px;
+  text-align: center;
+}
+
+.expedition-minigame__feedback {
+  min-height: 18px;
+  margin: 8px 0 0;
+  padding: 5px 7px;
+  color: #e8d78d;
+  border-left: 2px solid var(--mg-gold);
+  background: rgba(244, 199, 93, 0.07);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.expedition-minigame-start {
+  width: 100%;
+  margin: 8px 0;
+}
+
+@keyframes shade-mist-drift {
+  from { transform: translate3d(-3%, -1%, 0) scale(1); }
+  to { transform: translate3d(3%, 2%, 0) scale(1.06); }
+}
+
+@keyframes shade-result-flash {
+  0% { opacity: 0; }
+  24% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (max-width: 360px), (max-height: 620px) {
+  .expedition-minigame { padding: 7px; }
+  .expedition-minigame__header { min-height: 37px; margin-bottom: 6px; }
+  .expedition-minigame__header strong { font-size: 12px; }
+  .expedition-minigame__timer b { font-size: 17px; }
+  .root-crossing-field { height: min(45vh, 288px); min-height: 226px; }
+  .shade-hunt-field { height: min(48vh, 305px); min-height: 238px; }
+  .root-crossing-controls button { min-height: 41px; }
+  .shade-hunt-target { width: 38px; height: 42px; margin: -21px 0 0 -19px; }
+  .shade-hunt-eyes { top: 16px; left: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shade-hunt-mist { animation: none; }
+  .root-crossing-hero,
+  .root-crossing-progress i { transition-duration: 40ms; }
+  .root-crossing-controls button:active:not(:disabled),
+  .shade-hunt-start-panel button:active:not(:disabled) { transform: none; }
+}

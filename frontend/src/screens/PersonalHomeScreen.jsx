@@ -103,6 +103,7 @@ export default function PersonalHomeScreen({ onClose }) {
   if (shopOpen) {
     return (
       <HomeShopScreen
+        home={homeState}
         items={catalogItems}
         coins={user?.coins ?? 0}
         buyingItemId={buyingItemId}

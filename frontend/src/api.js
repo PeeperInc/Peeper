@@ -120,6 +120,13 @@ export const sendGift = (recipientId, giftId, message = null, isPrivate = false)
 export const getUserGifts = (userId) => get(`/gifts/received/${userId}`);
 export const markGiftSeen = (giftId) => post(`/gifts/seen/${giftId}`, {});
 
+export const getGlobalMessages = () => get('/chat/messages');
+export const getGlobalUnread = () => get('/chat/unread');
+export const markGlobalMessagesRead = () => post('/chat/read', {});
+export const sendGlobalMessage = (message, replyToId = null) => post('/chat/message', { message, replyToId });
+export const postFamilyInviteToGlobalChat = () => post('/chat/family-invite', {});
+export const muteGlobalChatUser = (userId, duration) => post('/chat/mute', { userId, duration });
+
 export const searchUsers = (q) => get(`/users/search?q=${encodeURIComponent(q)}`);
 export const getUserProfile = (userId) => get(`/users/${userId}/profile`);
 export const getLongevityBoard = () => get('/users/leaderboard/longevity');
@@ -132,6 +139,8 @@ export const createFamily = (name) => post('/family/create', { name });
 export const joinFamily = (inviteCode) => post('/family/join', { inviteCode });
 export const leaveFamily = () => post('/family/leave');
 export const kickMember = (userId) => post('/family/kick', { userId });
+export const renameFamily = (name) => post('/family/rename', { name });
+export const transferFamilyOwnership = (userId) => post('/family/transfer', { userId });
 export const feedFamilyMember = (targetUserId) => post('/family/feed', { targetUserId });
 export const triggerFamilyBigFeast = () => post('/family/big-feast', {});
 export const getFamilyMessages = () => get('/family/messages');
@@ -142,3 +151,48 @@ export const getFamilyLeaderboard = (limit = 10) => get(`/family/leaderboard?lim
 export const getFamilyProfile = (familyId) => get(`/family/${familyId}/profile`);
 export const inviteFamilyMember = (targetUserId) => post('/family/invite', { targetUserId });
 export const getPendingInvites = () => get('/family/invites/pending');
+
+export const getExpeditionCurrent = () => get('/expeditions/current');
+export const getExpeditionBadge = () => get('/expeditions/badge');
+export const startExpedition = (idempotencyKey) => post('/expeditions/start', { idempotencyKey });
+export const prepareExpedition = (expeditionId, { role, provisionId = null, artifactIds = [], idempotencyKey }) =>
+  post(`/expeditions/${expeditionId}/prepare`, { role, provisionId, artifactIds, idempotencyKey });
+export const attemptExpeditionRoom = (
+  expeditionId,
+  roomKey,
+  { actionId, mechanicChoice = null, selectedSupport = 0, useSharedBuff = false, idempotencyKey } = {},
+) => post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/attempt`, {
+  actionId,
+  mechanicChoice,
+  selectedSupport,
+  useSharedBuff,
+  idempotencyKey,
+});
+export const assistExpeditionRoom = (expeditionId, roomKey, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/assist`, { idempotencyKey });
+export const chooseExpeditionScoutRoom = (expeditionId, roomKey, { choiceId, idempotencyKey } = {}) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/scout-choice`, { choiceId, idempotencyKey });
+export const useExpeditionRoleAbility = (expeditionId, roomKey, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/role-ability`, { idempotencyKey });
+export const useExpeditionProvision = (expeditionId, roomKey, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/provision/use`, { idempotencyKey });
+export const useExpeditionArtifact = (expeditionId, roomKey, artifactId, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/artifacts/${encodeURIComponent(artifactId)}/use`, { idempotencyKey });
+export const startExpeditionMinigame = (expeditionId, roomKey, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/minigame/start`, { idempotencyKey });
+export const finishExpeditionMinigame = (expeditionId, roomKey, attemptToken, { result, idempotencyKey } = {}) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/minigame/${encodeURIComponent(attemptToken)}/finish`, {
+    result,
+    idempotencyKey,
+  });
+export const equipFoundExpeditionArtifact = (expeditionId, { artifactId, slotIndex, idempotencyKey } = {}) =>
+  post(`/expeditions/${expeditionId}/equip-found-artifact`, { artifactId, slotIndex, idempotencyKey });
+export const finishExpedition = (expeditionId, idempotencyKey) =>
+  post(`/expeditions/${expeditionId}/finish`, { idempotencyKey });
+export const claimExpeditionReward = (rewardId) =>
+  post(`/expeditions/rewards/${rewardId}/claim`, {});
+export const acknowledgeExpeditionEvents = (eventIds, idempotencyKey) =>
+  post('/expeditions/events/ack', { eventIds, idempotencyKey });
+export const expeditionLog = (expeditionId) => get(`/expeditions/${expeditionId}/log`);
+export const expeditionHistory = () => get('/expeditions/history');
+export const expeditionArtifacts = () => get('/expeditions/artifacts');

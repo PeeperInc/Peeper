@@ -228,6 +228,52 @@ html.overlay-ui-open {
   border: 2px solid var(--bg-glass);
   box-shadow: 0 4px 10px rgba(224,61,79,0.28);
 }
+
+.tab-unread-badge,
+.tab-expedition-ap-badge {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 17px;
+  border: 2px solid rgba(4, 15, 12, 0.96);
+  border-radius: 9px;
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 950;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.tab-expedition-ap-badge.expedition-entry {
+  min-width: 31px;
+  background: linear-gradient(180deg, #c9ff55, #5f9d19);
+  color: #081300;
+  box-shadow: 0 0 0 2px rgba(179, 255, 73, .16), 0 0 16px rgba(169, 255, 61, .62);
+  animation: family-expedition-entry-pulse 1s ease-in-out infinite;
+}
+
+.tab-unread-badge {
+  top: -5px;
+  right: -12px;
+  min-width: 17px;
+  padding: 0 4px;
+  background: linear-gradient(135deg, #ff7d65, #ff3f6e);
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(255, 63, 110, 0.34);
+}
+
+.tab-expedition-ap-badge {
+  top: -5px;
+  left: -17px;
+  min-width: 24px;
+  padding: 0 5px;
+  background: linear-gradient(180deg, #ffe47c, #b97820);
+  color: #170e03;
+  box-shadow: 0 0 12px rgba(255, 211, 87, 0.34);
+  animation: family-expedition-badge-pulse 1.4s ease-in-out infinite;
+}
 /* ── Cards ────────────────────────────────────────────────────────── */
 .card {
   background: var(--bg-card);
@@ -691,6 +737,48 @@ img { animation-play-state: var(--animation-play-state, running); }
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
+}
+
+.family-expedition-badge {
+  margin-left: 6px;
+  flex-shrink: 0;
+  min-width: 28px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 221, 116, 0.72);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 241, 169, 0.34), transparent 56%),
+    linear-gradient(180deg, #ffd76b, #b46f1e);
+  color: #160d03;
+  box-shadow: 0 0 14px rgba(255, 206, 75, 0.28);
+  animation: family-expedition-badge-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes family-expedition-badge-pulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.05); filter: brightness(1.14); }
+}
+
+.inner-tab.expedition-needs-entry {
+  position: relative;
+  border-color: rgba(190, 255, 85, .78);
+  animation: family-expedition-tab-pulse 1.15s ease-in-out infinite;
+}
+
+@keyframes family-expedition-entry-pulse {
+  0%, 100% { transform: scale(.96); filter: brightness(.94); }
+  50% { transform: scale(1.1); filter: brightness(1.25); }
+}
+
+@keyframes family-expedition-tab-pulse {
+  0%, 100% {
+    background: rgba(54, 92, 26, .3);
+    box-shadow: inset 0 0 0 1px rgba(190, 255, 85, .14), 0 0 0 rgba(169, 255, 61, 0);
+  }
+  50% {
+    background: rgba(83, 137, 34, .52);
+    box-shadow: inset 0 0 0 1px rgba(216, 255, 148, .52), 0 0 15px rgba(169, 255, 61, .32);
+  }
 }
 
 /* ── Divider ──────────────────────────────────────────────────────── */
@@ -2524,6 +2612,13 @@ h1, h2, h3 {
 .family-chat-unread-badge {
   background: linear-gradient(135deg, #ff7d65, #ff3f6e);
   box-shadow: 0 0 0 2px rgba(255,255,255,0.08), 0 8px 18px rgba(255, 63, 110, 0.3);
+}
+
+.family-expedition-badge {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 241, 169, 0.34), transparent 56%),
+    linear-gradient(180deg, #ffd76b, #b46f1e);
+  box-shadow: 0 0 14px rgba(255, 206, 75, 0.28);
 }
 
 .stat-bar-track {

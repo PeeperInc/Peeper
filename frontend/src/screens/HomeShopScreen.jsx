@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import BottomSheet from '../components/BottomSheet';
 import CatalogSortToggle from '../components/CatalogSortToggle';
+import HomeScene from '../components/HomeScene';
 import { CATALOG_SORT_MODES, sortCatalogItems } from '../utils/catalogSort.mjs';
 
 const BACK_LABEL = 'Back';
@@ -61,9 +62,26 @@ function DecorPreview({ filePath, name, size = 72 }) {
   );
 }
 
-function HomeShopPreviewModal({ item, coins, buying, onBuy, onClose }) {
+function homeWithPreviewItem(home, item) {
+  const currentSlots = home?.slots || {};
+  const slots = { ...currentSlots };
+  if (item.slot === 'back_decor') {
+    const currentDecor = Array.isArray(currentSlots.back_decor) ? currentSlots.back_decor : [];
+    const maxOrder = currentDecor.reduce((highest, decor) => Math.max(highest, Number(decor.sort_order) || 0), 0);
+    slots.back_decor = [
+      ...currentDecor.filter(decor => decor.item_id !== item.item_id),
+      { ...item, sort_order: maxOrder + 1 },
+    ];
+  } else {
+    slots[item.slot] = item;
+  }
+  return { ...(home || {}), owned: true, slots };
+}
+
+function HomeShopPreviewModal({ item, home, coins, buying, onBuy, onClose }) {
   const canAfford = item.is_free || coins >= item.price;
   const owned = item.owned;
+  const previewHome = homeWithPreviewItem(home, item);
 
   return (
     <BottomSheet
@@ -88,19 +106,13 @@ function HomeShopPreviewModal({ item, coins, buying, onBuy, onClose }) {
         </div>
       </div>
 
-      <div
-        style={{
-          width: 'min(240px, 62vw)',
-          maxWidth: '100%',
-          padding: 12,
-          borderRadius: 24,
-          background: 'var(--bg-secondary)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <DecorPreview filePath={item.file_path} name={item.name} size={240} />
+      <div style={{ width: 'min(270px, 72vw)', maxWidth: '100%' }}>
+        <HomeScene
+          home={previewHome}
+          showPeeper={false}
+          shellStyle={{ width: '100%', maxHeight: 'none' }}
+          sceneStyle={{ borderRadius: 5, border: '1px solid var(--border)' }}
+        />
       </div>
 
       {!owned && (
@@ -158,6 +170,7 @@ function HomeShopPreviewModal({ item, coins, buying, onBuy, onClose }) {
 }
 
 export default function HomeShopScreen({
+  home,
   items,
   coins,
   buyingItemId,
@@ -201,6 +214,7 @@ export default function HomeShopScreen({
       {previewItem && (
         <HomeShopPreviewModal
           item={previewItem}
+          home={home}
           coins={coins}
           buying={buyingItemId === previewItem.item_id}
           onBuy={handleBuyFromPreview}

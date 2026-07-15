@@ -17,6 +17,8 @@ const { liveStats, FOOD_TYPES, HUNGER_DRAIN } = require('../gameLogic');
 const { syncPeeperRow } = require('../peeperState');
 const { isNotificationEnabled } = require('../notificationSettings');
 const { serializeFamilyMemberStats } = require('../familyMemberStats');
+const { regenerateAp } = require('../expeditions/engine');
+const { MAX_AP } = require('../expeditions/catalog');
 
 const BIG_FEAST_COST = 100;
 const BIG_FEAST_COOLDOWN = 7 * 24 * 3600;
@@ -140,6 +142,61 @@ function getBigFeastStatus(userId, nowTs = ts()) {
     available_at: cooldownSeconds > 0 ? availableAt : nowTs,
     last_used_at: lastUse?.used_at || null,
     available: cooldownSeconds <= 0,
+  };
+}
+
+function getFamilyExpeditionSummary(familyId, userId, nowTs = ts()) {
+  const expedition = db.prepare(`
+    SELECT id, status
+    FROM family_expeditions
+    WHERE family_id = ?
+      AND status IN ('active', 'boss_defeated')
+    ORDER BY started_at DESC, id DESC
+    LIMIT 1
+  `).get(familyId);
+
+  if (!expedition) {
+    return {
+      active: false,
+      joined: false,
+      canStart: true,
+      canJoin: false,
+      needsEntry: true,
+      apFull: false,
+      bossReady: false,
+      rewardWaiting: false,
+      status: null,
+    };
+  }
+
+  const member = db.prepare(`
+    SELECT ap, ap_regen_day, ap_regen_at, contribution_ap, boss_reward_claimed_at
+    FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = ?
+  `).get(expedition.id, userId);
+  const regenerated = member ? regenerateAp({
+    ap: member.ap,
+    apRegenDay: member.ap_regen_day,
+    apRegenAt: member.ap_regen_at,
+  }, nowTs) : null;
+  const boss = db.prepare(`
+    SELECT state
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_type = 'boss'
+    LIMIT 1
+  `).get(expedition.id);
+
+  return {
+    active: true,
+    joined: Boolean(member),
+    canStart: false,
+    canJoin: expedition.status === 'active' && !member,
+    needsEntry: expedition.status === 'active' && !member,
+    apFull: Boolean(regenerated && regenerated.ap >= MAX_AP),
+    bossReady: expedition.status === 'active' && boss?.state === 'unlocked',
+    rewardWaiting: ['boss_defeated', 'finished'].includes(expedition.status)
+      && Boolean(member && (member.contribution_ap || 0) >= 3 && !member.boss_reward_claimed_at),
+    status: expedition.status,
   };
 }
 
@@ -319,6 +376,7 @@ router.get('/me', validateTelegramInit, (req, res) => {
     fedTodayUserId: fedToday?.fed_id || null,
     bigFeast: getBigFeastStatus(user.id, now),
     unreadCount: getFamilyChatUnreadCount(user.id, family.id),
+    expeditionSummary: getFamilyExpeditionSummary(family.id, user.id, now),
   });
 });
 
