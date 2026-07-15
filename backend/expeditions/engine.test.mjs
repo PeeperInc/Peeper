@@ -24,6 +24,7 @@ const {
   attemptRoom,
   assistRoom,
   chooseScoutRoom,
+  useProvisionForMember,
   completeEventRoom,
   startMinigameAttempt,
   finishMinigameAttempt,
@@ -1591,6 +1592,97 @@ test('preparation provisions consume farm inventory and replay without double sp
     now: Date.UTC(2026, 5, 23),
   })), /Not enough Carrot/);
   db.close();
+});
+
+test('Lucky Breakfast is mini-game only and grants extra progress for the whole room', () => {
+  const scenario = minigameArtifactScenario({ userId: 47 });
+  scenario.db.prepare(`
+    UPDATE family_expedition_rooms SET progress_target = 5
+    WHERE expedition_id = ? AND room_key = ?
+  `).run(scenario.expeditionId, scenario.roomKey);
+  scenario.db.prepare(`
+    UPDATE family_expedition_members
+    SET provision_id = 'hearty_potato_meal', provision_state_json = '{"available":true,"used":false}'
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(scenario.expeditionId, scenario.userId);
+  assert.throws(() => inTx(scenario.db, () => useProvisionForMember({
+    transaction: scenario.db,
+    idempotencyKey: 'reject-potato-in-minigame',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    now: 1_099,
+  })), /Damage provisions can only be used during combat/);
+  scenario.db.prepare(`
+    UPDATE family_expedition_members
+    SET provision_id = 'lucky_breakfast', provision_state_json = '{"available":true,"used":false}'
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(scenario.expeditionId, scenario.userId);
+
+  inTx(scenario.db, () => useProvisionForMember({
+    transaction: scenario.db,
+    idempotencyKey: 'use-lucky-breakfast',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    now: 1_100,
+  }));
+
+  failMinigameAttempt(scenario, 'lucky-failure', 1_110);
+  let provisionState = JSON.parse(scenario.db.prepare(`
+    SELECT provision_state_json FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = ?
+  `).pluck().get(scenario.expeditionId, scenario.userId));
+  assert.equal(provisionState.minigameProgressBonus.persistent, true);
+
+  const started = inTx(scenario.db, () => startMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: 'start-lucky-success',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    now: 1_120,
+  }));
+  const finished = inTx(scenario.db, () => finishMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: 'finish-lucky-success',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    attemptToken: started.attempt.attemptToken,
+    result: { success: true, score: 100 },
+    now: 1_121,
+  }));
+  assert.equal(finished.snapshot.rooms.find(room => room.key === scenario.roomKey).progress, 2);
+  assert.ok(finished.visualEvents.some(event => event.type === 'lucky_breakfast_bonus' && event.amount === 1));
+
+  const startedAgain = inTx(scenario.db, () => startMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: 'start-lucky-success-again',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    now: 1_130,
+  }));
+  const finishedAgain = inTx(scenario.db, () => finishMinigameAttempt({
+    transaction: scenario.db,
+    idempotencyKey: 'finish-lucky-success-again',
+    expeditionId: scenario.expeditionId,
+    userId: scenario.userId,
+    roomKey: scenario.roomKey,
+    attemptToken: startedAgain.attempt.attemptToken,
+    result: { success: true, score: 100 },
+    now: 1_131,
+  }));
+  assert.equal(finishedAgain.snapshot.rooms.find(room => room.key === scenario.roomKey).progress, 4);
+  assert.ok(finishedAgain.visualEvents.some(event => event.type === 'lucky_breakfast_bonus' && event.amount === 1));
+
+  provisionState = JSON.parse(scenario.db.prepare(`
+    SELECT provision_state_json FROM family_expedition_members
+    WHERE expedition_id = ? AND user_id = ?
+  `).pluck().get(scenario.expeditionId, scenario.userId));
+  assert.equal(provisionState.minigameProgressBonus.persistent, true);
+  scenario.db.close();
 });
 
 test('preparation claims one immutable loadout and rejects a different request without reserving again', () => {

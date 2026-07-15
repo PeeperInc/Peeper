@@ -66,6 +66,7 @@ function HungerBar({ hunger, alive }) {
 }
 
 function expeditionBadgeLabel(summary) {
+  if (summary?.needsEntry) return 'Exp';
   if (!summary?.active) return '';
   if (summary.rewardWaiting) return 'Chest';
   if (summary.bossReady) return 'Boss';
@@ -935,7 +936,7 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
 }
 
 // ── Main FamilyScreen ─────────────────────────────────────────────────────────
-export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGameplayOpenChange }) {
+export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onExpeditionAttentionChange, onGameplayOpenChange }) {
   const { user, refreshGameState, showToast } = useApp();
   const [family, setFamily]           = useState(null);
   const [members, setMembers]         = useState([]);
@@ -961,11 +962,13 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
       setFedToday(r.fedTodayUserId || null);
       setBigFeast(r.bigFeast || null);
       setUnreadCount(r.unreadCount || 0);
-      setExpeditionSummary(r.expeditionSummary || null);
+      const nextExpeditionSummary = r.expeditionSummary || null;
+      setExpeditionSummary(nextExpeditionSummary);
+      onExpeditionAttentionChange?.(Boolean(nextExpeditionSummary?.needsEntry));
       onFamilyUnreadChange?.(r.unreadCount || 0);
     } catch {}
     finally { setLoading(false); }
-  }, [onFamilyUnreadChange]);
+  }, [onExpeditionAttentionChange, onFamilyUnreadChange]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -995,8 +998,9 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
     if (!family) {
       setUnreadCount(0);
       onFamilyUnreadChange?.(0);
+      onExpeditionAttentionChange?.(false);
     }
-  }, [family, onFamilyUnreadChange]);
+  }, [family, onExpeditionAttentionChange, onFamilyUnreadChange]);
 
   useEffect(() => {
     const expeditionOpen = Boolean(family && activeTab === 'expedition');
@@ -1117,7 +1121,7 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
       {/* Tab switcher */}
       <div className="inner-tabs" style={{ marginTop: 4 }}>
         {[['members','👥 Members'],['expedition','🗺️ Expedition'],['chat','💬 Chat']].map(([id, label]) => (
-          <button key={id} className={`inner-tab${activeTab === id ? ' active' : ''}`}
+          <button key={id} className={`inner-tab${activeTab === id ? ' active' : ''}${id === 'expedition' && expeditionSummary?.needsEntry ? ' expedition-needs-entry' : ''}`}
             onClick={() => setActiveTab(id)}>
             <span className="family-tab-label">{label}</span>
             {id === 'chat' && unreadCount > 0 && (
@@ -1150,6 +1154,7 @@ export default function FamilyScreen({ onViewProfile, onFamilyUnreadChange, onGa
             setMembers([]);
             setBigFeast(null);
             setExpeditionSummary(null);
+            onExpeditionAttentionChange?.(false);
             setUnreadCount(0);
             onFamilyUnreadChange?.(0);
           }}

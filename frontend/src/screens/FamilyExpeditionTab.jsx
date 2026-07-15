@@ -200,7 +200,32 @@ function primaryActionForRoom(room = {}, member = {}, roles = {}) {
 }
 
 function isCombatRoom(room = {}) {
-  return (room?.encounterType || room?.type) === 'combat';
+  return room?.type === 'boss' || ['combat', 'boss'].includes(room?.encounterType || room?.type);
+}
+
+function provisionUseReason({ provisionId, available, member, room, mutating }) {
+  if (!available) return 'This provision has already been used.';
+  if (mutating) return 'Another expedition action is still resolving.';
+  if (!room) return 'Open the current room before using this provision.';
+  if (room.state !== 'unlocked') return 'Provisions can only be used in the current open room.';
+  if (Number(member?.heroHp ?? 3) <= 0) return 'Your hero cannot eat while knocked out.';
+
+  if (provisionId === 'carrot_rations' && Number(member?.ap || 0) >= 5) {
+    return 'Your AP is already full.';
+  }
+  if (provisionId === 'tomato_soup' && Number(member?.heroHp ?? 3) >= 3) {
+    return 'Your HP is already full.';
+  }
+  if (provisionId === 'warm_milk' && Number(member?.roleCharge || 0) >= 1) {
+    return 'Your class ability is already ready.';
+  }
+  if (['hearty_potato_meal', 'magic_squash_pie'].includes(provisionId) && !isCombatRoom(room)) {
+    return 'Damage provisions can only be used during combat.';
+  }
+  if (provisionId === 'lucky_breakfast' && (!room.miniGame || isCombatRoom(room))) {
+    return 'Lucky Breakfast can only be used in a mini-game room.';
+  }
+  return '';
 }
 
 function mechanicCopy(mechanic = {}) {
@@ -478,13 +503,13 @@ function PreparationFlow({ state, loading, onPrepare }) {
     cleric: ['HP', 'Restore the whole party', 'Heal every family hero by 1 HP, including yourself, and shorten active knockouts by 15%. Recharges after 3 hours.'],
   });
   const provisionCopy = {
-    carrot_rations: 'Drink during the run to restore 1 AP.',
-    tomato_soup: 'Restore 1 HP to your wounded hero.',
-    hearty_potato_meal: 'Add +2 damage to your next successful attack.',
-    lucky_breakfast: 'Add +1 damage to every successful attack in the current room.',
+    carrot_rations: 'Restore all AP, up to 5/5.',
+    tomato_soup: 'Restore all HP, up to 3/3.',
+    hearty_potato_meal: 'Add +2 damage to every successful attack in the current combat room.',
+    lucky_breakfast: 'Gain +1 extra room progress on every successful mini-game attempt in the current room.',
     warm_milk: 'Immediately restore your class ability.',
     truffle_treat: 'Upgrade the rarity table of your next artifact reward.',
-    magic_squash_pie: 'Add +3 damage to your next successful attack.',
+    magic_squash_pie: 'Add +3 damage to every successful attack for the rest of the expedition.',
   };
 
   const selectedRole = roleEntries.find(([id]) => id === role)?.[1] || {};
@@ -688,7 +713,7 @@ function ExpeditionGuidePanel() {
     ['HP and knockout', 'Every hero has 3 HP and HP does not refill when the family enters a new room. At 0 HP the hero is knocked out for 6 hours and cannot act, then returns with all 3 HP. A Phoenix Feather revives immediately. Family Prayer heals wounded heroes and shortens every active knockout by 15%.'],
     ['Knight, Mage and Cleric', 'Thorn Guard protects the next ally who would take combat damage, blocks it and retaliates for 3 damage. Arcane Link gives the next ally +3 to one d20 and +2 damage if that attack hits. Family Prayer immediately heals every wounded hero by 1 HP, including the Cleric. These abilities recharge in 3 hours and cannot be consumed by their caster; queued ally buffs survive mini-game rooms.'],
     ['Scout', 'Pathfinder is used once per expedition. It reveals three possible next rooms with the exact enemy and AC or the exact mini-game, then lets the Scout choose the family route. Warm Milk or Campfire Charm can restore the spent Pathfinder ability.'],
-    ['Provisions', 'Food is consumed only when you tap it. Carrots restore 1 AP; Tomato Soup heals 1 HP; Potato Meal adds +2 to the next hit; Lucky Breakfast adds +1 damage to every hit in the current room; Warm Milk restores the class ability; Truffle Treat upgrades the next artifact reward; Magic Squash Pie adds +3 to the next hit.'],
+    ['Provisions', 'Food is consumed only when you tap it. Carrot Rations fully restore AP, while Tomato Soup fully restores HP. Hearty Potato Meal adds +2 damage to every hit in the current combat room, and Magic Squash Pie adds +3 damage for the rest of the expedition; both can only be eaten during combat. Lucky Breakfast can only be eaten in a mini-game room and adds +1 extra progress to every successful attempt in that room. Warm Milk restores your class ability, and Truffle Treat upgrades the next artifact reward.'],
     ['Artifacts', 'Only your three equipped relics work. Passive relics activate automatically for the whole expedition and are consumed when it ends. Active relics are consumed when used. Tap any relic in the top bar to see its exact effect, valid room and current availability; an unavailable relic remains safe in its slot.'],
     ['Rooms and rewards', 'The map hides future rooms, while cleared and current rooms remain visible. Room loot is personal. Duplicate artifacts are kept as additional copies. When the Root King falls, unclaimed rewards remain available, and each hero can open a detailed reward summary later.'],
   ];
@@ -2109,6 +2134,13 @@ function ExpeditionDashboard({
   const provision = member?.provisionId ? provisions.get(member.provisionId) : null;
   const provisionAvailable = Boolean(member?.provisionId && member?.provisionState?.available && !member?.provisionState?.used);
   const selectedRoom = rooms.find(room => room.key === selectedRoomKey) || null;
+  const provisionDisabledReason = provisionUseReason({
+    provisionId: member?.provisionId,
+    available: provisionAvailable,
+    member,
+    room: selectedRoom,
+    mutating,
+  });
   const equippedRelics = Array.from({ length: 3 }, (_, slotIndex) => {
     const slot = member?.loadout?.[slotIndex] || null;
     const artifactId = artifactIdFromLoadoutSlot(slot);
@@ -2373,10 +2405,11 @@ function ExpeditionDashboard({
         <ExpeditionOverlay title={provision?.name || titleize(member.provisionId)} kicker="Expedition provision" onClose={() => setShowProvision(false)}>
           <div className="expedition-provision-use">
             {assetById(provisionImages, member.provisionId) && <img src={assetById(provisionImages, member.provisionId)} alt="" />}
-            <p>{{
-              carrot_rations: 'Restore 1 AP now.', tomato_soup: 'Restore 1 HP now.', hearty_potato_meal: 'Add +2 damage to your next successful attack.', lucky_breakfast: 'Add +1 damage to every successful attack in this room.', warm_milk: 'Restore your class ability immediately.', truffle_treat: 'Upgrade your next artifact reward.', magic_squash_pie: 'Add +3 damage to your next successful attack.',
+            <p>{provision?.description || {
+              carrot_rations: 'Restore all AP now.', tomato_soup: 'Restore all HP now.', hearty_potato_meal: 'Add +2 damage to every successful attack in this combat room.', lucky_breakfast: 'Gain +1 extra progress on every successful mini-game attempt in this room.', warm_milk: 'Restore your class ability immediately.', truffle_treat: 'Upgrade your next artifact reward.', magic_squash_pie: 'Add +3 damage to every successful attack for the rest of this expedition.',
             }[member.provisionId]}</p>
-            <button type="button" className="btn btn-primary btn-full" disabled={!provisionAvailable || mutating || !selectedRoom || selectedRoom.state !== 'unlocked'} onClick={async () => { const next = await onUseProvision(selectedRoom.key); if (next) setShowProvision(false); }}>
+            {provisionDisabledReason && <p className="expedition-provision-reason">{provisionDisabledReason}</p>}
+            <button type="button" className="btn btn-primary btn-full" disabled={Boolean(provisionDisabledReason)} onClick={async () => { const next = await onUseProvision(selectedRoom.key); if (next) setShowProvision(false); }}>
               {provisionAvailable ? 'Use Provision' : 'Already Used'}
             </button>
           </div>

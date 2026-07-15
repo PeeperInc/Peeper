@@ -158,6 +158,10 @@ function getFamilyExpeditionSummary(familyId, userId, nowTs = ts()) {
   if (!expedition) {
     return {
       active: false,
+      joined: false,
+      canStart: true,
+      canJoin: false,
+      needsEntry: true,
       apFull: false,
       bossReady: false,
       rewardWaiting: false,
@@ -184,6 +188,10 @@ function getFamilyExpeditionSummary(familyId, userId, nowTs = ts()) {
 
   return {
     active: true,
+    joined: Boolean(member),
+    canStart: false,
+    canJoin: expedition.status === 'active' && !member,
+    needsEntry: expedition.status === 'active' && !member,
     apFull: Boolean(regenerated && regenerated.ap >= MAX_AP),
     bossReady: expedition.status === 'active' && boss?.state === 'unlocked',
     rewardWaiting: ['boss_defeated', 'finished'].includes(expedition.status)

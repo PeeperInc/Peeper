@@ -246,6 +246,14 @@ html.overlay-ui-open {
   pointer-events: none;
 }
 
+.tab-expedition-ap-badge.expedition-entry {
+  min-width: 31px;
+  background: linear-gradient(180deg, #c9ff55, #5f9d19);
+  color: #081300;
+  box-shadow: 0 0 0 2px rgba(179, 255, 73, .16), 0 0 16px rgba(169, 255, 61, .62);
+  animation: family-expedition-entry-pulse 1s ease-in-out infinite;
+}
+
 .tab-unread-badge {
   top: -5px;
   right: -12px;
@@ -749,6 +757,28 @@ img { animation-play-state: var(--animation-play-state, running); }
 @keyframes family-expedition-badge-pulse {
   0%, 100% { transform: scale(1); filter: brightness(1); }
   50% { transform: scale(1.05); filter: brightness(1.14); }
+}
+
+.inner-tab.expedition-needs-entry {
+  position: relative;
+  border-color: rgba(190, 255, 85, .78);
+  animation: family-expedition-tab-pulse 1.15s ease-in-out infinite;
+}
+
+@keyframes family-expedition-entry-pulse {
+  0%, 100% { transform: scale(.96); filter: brightness(.94); }
+  50% { transform: scale(1.1); filter: brightness(1.25); }
+}
+
+@keyframes family-expedition-tab-pulse {
+  0%, 100% {
+    background: rgba(54, 92, 26, .3);
+    box-shadow: inset 0 0 0 1px rgba(190, 255, 85, .14), 0 0 0 rgba(169, 255, 61, 0);
+  }
+  50% {
+    background: rgba(83, 137, 34, .52);
+    box-shadow: inset 0 0 0 1px rgba(216, 255, 148, .52), 0 0 15px rgba(169, 255, 61, .32);
+  }
 }
 
 /* ── Divider ──────────────────────────────────────────────────────── */

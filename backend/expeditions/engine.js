@@ -233,6 +233,12 @@ function provisionStateFor(provisionId) {
   return PROVISIONS[provisionId] ? { available: true, used: false } : {};
 }
 
+function minigameProvisionBonus(member, roomKey) {
+  const bonus = member?.provisionState?.minigameProgressBonus;
+  if (!bonus?.persistent || bonus.roomKey !== roomKey) return 0;
+  return Math.max(0, Number(bonus.amount || 0));
+}
+
 function applyRoleChargeRestoration(member, room) {
   const restoration = member.provisionState?.restoreRoleAbility;
   if ((restoration?.uses ?? 0) <= 0) return;
@@ -789,7 +795,12 @@ function resolveAttempt({
   nextMember.triggerHistory = beforeProgress.triggerHistory;
 
   nextMember.ap -= 1;
-  if (combatOutcome?.hit && nextMember.provisionState?.damageBonus?.uses > 0 && !nextMember.provisionState.damageBonus.roomKey) {
+  if (
+    combatOutcome?.hit
+    && nextMember.provisionState?.damageBonus?.uses > 0
+    && !nextMember.provisionState.damageBonus.roomKey
+    && !nextMember.provisionState.damageBonus.persistent
+  ) {
     nextMember.provisionState.damageBonus.uses -= 1;
   }
   nextMember.debuff = null;
@@ -2076,21 +2087,26 @@ function useProvisionForMember(options) {
     throw new RangeError('provision is already used');
   }
 
+  const encounterType = room.encounterType || room.type;
+  const combatRoom = room.type === 'boss' || ['combat', 'boss'].includes(encounterType);
+  const minigameRoom = Boolean(room.miniGame) && !combatRoom;
   const state = { available: false, used: true, usedAt: now, roomKey };
   switch (member.provisionId) {
     case 'carrot_rations':
       if (member.ap >= MAX_AP) throw new RangeError('AP is already full');
-      member.ap = Math.min(MAX_AP, member.ap + 1);
+      member.ap = MAX_AP;
       break;
     case 'tomato_soup':
       if (member.heroHp >= 3) throw new RangeError('HP is already full');
-      member.heroHp = Math.min(3, member.heroHp + 1);
+      member.heroHp = 3;
       break;
     case 'hearty_potato_meal':
-      state.damageBonus = { uses: 1, amount: 2 };
+      if (!combatRoom) throw new RangeError('Damage provisions can only be used during combat');
+      state.damageBonus = { uses: 1, amount: 2, roomKey, persistent: true };
       break;
     case 'lucky_breakfast':
-      state.damageBonus = { uses: 999, amount: 1, roomKey };
+      if (!minigameRoom) throw new RangeError('Lucky Breakfast can only be used in a mini-game room');
+      state.minigameProgressBonus = { amount: 1, roomKey, persistent: true };
       break;
     case 'warm_milk':
       if (member.roleCharge >= 1) throw new RangeError('role ability is already ready');
@@ -2102,7 +2118,8 @@ function useProvisionForMember(options) {
       state.upgradeLootRarity = { uses: 1, tiers: 1 };
       break;
     case 'magic_squash_pie':
-      state.damageBonus = { uses: 1, amount: 3 };
+      if (!combatRoom) throw new RangeError('Damage provisions can only be used during combat');
+      state.damageBonus = { uses: 1, amount: 3, persistent: true };
       break;
     default:
       throw new RangeError('unknown provision');
@@ -2163,11 +2180,15 @@ function completeEventRoom(options) {
   nextMember.ap -= 1;
 
   const previousProgress = room.progress || 0;
-  const rawProgress = normalizedScore >= 90 ? 2 : normalizedScore >= 60 ? 1 : 0;
+  const rawProgress = normalizedScore >= 60 ? 1 : 0;
+  const provisionBonus = rawProgress > 0
+    ? minigameProvisionBonus(nextMember, room.key)
+    : 0;
+  const requestedProgress = rawProgress + provisionBonus;
   const nextRoom = { ...room };
   nextRoom.progress = Math.max(
     previousProgress,
-    Math.min(nextRoom.progressTarget || Infinity, previousProgress + rawProgress),
+    Math.min(nextRoom.progressTarget || Infinity, previousProgress + requestedProgress),
   );
   const appliedProgress = Math.max(0, nextRoom.progress - previousProgress);
   if (nextRoom.progress >= (nextRoom.progressTarget || Infinity)) {
@@ -2197,7 +2218,13 @@ function completeEventRoom(options) {
     roomId: room.id,
     userId,
     actionType: 'event_minigame',
-    modifiers: { score: normalizedScore, events: [{ type: 'event_minigame', score: normalizedScore }] },
+    modifiers: {
+      score: normalizedScore,
+      events: [
+        { type: 'event_minigame', score: normalizedScore },
+        ...(provisionBonus > 0 ? [{ type: 'lucky_breakfast_bonus', amount: provisionBonus }] : []),
+      ],
+    },
     intent,
     progressAwarded: appliedProgress,
     loot: grantedLoot,
@@ -2493,7 +2520,8 @@ function applyMinigameSuccess({
   assertMinigameRoom(currentRoom);
   const memberState = rowToMember(getMemberRow(transaction, expeditionId, userId));
   const previousProgress = currentRoom.progress || 0;
-  const requestedProgress = 1;
+  const provisionBonus = minigameProvisionBonus(memberState, currentRoom.key);
+  const requestedProgress = 1 + provisionBonus;
   const nextRoom = {
     ...currentRoom,
     progress: Math.min(currentRoom.progressTarget || Infinity, previousProgress + requestedProgress),
@@ -2526,7 +2554,10 @@ function applyMinigameSuccess({
     updateMember(transaction, expeditionId, memberState);
     persistUnlocks(transaction, expeditionId, snapshot.expedition.map, nextRoom.key, now);
   }
-  const visualEvents = [{ type: 'event_minigame_success', progressAwarded }];
+  const visualEvents = [
+    { type: 'event_minigame_success', progressAwarded },
+    ...(provisionBonus > 0 ? [{ type: 'lucky_breakfast_bonus', amount: provisionBonus }] : []),
+  ];
   insertAction(transaction, {
     idempotencyKey,
     expeditionId,

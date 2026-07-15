@@ -142,6 +142,7 @@ function AppContent() {
   const [giftRecipient,   setGiftRecipient]   = useState(null);  // pre-fill gift recipient
   const [familyUnreadCount, setFamilyUnreadCount] = useState(0);
   const [familyAvailableAp, setFamilyAvailableAp] = useState(0);
+  const [familyExpeditionAttention, setFamilyExpeditionAttention] = useState(false);
   const [globalUnreadCount, setGlobalUnreadCount] = useState(0);
   const [blackjackInviteToken, setBlackjackInviteToken] = useState(null);
   const [arenaInviteToken, setArenaInviteToken] = useState(null);
@@ -174,6 +175,7 @@ function AppContent() {
     if (!user?.id) {
       setFamilyUnreadCount(0);
       setFamilyAvailableAp(0);
+      setFamilyExpeditionAttention(false);
       return;
     }
     try {
@@ -183,6 +185,7 @@ function AppContent() {
       ]);
       setFamilyUnreadCount(unreadResult?.unreadCount || 0);
       setFamilyAvailableAp(expeditionResult?.hasAvailableAp ? Number(expeditionResult.availableAp || 0) : 0);
+      setFamilyExpeditionAttention(Boolean(expeditionResult?.needsEntry));
     } catch {
       // ignore
     }
@@ -390,6 +393,7 @@ function AppContent() {
           <FamilyScreen
             onViewProfile={(uid) => { setProfileUserId(uid); setShowProfile(true); }}
             onFamilyUnreadChange={setFamilyUnreadCount}
+            onExpeditionAttentionChange={setFamilyExpeditionAttention}
             onGameplayOpenChange={setGameplayOpen}
           />
         )}
@@ -423,7 +427,10 @@ function AppContent() {
             <span className="tab-icon-wrap">
               <span className="tab-icon">{tab.icon}</span>
               {tab.id === 'family' && familyUnreadCount > 0 && <span className="tab-notification-dot" />}
-              {tab.id === 'family' && familyAvailableAp > 0 && (
+              {tab.id === 'family' && familyExpeditionAttention && (
+                <span className="tab-expedition-ap-badge expedition-entry" aria-label="Expedition available">Exp</span>
+              )}
+              {tab.id === 'family' && !familyExpeditionAttention && familyAvailableAp > 0 && (
                 <span className="tab-expedition-ap-badge" aria-label={`${familyAvailableAp} expedition AP available`}>AP</span>
               )}
               {tab.id === 'chat' && globalUnreadCount > 0 && (

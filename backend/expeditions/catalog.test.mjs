@@ -56,27 +56,27 @@ test('provisions contain the seven exact farm recipes and structured effects', (
       carrot_rations: {
         ingredient: 'carrot',
         quantity: 20,
-        effect: { type: 'grant_ap', config: { amount: 1, timing: 'after_preparation' } },
+        effect: { type: 'restore_ap', config: { toMax: true } },
       },
       tomato_soup: {
         ingredient: 'tomato',
         quantity: 12,
-        effect: { type: 'prevent_debuff', config: { uses: 1 } },
+        effect: { type: 'restore_hp', config: { toMax: true } },
       },
       hearty_potato_meal: {
         ingredient: 'potato',
         quantity: 10,
-        effect: { type: 'damage_bonus', config: { uses: 1, amount: 2 } },
+        effect: { type: 'room_damage_bonus', config: { amount: 2, combatOnly: true } },
       },
       lucky_breakfast: {
         ingredient: 'egg',
         quantity: 10,
-        effect: { type: 'damage_bonus', config: { uses: 1, amount: 1 } },
+        effect: { type: 'room_minigame_progress_bonus', config: { amount: 1, minigameOnly: true } },
       },
       warm_milk: {
         ingredient: 'milk',
         quantity: 8,
-        effect: { type: 'restore_role_ability', config: { uses: 1, roomType: 'camp' } },
+        effect: { type: 'restore_role_ability', config: { uses: 1 } },
       },
       truffle_treat: {
         ingredient: 'truffle',
@@ -86,7 +86,7 @@ test('provisions contain the seven exact farm recipes and structured effects', (
       magic_squash_pie: {
         ingredient: 'magic_squash',
         quantity: 1,
-        effect: { type: 'damage_bonus', config: { uses: 1, amount: 3 } },
+        effect: { type: 'expedition_damage_bonus', config: { amount: 3, combatOnly: true } },
       },
     },
   );

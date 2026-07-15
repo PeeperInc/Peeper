@@ -4208,6 +4208,14 @@ button.expedition-loadout-slot:disabled {
 .expedition-provision-use { display: grid; justify-items: center; gap: 12px; text-align: center; }
 .expedition-provision-use img { width: 90px; height: 90px; object-fit: contain; }
 .expedition-provision-use p { margin: 0; color: rgba(233,223,189,.8); font-size: 13px; line-height: 1.4; }
+.expedition-provision-use .expedition-provision-reason {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 184, 79, .42);
+  background: rgba(92, 48, 12, .42);
+  color: #ffd89a;
+  font-weight: 800;
+}
 
 @media (max-width: 380px) {
   .expedition-player-hud { grid-template-columns: repeat(6, minmax(0,1fr)); justify-content: stretch; }

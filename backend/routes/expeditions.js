@@ -380,11 +380,37 @@ router.get('/current', (req, res) => {
 
 router.get('/badge', (req, res) => {
   const family = getCurrentFamily(req.currentUser.id);
-  if (!family) return res.json({ hasFamily: false, availableAp: 0, hasAvailableAp: false });
+  if (!family) {
+    return res.json({
+      hasFamily: false,
+      availableAp: 0,
+      hasAvailableAp: false,
+      canStart: false,
+      canJoin: false,
+      needsEntry: false,
+    });
+  }
 
   const expedition = getUnfinishedExpedition(family.id);
-  if (!expedition || expedition.status !== 'active') {
-    return res.json({ hasFamily: true, availableAp: 0, hasAvailableAp: false });
+  if (!expedition) {
+    return res.json({
+      hasFamily: true,
+      availableAp: 0,
+      hasAvailableAp: false,
+      canStart: true,
+      canJoin: false,
+      needsEntry: true,
+    });
+  }
+  if (expedition.status !== 'active') {
+    return res.json({
+      hasFamily: true,
+      availableAp: 0,
+      hasAvailableAp: false,
+      canStart: false,
+      canJoin: false,
+      needsEntry: false,
+    });
   }
 
   const member = db.prepare(`
@@ -402,6 +428,9 @@ router.get('/badge', (req, res) => {
     hasFamily: true,
     availableAp,
     hasAvailableAp: availableAp > 0,
+    canStart: false,
+    canJoin: !member,
+    needsEntry: !member,
   });
 });
 

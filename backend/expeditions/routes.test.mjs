@@ -428,6 +428,42 @@ test('GET /current returns empty expedition state when the user has no family', 
   assert.equal(response.body.permissions.canStart, false);
 });
 
+test('GET /badge prompts families to start or join an expedition before showing AP', async () => {
+  createFamilyWithMembers(['tg-owner', 'tg-sibling']);
+
+  const beforeStart = await request('GET', '/badge', 'tg-owner');
+  assert.equal(beforeStart.status, 200);
+  assert.deepEqual(beforeStart.body, {
+    hasFamily: true,
+    availableAp: 0,
+    hasAvailableAp: false,
+    canStart: true,
+    canJoin: false,
+    needsEntry: true,
+  });
+
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-for-badge' });
+  const ownerBeforePrepare = await request('GET', '/badge', 'tg-owner');
+  const siblingBeforePrepare = await request('GET', '/badge', 'tg-sibling');
+  assert.equal(ownerBeforePrepare.body.canJoin, true);
+  assert.equal(ownerBeforePrepare.body.needsEntry, true);
+  assert.equal(siblingBeforePrepare.body.canJoin, true);
+  assert.equal(siblingBeforePrepare.body.needsEntry, true);
+
+  await request('POST', `/${started.body.expedition.id}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-for-badge',
+    role: 'knight',
+  });
+  const ownerPrepared = await request('GET', '/badge', 'tg-owner');
+  assert.equal(ownerPrepared.body.needsEntry, false);
+  assert.equal(ownerPrepared.body.canJoin, false);
+  assert.equal(ownerPrepared.body.hasAvailableAp, true);
+  assert.equal(ownerPrepared.body.availableAp, 5);
+
+  const siblingStillWaiting = await request('GET', '/badge', 'tg-sibling');
+  assert.equal(siblingStillWaiting.body.needsEntry, true);
+});
+
 test('GET /current returns AP regenerated while the player was offline', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-ap-regen' });
