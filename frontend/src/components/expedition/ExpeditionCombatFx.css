@@ -66,6 +66,17 @@
   white-space: nowrap;
 }
 
+.expedition-room-effect-stack {
+  position: absolute;
+  right: 18px;
+  min-width: 28px;
+  color: var(--effect-color);
+  font-family: var(--font-display);
+  font-size: 13px;
+  text-align: center;
+  text-shadow: 0 0 9px color-mix(in srgb, var(--effect-color) 65%, transparent);
+}
+
 .expedition-room-effect > i {
   width: 4px;
   height: 24px;

@@ -6,6 +6,10 @@ import ExpeditionCombatFx from '../components/expedition/ExpeditionCombatFx';
 import PersistedRoomMiniGame from '../components/expedition/PersistedRoomMiniGame';
 import RewardClaimSheet from '../components/expedition/RewardClaimSheet';
 import RoomEffectsBar from '../components/expedition/RoomEffectsBar';
+import scoutFocusHoldPreview from '../assets/expeditions/root-king/ui/scout_focus_hold_preview.png';
+import scoutRootCrossingPreview from '../assets/expeditions/root-king/ui/scout_root_crossing_preview.png';
+import scoutShadeHuntPreview from '../assets/expeditions/root-king/ui/scout_shade_hunt_preview.png';
+import scoutTimingWindowPreview from '../assets/expeditions/root-king/ui/scout_timing_window_preview.png';
 import './FamilyExpeditionTab.css';
 
 const roleImages = import.meta.glob('../assets/expeditions/root-king/ui/role_*.png', {
@@ -716,7 +720,7 @@ function RoleAbilityGlyph({ role }) {
   return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M9 49 29 9l5 20 21 5-40 20Z" /><circle cx="39" cy="25" r="5" /></svg>;
 }
 
-function RoleAbilityControl({ member, room, sharedBuffs, mutating, onUse }) {
+function RoleAbilityControl({ member, room, mutating, onUse }) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const readyAt = Number(member?.roleChargeReadyAt || 0);
   const ready = Number(member?.roleCharge || 0) > 0 || (readyAt > 0 && readyAt <= now);
@@ -734,10 +738,6 @@ function RoleAbilityControl({ member, room, sharedBuffs, mutating, onUse }) {
     cleric: ['Family Prayer', 'Heals every hero +1 HP and shortens knockouts by 15%.'],
   }[member.role];
   if (!copy) return null;
-  const queued = Array.isArray(sharedBuffs?.teamAbilities?.[member.role])
-    ? sharedBuffs.teamAbilities[member.role].length
-    : 0;
-
   const cooldown = readyAt
     ? formatDuration(Math.max(0, readyAt - now))
     : 'Used for this expedition';
@@ -755,23 +755,30 @@ function RoleAbilityControl({ member, room, sharedBuffs, mutating, onUse }) {
         <strong>{copy[0]}</strong>
         <em>{ready ? copy[1] : `Ready in ${cooldown}`}</em>
       </span>
-      {queued > 0 && <b className="expedition-role-stack">{queued} queued</b>}
     </button>
   );
 }
 
 function ScoutMinigamePreview({ miniGame = {} }) {
-  const kind = miniGame.kind || miniGame.type || 'timing_window';
+  const rawKind = miniGame.kind || miniGame.type || 'timing_window';
+  const kind = rawKind === 'path_pick'
+    ? 'root_crossing'
+    : rawKind === 'shadow_match'
+      ? 'shadow_hunt'
+      : rawKind;
   if (kind === 'rune_sequence') {
     return <div className="expedition-scout-minigame runes">{Array.from({ length: 9 }, (_, index) => <i key={index}>{['◇', '△', '○'][index % 3]}</i>)}</div>;
   }
   if (kind === 'root_crossing') {
-    return <div className="expedition-scout-minigame crossing"><i>🐸</i>{Array.from({ length: 4 }, (_, index) => <b key={index} style={{ '--lane': index }} />)}</div>;
+    return <img className="expedition-scout-minigame crossing" src={scoutRootCrossingPreview} alt="Root Crossing preview" />;
   }
   if (kind === 'shadow_hunt') {
-    return <div className="expedition-scout-minigame shadows">{Array.from({ length: 6 }, (_, index) => <i key={index}>••</i>)}</div>;
+    return <img className="expedition-scout-minigame shadows" src={scoutShadeHuntPreview} alt="Shade Hunt preview" />;
   }
-  return <div className="expedition-scout-minigame timing"><i /><b /></div>;
+  if (kind === 'focus_hold') {
+    return <img className="expedition-scout-minigame focus" src={scoutFocusHoldPreview} alt="Focus Hold preview" />;
+  }
+  return <img className="expedition-scout-minigame timing" src={scoutTimingWindowPreview} alt="Timing Window preview" />;
 }
 
 function ScoutChoicePreview({ choice, selected, onSelect }) {
@@ -1494,7 +1501,6 @@ function EventMiniGame({ room, mutating, disabled, onComplete }) {
               <div className={`expedition-trap-challenge${active ? ' active' : ''}`}>
                 <div className="expedition-trap-lane">
                   <span className="expedition-trap-safe-zone" />
-                  <span className="expedition-trap-runner" />
                   <span className="expedition-trap-blade" style={{ left: `${marker}%` }}>
                     <i />
                     <b />
@@ -1815,7 +1821,11 @@ function RoomPanel({
         </div>
       </div>
 
-      <RoomEffectsBar effects={room.activeEffects || []} sharedBuffs={expedition?.sharedBuffs} />
+      <RoomEffectsBar
+        effects={room.activeEffects || []}
+        sharedBuffs={expedition?.sharedBuffs}
+        viewerUserId={member?.userId}
+      />
 
       {hidden || locked ? (
         <div className="expedition-room-locked">
@@ -1906,7 +1916,6 @@ function RoomPanel({
                 <RoleAbilityControl
                   member={member}
                   room={room}
-                  sharedBuffs={expedition?.sharedBuffs}
                   mutating={mutating}
                   onUse={onRoleAbility}
                 />

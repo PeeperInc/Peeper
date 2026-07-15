@@ -88,6 +88,25 @@
   touch-action: manipulation;
 }
 
+.shade-hunt-field::after {
+  content: '';
+  position: absolute;
+  z-index: 24;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.shade-hunt-game.is-success .shade-hunt-field::after {
+  background: rgba(108, 255, 104, 0.3);
+  animation: shade-result-flash 420ms ease-out;
+}
+
+.shade-hunt-game.is-failed .shade-hunt-field::after {
+  background: rgba(255, 66, 66, 0.32);
+  animation: shade-result-flash 420ms ease-out;
+}
+
 .root-crossing-field {
   height: clamp(250px, 49vh, 390px);
   background:
@@ -374,18 +393,21 @@
 }
 
 .shade-hunt-start-panel {
-  top: 50%;
+  position: relative;
+  z-index: 1;
+  left: auto;
   display: grid;
-  width: min(76%, 250px);
-  gap: 10px;
-  padding: 12px;
-  transform: translate(-50%, -50%);
+  width: 100%;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 8px;
+  transform: none;
   color: #dce7d9;
-  background: rgba(3, 8, 7, 0.92);
+  background: rgba(3, 8, 7, 0.72);
   border: 1px solid rgba(244, 199, 93, 0.35);
 }
 
-.shade-hunt-start-panel span { font-size: 11px; }
+.shade-hunt-start-panel span { font-size: 10px; text-align: center; }
 .shade-hunt-start-panel button { min-height: 42px; font-size: 11px; letter-spacing: 0.08em; }
 
 .shade-hunt-flash-copy,
@@ -450,6 +472,12 @@
 @keyframes shade-mist-drift {
   from { transform: translate3d(-3%, -1%, 0) scale(1); }
   to { transform: translate3d(3%, 2%, 0) scale(1.06); }
+}
+
+@keyframes shade-result-flash {
+  0% { opacity: 0; }
+  24% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 @media (max-width: 360px), (max-height: 620px) {

@@ -1742,26 +1742,15 @@ button.expedition-loadout-slot:disabled {
 
 .expedition-trap-safe-zone {
   position: absolute;
-  inset: 8px 37%;
+  top: 8px;
+  bottom: 8px;
+  left: 37%;
+  width: 26%;
   border: 1px solid rgba(255, 209, 94, 0.76);
   background:
     linear-gradient(180deg, rgba(255, 209, 94, 0.16), rgba(183, 255, 79, 0.14)),
     repeating-linear-gradient(45deg, transparent 0 6px, rgba(255, 209, 94, 0.12) 6px 9px);
   box-shadow: 0 0 24px rgba(217, 167, 67, 0.16);
-}
-
-.expedition-trap-runner {
-  position: absolute;
-  left: 8px;
-  bottom: 14px;
-  width: 18px;
-  height: 18px;
-  border: 1px solid rgba(183, 255, 79, 0.72);
-  background:
-    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.45), transparent 22%),
-    #9dce45;
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  filter: drop-shadow(0 0 10px rgba(183, 255, 79, 0.42));
 }
 
 .expedition-trap-blade {
@@ -2943,16 +2932,6 @@ button.expedition-loadout-slot:disabled {
   line-height: 1.24;
 }
 
-.expedition-role-stack {
-  align-self: start;
-  border: 1px solid rgba(217, 167, 67, 0.38);
-  background: rgba(0, 0, 0, 0.38);
-  color: var(--dungeon-gold);
-  padding: 4px 5px;
-  font-size: 8px;
-  text-transform: uppercase;
-}
-
 .expedition-scout-modal {
   position: fixed;
   z-index: 120;
@@ -3129,51 +3108,14 @@ button.expedition-loadout-slot:disabled {
   font-style: normal;
 }
 
-.expedition-scout-minigame.crossing i {
-  position: absolute;
-  z-index: 2;
-  left: 8px;
-  bottom: 3px;
-  font-style: normal;
-}
-
-.expedition-scout-minigame.crossing b {
-  position: absolute;
-  left: calc(12px + var(--lane) * 19px);
-  top: 0;
-  width: 3px;
-  height: 100%;
-  background: repeating-linear-gradient(#d6a743 0 5px, transparent 5px 11px);
-}
-
-.expedition-scout-minigame.shadows {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  align-items: center;
-  gap: 2px;
-  padding: 4px;
-}
-
-.expedition-scout-minigame.shadows i {
-  color: rgba(183, 255, 79, 0.62);
-  font-size: 9px;
-  font-style: normal;
-}
-
-.expedition-scout-minigame.timing i {
-  position: absolute;
-  inset: 7px 35px;
-  background: rgba(217, 167, 67, 0.4);
-}
-
-.expedition-scout-minigame.timing b {
-  position: absolute;
-  left: 52%;
-  top: 3px;
-  width: 3px;
-  height: 56px;
-  background: #b7ff4f;
-  box-shadow: 0 0 8px #b7ff4f;
+.expedition-scout-minigame.crossing,
+.expedition-scout-minigame.shadows,
+.expedition-scout-minigame.focus,
+.expedition-scout-minigame.timing {
+  display: block;
+  padding: 0;
+  object-fit: cover;
+  object-position: center;
 }
 
 .expedition-scout-confirm {

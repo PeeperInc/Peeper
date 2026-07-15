@@ -3,7 +3,7 @@ import './ExpeditionMiniGames.css';
 
 const TARGET_COUNT = 6;
 const DEFAULT_DURATION_MS = 8000;
-const FLASH_MS = 300;
+const FLASH_MS = 1000;
 const TARGET_RADIUS = 6.4;
 
 function hashSeed(value) {
@@ -186,7 +186,7 @@ export default function ShadeHuntGame({
       reason,
       seed: effectiveSeed,
       targetIndex: targetIndexRef.current,
-      selectedIndex,
+      ...(Number.isInteger(selectedIndex) ? { selectedIndex } : {}),
     };
     lastResultRef.current = result;
     void submitResult(result);
@@ -282,14 +282,6 @@ export default function ShadeHuntGame({
           </button>
         ))}
 
-        {phase === 'idle' && (
-          <div className="shade-hunt-start-panel">
-            <span>Six shades. One marked gaze.</span>
-            <button type="button" onClick={start} disabled={disabled || starting}>
-              {starting ? 'OPENING SIGHT...' : 'START HUNT'}
-            </button>
-          </div>
-        )}
         {phase === 'flash' && <div className="shade-hunt-flash-copy">REMEMBER THE EYES</div>}
         {phase === 'hunting' && <div className="shade-hunt-hunt-copy">TAP THE MARKED SHADE</div>}
         {phase === 'success' && <div className="expedition-minigame__result success"><b>SHADE EXPOSED</b><span>Your mark was true.</span></div>}
@@ -306,6 +298,14 @@ export default function ShadeHuntGame({
           </div>
         )}
       </div>
+      {phase === 'idle' && (
+        <div className="shade-hunt-start-panel">
+          <span>Six shades move continuously. One pair of eyes will glow for one second.</span>
+          <button type="button" onClick={start} disabled={disabled || starting}>
+            {starting ? 'OPENING SIGHT...' : 'START HUNT'}
+          </button>
+        </div>
+      )}
       {error && <p className="expedition-minigame__error" role="alert">{error}</p>}
     </section>
   );

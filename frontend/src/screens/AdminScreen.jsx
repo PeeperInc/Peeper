@@ -749,7 +749,6 @@ function ModerationPanel() {
   useEffect(() => { loadMutes(); }, [loadMutes]);
 
   async function handleUnmute(mute) {
-    if (!confirm(`Unmute ${mute.firstName || 'this player'} in Global Chat?`)) return;
     setBusyUserId(mute.userId);
     setMsg(null);
     try {

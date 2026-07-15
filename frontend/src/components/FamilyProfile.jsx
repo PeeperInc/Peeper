@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as api from '../api';
 import { avatarUrl } from '../utils/avatarUrl';
+import BottomSheet from './BottomSheet';
 import SupporterStar from './SupporterStar';
 
 function Avatar({ telegramId, name, size = 42 }) {
@@ -55,6 +56,7 @@ export default function FamilyProfile({ familyId, inviteCode = null, onBack, onV
   const [viewerFamily, setViewerFamily] = useState(null);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState('');
+  const [joinConfirmOpen, setJoinConfirmOpen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -72,12 +74,12 @@ export default function FamilyProfile({ familyId, inviteCode = null, onBack, onV
 
   async function handleJoin() {
     if (!inviteCode || joining) return;
-    if (!window.confirm(`Join ${data?.family?.name || 'this family'}?`)) return;
     setJoining(true);
     setJoinError('');
     try {
       const result = await api.joinFamily(inviteCode);
       setViewerFamily(result.family);
+      setJoinConfirmOpen(false);
       onJoined?.(result.family);
     } catch (joinFailure) {
       setJoinError(joinFailure.message || 'Could not join this family');
@@ -118,7 +120,7 @@ export default function FamilyProfile({ familyId, inviteCode = null, onBack, onV
           </div>
         </div>
         {inviteCode && !viewerFamily && stats.member_count < 10 && (
-          <button type="button" className="btn btn-primary" onClick={handleJoin} disabled={joining}>
+          <button type="button" className="btn btn-primary" onClick={() => setJoinConfirmOpen(true)} disabled={joining}>
             {joining ? 'Joining...' : 'Join Family'}
           </button>
         )}
@@ -195,6 +197,37 @@ export default function FamilyProfile({ familyId, inviteCode = null, onBack, onV
           )}
         </div>
       ))}
+
+      {joinConfirmOpen && (
+        <BottomSheet
+          onClose={joining ? undefined : () => setJoinConfirmOpen(false)}
+          zIndex={360}
+          bodyStyle={{ padding: '8px 16px calc(var(--tg-safe-bottom) + 24px)' }}
+        >
+          <div style={{ textAlign: 'center', padding: '2px 4px 16px' }}>
+            <div style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Family invitation
+            </div>
+            <div style={{ marginTop: 6, color: 'var(--text-primary)', fontSize: 22, fontWeight: 900 }}>
+              Join {family.name}?
+            </div>
+            <div style={{ margin: '7px auto 0', maxWidth: 320, color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4 }}>
+              You will unlock the family chat, shared activities, and expeditions.
+            </div>
+          </div>
+          {joinError && (
+            <div style={{ marginBottom: 10, color: 'var(--danger)', fontSize: 12, textAlign: 'center' }}>{joinError}</div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setJoinConfirmOpen(false)} disabled={joining}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-primary" onClick={handleJoin} disabled={joining}>
+              {joining ? 'Joining...' : 'Join Family'}
+            </button>
+          </div>
+        </BottomSheet>
+      )}
     </div>
   );
 }

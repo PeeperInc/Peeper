@@ -36,14 +36,19 @@ const EFFECT_COPY = Object.freeze({
   team_mage: { label: 'Arcane Link waiting', tone: 'fate' },
 });
 
-export default function RoomEffectsBar({ effects = [], sharedBuffs = {}, className = '' }) {
-  const queuedEffects = Object.entries(sharedBuffs?.teamAbilities || {}).flatMap(([role, queue]) => (
-    Array.isArray(queue) ? queue.map((entry, index) => ({
-      id: `team-${role}-${entry.createdAt || index}-${index}`,
+export default function RoomEffectsBar({ effects = [], sharedBuffs = {}, viewerUserId = null, className = '' }) {
+  const queuedEffects = Object.entries(sharedBuffs?.teamAbilities || {}).flatMap(([role, queue]) => {
+    if (!Array.isArray(queue)) return [];
+    const applicable = queue.filter(entry => Number(entry?.sourceUserId) !== Number(viewerUserId));
+    if (applicable.length === 0) return [];
+    const next = applicable[0];
+    return [{
+      id: `team-${role}-${next.createdAt || 0}`,
       effectType: `team_${role}`,
-      placedBy: entry.placedBy,
-    })) : []
-  ));
+      placedBy: next.placedBy,
+      stackCount: applicable.length,
+    }];
+  });
   const visibleEffects = [...(Array.isArray(effects) ? effects : []), ...queuedEffects]
     .filter(isActiveEffect)
     .map(effect => ({ effect, copy: EFFECT_COPY[effectIdentity(effect)] }))
@@ -63,6 +68,9 @@ export default function RoomEffectsBar({ effects = [], sharedBuffs = {}, classNa
               <strong>{copy.label}</strong>
               <small>Placed by {effectOwner(effect)} · next ally</small>
             </span>
+            {Number(effect.stackCount || 0) > 1 && (
+              <b className="expedition-room-effect-stack">x{effect.stackCount}</b>
+            )}
             <i aria-hidden="true" />
           </div>
         );

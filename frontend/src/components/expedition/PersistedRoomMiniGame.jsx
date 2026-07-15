@@ -8,6 +8,16 @@ const PASS_SCORE = 60;
 const TIMING_TOLERANCE = 13;
 const FOCUS_TOLERANCE = 7;
 
+function randomFocusTarget() {
+  const span = 76;
+  if (globalThis.crypto?.getRandomValues) {
+    const value = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(value);
+    return 15 + (value[0] % span);
+  }
+  return 15 + Math.floor(Math.random() * span);
+}
+
 function precisionScore(value, target, tolerance) {
   const pointsPerUnit = (100 - PASS_SCORE) / tolerance;
   return Math.max(0, Math.round(100 - Math.abs(value - target) * pointsPerUnit));
@@ -116,9 +126,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
   }, [room?.key, kind]);
 
   useEffect(() => {
-    const source = `${room?.key || 'focus'}:${retryKey}`;
-    const hash = [...source].reduce((total, char) => ((total * 33) ^ char.charCodeAt(0)) >>> 0, 5381);
-    const nextTarget = 34 + (hash % 49);
+    const nextTarget = randomFocusTarget();
     setFocusTarget(nextTarget);
     focusTargetRef.current = nextTarget;
   }, [retryKey, room?.key]);
@@ -432,7 +440,7 @@ export default function PersistedRoomMiniGame({ room, initialAttempt, mutating, 
       ) : (
         <>
           <div className={`expedition-trap-challenge${phase === 'timing' ? ' active' : ''}`}>
-            <div className="expedition-trap-lane"><span className="expedition-trap-safe-zone" /><span className="expedition-trap-runner" /><span className="expedition-trap-blade" style={{ left: `${marker}%` }}><i /><b /></span></div>
+            <div className="expedition-trap-lane"><span className="expedition-trap-safe-zone" /><span className="expedition-trap-blade" style={{ left: `${marker}%` }}><i /><b /></span></div>
             <div className="expedition-trap-labels"><span>danger</span><strong>safe window</strong><span>danger</span></div>
           </div>
           <div className="expedition-event-actions">
