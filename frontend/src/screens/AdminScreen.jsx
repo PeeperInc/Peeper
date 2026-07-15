@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { isAdmin } from '../adminConfig';
+import { avatarUrl } from '../utils/avatarUrl';
+import './AdminScreen.css';
 
 const CLOTHING_SLOTS = ['head', 'body', 'hands', 'fren', 'face'];
 const ALL_SLOT_TABS  = ['all', 'head', 'body', 'hands', 'fren', 'face', 'gift'];
@@ -149,6 +151,32 @@ const selectStyle = {
   borderRadius: 'var(--radius-md)', background: 'var(--bg-card)',
   color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', fontSize: 14, outline: 'none',
 };
+
+function formatAdminDate(timestamp) {
+  if (!timestamp) return 'Unknown';
+  return new Date(Number(timestamp) * 1000).toLocaleString([], {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function sortCatalogEntries(entries, sort) {
+  return [...entries].sort((left, right) => {
+    const newestTieBreak = Number(right.id || 0) - Number(left.id || 0);
+    if (sort === 'oldest') {
+      return Number(left.created_at || 0) - Number(right.created_at || 0) || -newestTieBreak;
+    }
+    if (sort === 'price_asc') return Number(left.price || 0) - Number(right.price || 0) || newestTieBreak;
+    if (sort === 'price_desc') return Number(right.price || 0) - Number(left.price || 0) || newestTieBreak;
+    if (sort === 'name') {
+      return String(left.name || '').localeCompare(String(right.name || '')) || newestTieBreak;
+    }
+    return Number(right.created_at || 0) - Number(left.created_at || 0) || newestTieBreak;
+  });
+}
 
 // ── Add Clothing Item form ────────────────────────────────────────────────────
 function AddItemForm({ onCreated }) {
@@ -688,6 +716,102 @@ function HomeItemRow({ item, onDeleted, onRefresh }) {
   );
 }
 
+function MuteAvatar({ mute }) {
+  const [failed, setFailed] = useState(false);
+  const source = avatarUrl(mute.telegramId);
+  return (
+    <div className="admin-mute-avatar">
+      {source && !failed
+        ? <img src={source} alt="" onError={() => setFailed(true)} />
+        : <span>{String(mute.firstName || '?').charAt(0).toUpperCase()}</span>}
+    </div>
+  );
+}
+
+function ModerationPanel() {
+  const [mutes, setMutes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyUserId, setBusyUserId] = useState(null);
+  const [msg, setMsg] = useState(null);
+
+  const loadMutes = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await adminFetch('GET', '/chat-mutes');
+      setMutes(result.mutes || []);
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not load active mutes' });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadMutes(); }, [loadMutes]);
+
+  async function handleUnmute(mute) {
+    if (!confirm(`Unmute ${mute.firstName || 'this player'} in Global Chat?`)) return;
+    setBusyUserId(mute.userId);
+    setMsg(null);
+    try {
+      const result = await adminFetch('DELETE', `/chat-mutes/${mute.userId}`);
+      setMutes(current => current.filter(entry => entry.userId !== mute.userId));
+      setMsg({ type: 'success', text: result.message || 'Mute removed' });
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not remove mute' });
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  return (
+    <section className="admin-section-panel">
+      <div className="admin-section-heading">
+        <div>
+          <span>GLOBAL CHAT</span>
+          <h2>Active Mutes</h2>
+          <p>Temporary mutes disappear automatically. Permanent mutes remain here until removed.</p>
+        </div>
+        <button type="button" className="btn btn-secondary" onClick={loadMutes} disabled={loading}>Refresh</button>
+      </div>
+
+      <Msg msg={msg} />
+      {loading && <div className="admin-empty-state">Loading moderation queue...</div>}
+      {!loading && mutes.length === 0 && (
+        <div className="admin-empty-state">
+          <strong>No active mutes</strong>
+          <span>Everyone can currently speak in Global Chat.</span>
+        </div>
+      )}
+      {!loading && mutes.map(mute => (
+        <article className="admin-mute-row" key={mute.userId}>
+          <MuteAvatar mute={mute} />
+          <div className="admin-mute-main">
+            <div className="admin-mute-name">
+              <strong>{mute.firstName || 'Peeper player'}</strong>
+              {mute.username && <span>@{mute.username}</span>}
+            </div>
+            <div className={`admin-mute-duration${mute.mutedUntil === null ? ' permanent' : ''}`}>
+              {mute.mutedUntil === null ? 'Permanent mute' : `Until ${formatAdminDate(mute.mutedUntil)}`}
+            </div>
+            <small>
+              Telegram ID: {mute.telegramId} · muted {formatAdminDate(mute.createdAt)}
+              {mute.mutedBy?.firstName ? ` by ${mute.mutedBy.firstName}` : ''}
+            </small>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary admin-unmute-button"
+            onClick={() => handleUnmute(mute)}
+            disabled={busyUserId === mute.userId}
+          >
+            {busyUserId === mute.userId ? 'Removing...' : 'Unmute'}
+          </button>
+        </article>
+      ))}
+    </section>
+  );
+}
+
 function StatsPanel() {
   const [stats, setStats]   = useState(null);
   const [loading, setLoading] = useState(true);
@@ -732,12 +856,14 @@ function StatsPanel() {
 
 export default function AdminScreen() {
   const { user, assetVersion, applyAssetVersion } = useApp();
-  const [adminSection, setAdminSection] = useState('items'); // 'items' | 'home' | 'stats'
+  const [adminSection, setAdminSection] = useState('items');
   const [items,      setItems]      = useState([]);
   const [giftItems,  setGiftItems]  = useState([]);
   const [homeItems,  setHomeItems]  = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [activeSlot, setActiveSlot] = useState('all');
+  const [itemQuery, setItemQuery] = useState('');
+  const [itemSort, setItemSort] = useState('newest');
   const [activeHomeSlot, setActiveHomeSlot] = useState('all');
   const [bustingAssetCache, setBustingAssetCache] = useState(false);
   const [cacheMsg, setCacheMsg] = useState(null);
@@ -788,75 +914,106 @@ export default function AdminScreen() {
   const totalCount = items.length + giftItems.length;
   const totalHomeCount = homeItems.length;
 
-  // What to show based on active tab
+  const normalizedQuery = itemQuery.trim().toLocaleLowerCase();
   const showGifts    = activeSlot === 'gift';
-  const displayItems = activeSlot === 'all'
+  const slotItems = activeSlot === 'all'
     ? items
-    : activeSlot === 'gift'
-      ? []
-      : items.filter(i => i.slot === activeSlot);
+    : activeSlot === 'gift' ? [] : items.filter(i => i.slot === activeSlot);
+  const displayItems = sortCatalogEntries(
+    slotItems.filter(item => !normalizedQuery
+      || String(item.name || '').toLocaleLowerCase().includes(normalizedQuery)
+      || String(item.item_id || '').toLocaleLowerCase().includes(normalizedQuery)),
+    itemSort,
+  );
+  const displayGiftItems = sortCatalogEntries(
+    giftItems.filter(item => !normalizedQuery
+      || String(item.name || '').toLocaleLowerCase().includes(normalizedQuery)
+      || String(item.item_id || '').toLocaleLowerCase().includes(normalizedQuery)),
+    itemSort,
+  );
   const displayHomeItems = activeHomeSlot === 'all'
     ? homeItems
     : homeItems.filter((item) => item.slot === activeHomeSlot);
 
   return (
-    <div style={{ paddingBottom: 24 }}>
-      <div className="page-header">Admin Panel 🛠️</div>
+    <div className="admin-screen">
+      <header className="admin-header">
+        <span>CONTROL CENTER</span>
+        <h1>Admin Panel</h1>
+        <p>Catalog, home assets, moderation and live product metrics.</p>
+      </header>
 
-      {/* Main tabs */}
-      <div style={{ display:'flex', gap:8, padding:'0 16px 12px' }}>
-        {[['items','🛍️ Items'],['stats','📊 Stats']].map(([id,label]) => (
-          <button key={id}
-            className={`inner-tab${adminSection === id ? ' active' : ''}`}
-            style={{ flex:1 }}
-            onClick={() => setAdminSection(id)}>
-            {label}
+      <nav className="admin-section-tabs" aria-label="Admin sections">
+        {[
+          ['items', 'Items', 'Catalog'],
+          ['home', 'Home', 'Decor'],
+          ['moderation', 'Mutes', 'Global Chat'],
+          ['stats', 'Stats', 'Activity'],
+        ].map(([id, label, caption]) => (
+          <button
+            type="button"
+            key={id}
+            className={adminSection === id ? 'active' : ''}
+            onClick={() => setAdminSection(id)}
+          >
+            <strong>{label}</strong>
+            <span>{caption}</span>
           </button>
         ))}
-      </div>
+      </nav>
 
-      <div style={{ display: 'flex', gap: 8, padding: '0 16px 12px' }}>
-        <button
-          className={`inner-tab${adminSection === 'home' ? ' active' : ''}`}
-          style={{ flex: 1 }}
-          onClick={() => setAdminSection('home')}
-        >
-          🏠 Home Decor
-        </button>
-      </div>
-
-      <div className="card" style={{ margin: '0 16px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Asset Cache</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-              Immutable sprite and home art URLs use this version. Bump it to force clients to redownload updated PNG files.
+      {(adminSection === 'items' || adminSection === 'home') && (
+        <details className="admin-tools">
+          <summary>Asset cache tools</summary>
+          <div className="admin-tools-body">
+            <div>
+              <strong>Force asset refresh</strong>
+              <p>Use this only after replacing sprite or home image files.</p>
+              <small>Current version: {assetVersion}</small>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-hint)', marginTop: 6, wordBreak: 'break-all' }}>
-              Current version: {assetVersion}
-            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleBustAssetCache}
+              disabled={bustingAssetCache}
+            >
+              {bustingAssetCache ? 'Updating...' : 'Reset Cache'}
+            </button>
           </div>
-          <button
-            className="btn btn-primary"
-            style={{ padding: '8px 12px', fontSize: 12, flexShrink: 0 }}
-            onClick={handleBustAssetCache}
-            disabled={bustingAssetCache}
-          >
-            {bustingAssetCache ? 'Updating...' : 'Reset Cache'}
-          </button>
-        </div>
-        <Msg msg={cacheMsg} />
-      </div>
+          <Msg msg={cacheMsg} />
+        </details>
+      )}
 
+      {adminSection === 'moderation' && <ModerationPanel />}
       {adminSection === 'stats' && <StatsPanel />}
 
       {adminSection === 'items' && (
         <>
-          <AddItemForm onCreated={loadItems} />
+          <details className="admin-disclosure">
+            <summary>+ Add catalog item</summary>
+            <AddItemForm onCreated={loadItems} />
+          </details>
 
           <div className="section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 16 }}>
             <span>Items ({totalCount})</span>
             <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 12 }} onClick={loadItems}>↻</button>
+          </div>
+
+          <div className="admin-catalog-controls">
+            <input
+              className="search-input"
+              type="search"
+              value={itemQuery}
+              onChange={event => setItemQuery(event.target.value)}
+              placeholder="Search name or item ID"
+            />
+            <select value={itemSort} onChange={event => setItemSort(event.target.value)}>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="price_asc">Cheapest first</option>
+              <option value="price_desc">Most expensive</option>
+              <option value="name">Name A-Z</option>
+            </select>
           </div>
 
           <div className="inner-tabs" style={{ marginBottom: 8 }}>
@@ -879,7 +1036,7 @@ export default function AdminScreen() {
             <>
               {displayItems.length === 0 && (
                 <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-hint)', fontSize: 13 }}>
-                  No items yet — add one above!
+                  No matching items.
                 </div>
               )}
               {displayItems.map(item => (
@@ -895,12 +1052,12 @@ export default function AdminScreen() {
 
           {!loading && showGifts && (
             <>
-              {giftItems.length === 0 && (
+              {displayGiftItems.length === 0 && (
                 <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-hint)', fontSize: 13 }}>
-                  No gifts yet — add one above by selecting "Gift" slot!
+                  No matching gifts.
                 </div>
               )}
-              {giftItems.map(gift => (
+              {displayGiftItems.map(gift => (
                 <GiftRow
                   key={gift.item_id}
                   gift={gift}
@@ -915,7 +1072,10 @@ export default function AdminScreen() {
 
       {adminSection === 'home' && (
         <>
-          <AddHomeItemForm onCreated={loadItems} />
+          <details className="admin-disclosure">
+            <summary>+ Add home decor</summary>
+            <AddHomeItemForm onCreated={loadItems} />
+          </details>
 
           <div className="section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 16 }}>
             <span>Home Decor ({totalHomeCount})</span>

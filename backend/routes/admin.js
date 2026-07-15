@@ -100,6 +100,51 @@ router.post('/cache/bust-assets', validateTelegramInit, requireAdmin, (_req, res
   });
 });
 
+router.get('/chat-mutes', validateTelegramInit, requireAdmin, (_req, res) => {
+  const nowTs = Math.floor(Date.now() / 1000);
+  db.prepare('DELETE FROM global_chat_mutes WHERE muted_until IS NOT NULL AND muted_until <= ?').run(nowTs);
+
+  const mutes = db.prepare(`
+    SELECT mute.user_id, mute.muted_until, mute.created_at,
+           target.telegram_id, target.first_name, target.username, target.photo_url,
+           actor.id AS actor_user_id, actor.first_name AS actor_first_name,
+           actor.username AS actor_username
+    FROM global_chat_mutes mute
+    JOIN users target ON target.id = mute.user_id
+    LEFT JOIN users actor ON actor.id = mute.muted_by
+    ORDER BY mute.muted_until IS NULL DESC, mute.created_at DESC
+  `).all().map(row => ({
+    userId: row.user_id,
+    telegramId: row.telegram_id,
+    firstName: row.first_name,
+    username: row.username,
+    photoUrl: row.photo_url,
+    mutedUntil: row.muted_until,
+    createdAt: row.created_at,
+    mutedBy: row.actor_user_id ? {
+      userId: row.actor_user_id,
+      firstName: row.actor_first_name,
+      username: row.actor_username,
+    } : null,
+  }));
+
+  res.json({ mutes });
+});
+
+router.delete('/chat-mutes/:userId', validateTelegramInit, requireAdmin, (req, res) => {
+  const userId = Number(req.params.userId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Invalid user ID' });
+  }
+
+  const target = db.prepare('SELECT first_name FROM users WHERE id = ?').get(userId);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  const result = db.prepare('DELETE FROM global_chat_mutes WHERE user_id = ?').run(userId);
+  if (result.changes === 0) return res.status(404).json({ error: 'This user is not muted' });
+  return res.json({ message: `${target.first_name || 'Player'} can speak in Global Chat again` });
+});
+
 // Multer for sprites (PNG)
 const spriteStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
