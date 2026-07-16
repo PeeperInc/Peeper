@@ -2,7 +2,14 @@
   position: fixed;
   inset: 0;
   z-index: 80;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
   padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px calc(env(safe-area-inset-bottom, 0px) + 18px);
   color: var(--text-primary);
   background:
@@ -19,6 +26,20 @@
   --dungeon-bone: #e9dfbd;
   --dungeon-blood: #d6523f;
   --dungeon-venom: #9dce45;
+}
+
+html.expedition-ui-open,
+html.expedition-ui-open body,
+html.expedition-ui-open #root {
+  overscroll-behavior: none;
+}
+
+html.expedition-ui-open .tab-bar {
+  display: none;
+}
+
+html.expedition-ui-open .screen-content {
+  padding-bottom: 0;
 }
 
 .expedition-entry-topbar,
@@ -4401,7 +4422,10 @@ button.expedition-loadout-slot:disabled {
 .expedition-attack-result > div span { color: rgba(233,223,189,.72); font-size: 10px; line-height: 1.3; }
 @media (max-width: 620px) {
   .expedition-shell {
-    padding: calc(env(safe-area-inset-top, 0px) + 6px) 7px calc(env(safe-area-inset-bottom, 0px) + 9px);
+    padding:
+      calc(env(safe-area-inset-top, 0px) + 6px)
+      7px
+      calc(env(safe-area-inset-bottom, 0px) + 24px);
   }
 
   .expedition-dashboard { gap: 6px; }

@@ -10,6 +10,7 @@ import scoutFocusHoldPreview from '../assets/expeditions/root-king/ui/scout_focu
 import scoutRootCrossingPreview from '../assets/expeditions/root-king/ui/scout_root_crossing_preview.png';
 import scoutShadeHuntPreview from '../assets/expeditions/root-king/ui/scout_shade_hunt_preview.png';
 import scoutTimingWindowPreview from '../assets/expeditions/root-king/ui/scout_timing_window_preview.png';
+import { preferredExpeditionRoomKey } from '../utils/expeditionRoomSelection.mjs';
 import './FamilyExpeditionTab.css';
 
 const roleImages = import.meta.glob('../assets/expeditions/root-king/ui/role_*.png', {
@@ -270,17 +271,6 @@ function progressForPreview(modifiedRoll) {
   if (modifiedRoll <= 14) return 1;
   if (modifiedRoll <= 18) return 2;
   return 3;
-}
-
-function nextPreferredRoomKey(rooms = [], selectedRoomKey = null) {
-  const selected = rooms.find(room => room.key === selectedRoomKey);
-  if (selected && isActionableRoom(selected)) return selected.key;
-  const open = rooms.find(room => isActionableRoom(room));
-  if (open) return open.key;
-  if (selected && isVisibleRoom(selected)) return selected.key;
-  return rooms.find(room => room.state === 'cleared')?.key
-    || rooms.find(room => isVisibleRoom(room))?.key
-    || null;
 }
 
 function isVisibleRoom(room) {
@@ -2153,11 +2143,11 @@ function ExpeditionDashboard({
 
   useEffect(() => {
     if (lastRoll?.pending || roomTransition) return;
-    if (currentMinigameAttempt?.roomKey && selectedRoomKey !== currentMinigameAttempt.roomKey) {
-      setSelectedRoomKey(currentMinigameAttempt.roomKey);
-      return;
-    }
-    const preferred = nextPreferredRoomKey(rooms, selectedRoomKey);
+    const preferred = preferredExpeditionRoomKey(
+      rooms,
+      selectedRoomKey,
+      currentMinigameAttempt?.roomKey || null,
+    );
     if (preferred !== selectedRoomKey) setSelectedRoomKey(preferred);
   }, [rooms, selectedRoomKey, currentMinigameAttempt?.roomKey, lastRoll?.pending, roomTransition]);
 
@@ -2196,7 +2186,7 @@ function ExpeditionDashboard({
   async function handleCombatExit(roomKey) {
     setRoomTransition({ phase: 'defeat', roomKey });
     await new Promise(resolve => window.setTimeout(resolve, 900));
-    const nextRoomKey = nextPreferredRoomKey(rooms, roomKey);
+    const nextRoomKey = preferredExpeditionRoomKey(rooms, roomKey);
     setLastRoll(null);
     if (!nextRoomKey || nextRoomKey === roomKey) {
       setRoomTransition(null);
@@ -2497,6 +2487,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   const roleAbilityIdempotencyKeysRef = useRef(new Map());
   const provisionUseIdempotencyKeysRef = useRef(new Map());
   const eventAckIdempotencyKeysRef = useRef(new Map());
+  const loadSequenceRef = useRef(0);
   const pendingRewards = state?.pendingRewards || [];
   const pendingRewardCount = Number(state?.pendingRewardCount ?? pendingRewards.length);
   const personalEvent = state?.personalEvents?.[0] || null;
@@ -2520,16 +2511,21 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   }, []);
 
   const load = useCallback(async ({ silent = false } = {}) => {
+    const requestId = ++loadSequenceRef.current;
     if (!silent) setLoading(true);
     setError('');
     try {
-      setState(await api.getExpeditionCurrent());
+      const nextState = await api.getExpeditionCurrent();
+      if (requestId !== loadSequenceRef.current) return false;
+      setState(nextState);
       return true;
     } catch (err) {
-      setError(err.message || 'Could not load expedition');
+      if (requestId === loadSequenceRef.current) {
+        setError(err.message || 'Could not load expedition');
+      }
       return false;
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && requestId === loadSequenceRef.current) setLoading(false);
     }
   }, []);
 
@@ -2558,6 +2554,14 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   }, [load, loadArchive]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add('expedition-ui-open');
+    return () => {
+      root.classList.remove('expedition-ui-open');
+    };
+  }, []);
+
+  useEffect(() => {
     function refreshIfVisible() {
       if (document.visibilityState !== 'visible' || mutating) return;
       load({ silent: true });
@@ -2572,6 +2576,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   }, [load, mutating]);
 
   async function handleStart() {
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     startIdempotencyKeyRef.current ||= makeIdempotencyKey('expedition-start');
@@ -2598,6 +2603,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
 
   async function handlePrepare(payload) {
     if (!state?.expedition?.id) return;
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     prepareIdempotencyKeyRef.current ||= makeIdempotencyKey('expedition-prepare');
@@ -2626,6 +2632,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
 
   async function mutateExpedition(operation, fallbackMessage) {
     if (!state?.expedition?.id) return null;
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     try {
@@ -2677,6 +2684,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   async function handleMinigameStart(roomKey) {
     if (!state?.expedition?.id) return null;
     const signature = JSON.stringify({ expeditionId: state.expedition.id, roomKey });
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     try {
@@ -2705,6 +2713,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
       startedAt: attempt.startedAt,
       result,
     });
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     try {
@@ -2738,6 +2747,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   async function handleUseArtifact(roomKey, artifactId) {
     const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, roomKey, artifactId });
     if (!state?.expedition?.id) return null;
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     try {
