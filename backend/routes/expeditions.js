@@ -21,6 +21,7 @@ const {
   equipFoundArtifactForMember,
   finishExpedition,
   regenerateAp,
+  normalizeTeamAbilities,
 } = require('../expeditions/engine');
 const { THEME_ID } = require('../expeditions/catalog');
 const { generateExpeditionMap } = require('../expeditions/generator');
@@ -63,7 +64,7 @@ function rowToExpedition(row) {
     seed: row.seed,
     status: row.status,
     map: parseJson(row.map_json, {}),
-    sharedBuffs: parseJson(row.shared_buffs_json, {}),
+    sharedBuffs: normalizeTeamAbilities(parseJson(row.shared_buffs_json, {})),
     startedBy: row.started_by,
     startedAt: row.started_at,
     bossDefeatedAt: row.boss_defeated_at,

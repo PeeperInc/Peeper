@@ -69,19 +69,64 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function normalizeTeamAbilityQueue(queue) {
+  if (!Array.isArray(queue)) return [];
+  const normalized = [];
+  const indexBySource = new Map();
+
+  for (const entry of queue) {
+    const sourceUserId = Number(entry?.sourceUserId);
+    if (!Number.isFinite(sourceUserId)) {
+      normalized.push(entry);
+      continue;
+    }
+    if (indexBySource.has(sourceUserId)) {
+      normalized[indexBySource.get(sourceUserId)] = entry;
+      continue;
+    }
+    indexBySource.set(sourceUserId, normalized.length);
+    normalized.push(entry);
+  }
+
+  return normalized;
+}
+
+function normalizeTeamAbilities(sharedBuffs = {}) {
+  const normalized = clone(sharedBuffs || {});
+  if (!normalized.teamAbilities || typeof normalized.teamAbilities !== 'object') return normalized;
+  for (const [ability, queue] of Object.entries(normalized.teamAbilities)) {
+    normalized.teamAbilities[ability] = normalizeTeamAbilityQueue(queue);
+  }
+  return normalized;
+}
+
 function teamAbilityQueue(sharedBuffs = {}, ability) {
   const queue = sharedBuffs?.teamAbilities?.[ability];
-  return Array.isArray(queue) ? queue : [];
+  return normalizeTeamAbilityQueue(queue);
 }
 
 function queueTeamAbility(sharedBuffs = {}, ability, entry) {
   if (!sharedBuffs.teamAbilities || typeof sharedBuffs.teamAbilities !== 'object') {
     sharedBuffs.teamAbilities = {};
   }
-  sharedBuffs.teamAbilities[ability] = [
-    ...teamAbilityQueue(sharedBuffs, ability),
-    entry,
-  ];
+  const queue = teamAbilityQueue(sharedBuffs, ability);
+  const sourceUserId = Number(entry?.sourceUserId);
+  let replaced = false;
+  const nextQueue = [];
+
+  for (const queued of queue) {
+    if (Number(queued?.sourceUserId) === sourceUserId) {
+      if (!replaced) {
+        nextQueue.push(entry);
+        replaced = true;
+      }
+      continue;
+    }
+    nextQueue.push(queued);
+  }
+
+  if (!replaced) nextQueue.push(entry);
+  sharedBuffs.teamAbilities[ability] = nextQueue;
   return sharedBuffs;
 }
 
@@ -1129,7 +1174,7 @@ function rowToExpedition(row) {
     seed: row.seed,
     status: row.status,
     map: parseJson(row.map_json, {}),
-    sharedBuffs: parseJson(row.shared_buffs_json, {}),
+    sharedBuffs: normalizeTeamAbilities(parseJson(row.shared_buffs_json, {})),
     startedBy: row.started_by,
     startedAt: row.started_at,
     bossDefeatedAt: row.boss_defeated_at,
@@ -2959,6 +3004,7 @@ function finishExpedition(options) {
 module.exports = {
   utcDayKey,
   regenerateAp,
+  normalizeTeamAbilities,
   recoverHeroIfReady,
   combatRollOutcome,
   progressForRoll,
