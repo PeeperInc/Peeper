@@ -31,7 +31,6 @@ const COOLDOWNS = {
   farm_crops_ready: 0,      // once until crops are harvested/replanted
   farm_animals_ready: 0,    // once until animal products are collected/new feed starts
   expedition_ap_full: 0,    // once until AP is spent below cap
-  expedition_boss_ready: 0, // once until boss is no longer attackable
   expedition_boss_reward: 0,// once until reward is claimed
   expedition_finished: 0,   // once while a recent finish is visible
 };
@@ -174,20 +173,6 @@ function getExpeditionApFullRows(now = ts()) {
   ));
 }
 
-function getExpeditionBossReadyRows() {
-  return db.prepare(`
-    SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id
-    FROM family_expeditions e
-    JOIN family_expedition_rooms r ON r.expedition_id = e.id
-    JOIN family_expedition_members m ON m.expedition_id = e.id
-    JOIN users u ON u.id = m.user_id
-    WHERE e.status = 'active'
-      AND r.room_type = 'boss'
-      AND r.state = 'unlocked'
-      AND m.prepared_at IS NOT NULL
-  `).all();
-}
-
 function getExpeditionBossRewardRows() {
   return db.prepare(`
     SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id
@@ -224,15 +209,6 @@ async function checkExpeditionNotifications(options = {}) {
     rows: apFullRows,
     send,
     text: () => `${String.fromCodePoint(0x26A1)} <b>Your expedition AP is full (${EXPEDITION_AP_CAP}/${EXPEDITION_AP_CAP}).</b>\n\nThe crypt is waiting. Spend your strength before it spoils.`,
-  });
-
-  const bossReadyRows = getExpeditionBossReadyRows();
-  clearStaleExpeditionFlags('expedition_boss_ready', bossReadyRows);
-  await sendExpeditionRows({
-    type: 'expedition_boss_ready',
-    rows: bossReadyRows,
-    send,
-    text: () => `${String.fromCodePoint(0x1F409)} <b>The expedition boss is exposed.</b>\n\nGather the family and strike before the shadows regroup.`,
   });
 
   const bossRewardRows = getExpeditionBossRewardRows();
@@ -430,7 +406,6 @@ module.exports = {
   checkExpeditionNotifications,
   _expeditionNotificationInternals: {
     getExpeditionApFullRows,
-    getExpeditionBossReadyRows,
     getExpeditionBossRewardRows,
     getExpeditionFinishedRows,
   },

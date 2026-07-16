@@ -122,7 +122,6 @@ test('expedition notifications respect the expedition_notifications setting', as
 
   assert.equal(sent.length, 0);
   assert.equal(wasSent(userId, expeditionType('expedition_ap_full', expeditionId)), false);
-  assert.equal(wasSent(userId, expeditionType('expedition_boss_ready', expeditionId)), false);
 });
 
 test('AP full notification is one-shot until AP drops below five', async () => {
@@ -160,29 +159,6 @@ test('AP full notification uses hourly lazily regenerated expedition AP', async 
   assert.equal(sent.length, 1);
   assert.match(sent[0].text, /AP is full \(5\/5\)/i);
   assert.equal(wasSent(userId, expeditionType('expedition_ap_full', expeditionId)), true);
-});
-
-test('boss ready notification sends to prepared members when the boss room is unlocked', async () => {
-  const userId = createUser('tg-boss', 'Rook');
-  const familyId = createFamilyWithUsers([userId]);
-  const expeditionId = createExpedition({ familyId });
-  addBossRoom(expeditionId, 'unlocked');
-  prepareMember(expeditionId, userId, { ap: 4 });
-
-  const sent = await collectNotifications();
-
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].telegramId, 'tg-boss');
-  assert.match(sent[0].text, /boss/i);
-  assert.equal(wasSent(userId, expeditionType('expedition_boss_ready', expeditionId)), true);
-  assert.equal((await collectNotifications()).length, 0);
-
-  db.prepare(`
-    UPDATE family_expedition_rooms SET state = 'locked'
-    WHERE expedition_id = ? AND room_key = 'boss_1'
-  `).run(expeditionId);
-  assert.equal((await collectNotifications()).length, 0);
-  assert.equal(wasSent(userId, expeditionType('expedition_boss_ready', expeditionId)), false);
 });
 
 test('boss reward notification sends after victory until claimed', async () => {
