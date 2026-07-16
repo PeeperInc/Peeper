@@ -188,6 +188,8 @@ function serializeFamilyMembers(familyMembers = [], expeditionMembers = []) {
       ['prepared', Boolean(prepared)],
       ['role', prepared?.role],
       ['ap', prepared?.ap],
+      ['heroHp', prepared?.heroHp],
+      ['heroRecoverAt', prepared?.heroRecoverAt],
       ['contributionAp', prepared?.contributionAp],
       ['contributionProgress', prepared?.contributionProgress],
       ['roleCharge', prepared?.roleCharge],

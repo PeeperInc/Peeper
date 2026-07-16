@@ -701,6 +701,35 @@ button.expedition-loadout-slot:disabled {
   font-size: 11px;
 }
 
+.expedition-member-status {
+  display: grid;
+  flex-shrink: 0;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.expedition-member-hp {
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.expedition-member-hp.is-healthy {
+  color: var(--accent);
+}
+
+.expedition-member-hp.is-wounded {
+  color: #ffcf5a;
+}
+
+.expedition-member-hp.is-knocked-out {
+  color: #ff746c;
+}
+
 .expedition-status-actions {
   display: flex;
   flex-shrink: 0;

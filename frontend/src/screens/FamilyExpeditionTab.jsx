@@ -2337,12 +2337,27 @@ function ExpeditionDashboard({
           <section>
             <div className="expedition-section-title">Family Prep</div>
             <div className="expedition-member-list">
-              {(state.familyMembers || []).map(memberRow => (
-                <div key={memberRow.userId} className="expedition-member-row">
-                  <span>{memberRow.firstName || memberRow.username || 'Family member'}</span>
-                  <strong>{memberRow.prepared ? titleize(memberRow.role) : 'Not ready'}</strong>
-                </div>
-              ))}
+              {(state.familyMembers || []).map(memberRow => {
+                const heroHp = Math.max(0, Math.min(3, Number(memberRow.heroHp ?? 3)));
+                const healthState = heroHp <= 0
+                  ? 'knocked-out'
+                  : heroHp < 3
+                    ? 'wounded'
+                    : 'healthy';
+                return (
+                  <div key={memberRow.userId} className="expedition-member-row">
+                    <span>{memberRow.firstName || memberRow.username || 'Family member'}</span>
+                    <div className="expedition-member-status">
+                      <strong>{memberRow.prepared ? titleize(memberRow.role) : 'Not ready'}</strong>
+                      {memberRow.prepared && (
+                        <small className={`expedition-member-hp is-${healthState}`}>
+                          {healthState === 'knocked-out' ? 'KO' : 'HP'} {heroHp}/3
+                        </small>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
 
