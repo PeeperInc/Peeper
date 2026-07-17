@@ -1143,10 +1143,6 @@ button.expedition-loadout-slot:disabled {
   transform-origin: 50% 82%;
 }
 
-.expedition-room-panel.transition-defeat .expedition-enemy-hud {
-  animation: expedition-defeat-hud 260ms ease-out forwards;
-}
-
 .expedition-room-panel.transition-defeat .expedition-room-bg {
   animation: expedition-defeat-camera 880ms ease-out both;
 }
@@ -1217,7 +1213,6 @@ button.expedition-loadout-slot:disabled {
   100% { opacity: 0; transform: translateX(-50%) translateY(44px) scale(.48,.08); filter: brightness(0); }
 }
 
-@keyframes expedition-defeat-hud { to { opacity: 0; transform: translateY(-8px); } }
 @keyframes expedition-defeat-camera {
   0% { filter: saturate(.95) contrast(1.1) brightness(.72); transform: scale(1.04); }
   35% { filter: saturate(1.35) contrast(1.2) brightness(.92); transform: scale(1.07); }
@@ -1258,60 +1253,6 @@ button.expedition-loadout-slot:disabled {
 .expedition-room-art > span {
   display: block;
   height: clamp(230px, 44vh, 360px);
-}
-
-.expedition-enemy-hud {
-  position: absolute;
-  z-index: 4;
-  top: 8px;
-  right: 8px;
-  width: min(180px, 44%);
-  border: 1px solid rgba(217, 167, 67, 0.34);
-  background:
-    linear-gradient(90deg, rgba(214, 82, 63, 0.18), transparent 48%),
-    rgba(3, 5, 4, 0.82);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
-  padding: 6px;
-}
-
-.expedition-enemy-hud span,
-.expedition-enemy-hud strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.expedition-enemy-hud span {
-  color: rgba(233, 223, 189, 0.68);
-  font-size: 9px;
-  font-weight: 950;
-  text-transform: uppercase;
-}
-
-.expedition-enemy-hud strong {
-  color: var(--dungeon-bone);
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 950;
-  line-height: 1.05;
-  text-transform: uppercase;
-}
-
-.expedition-enemy-hud i {
-  display: block;
-  height: 6px;
-  margin-top: 5px;
-  overflow: hidden;
-  border: 1px solid rgba(214, 82, 63, 0.38);
-  background: rgba(0, 0, 0, 0.48);
-}
-
-.expedition-enemy-hud b {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, #d6523f, #ffb34d);
-  transition: width 260ms ease;
 }
 
 .expedition-stage-impact,

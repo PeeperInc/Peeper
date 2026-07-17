@@ -1862,15 +1862,6 @@ function RoomPanel({
           />
         )}
         {combatRoom && !foregroundArt && <div className="expedition-enemy-fallback" />}
-        {enemyName && (
-          <div className="expedition-enemy-hud">
-            <span>{bossArt ? 'Boss' : 'Enemy'}</span>
-            <strong>{enemyName}</strong>
-            <i>
-              <b style={{ width: `${enemyHpPercent}%` }} />
-            </i>
-          </div>
-        )}
         {stageOutcome && combatVisualResolved && (
           <div className={`expedition-stage-impact ${stageDamage > 0 ? 'damage' : stageOutcome}`}>
             <strong>{stageDamage > 0 ? `-${stageDamage}` : stageOutcomeCopy[0]}</strong>
