@@ -335,12 +335,17 @@
   width: 64px;
   height: 64px;
   place-items: center;
-  color: #201703;
-  font-size: 30px;
-  border: 1px solid #fff1a9;
+  border: 1px solid rgba(255, 228, 127, 0.34);
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 28%, #fff8c6, #f0c34a 48%, #8f6114 100%);
+  background: radial-gradient(circle, rgba(241, 201, 91, 0.13), rgba(4, 15, 9, 0.88) 72%);
   box-shadow: 0 0 24px rgba(241, 201, 91, 0.2);
+}
+
+.expedition-reward-sigil img {
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.48));
 }
 
 .expedition-reward-status > div:last-child {

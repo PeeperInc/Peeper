@@ -68,8 +68,6 @@ function HungerBar({ hunger, alive }) {
 function expeditionBadgeLabel(summary) {
   if (summary?.needsEntry) return 'Exp';
   if (!summary?.active) return '';
-  if (summary.rewardWaiting) return 'Chest';
-  if (summary.bossReady) return 'Boss';
   if (summary.apFull) return 'AP';
   return '';
 }

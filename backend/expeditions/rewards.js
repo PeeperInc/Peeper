@@ -280,7 +280,7 @@ function roomApForMember({ member, rooms, activity }) {
 }
 
 function relicChanceForRoom(apSpent) {
-  return Math.min(0.43, 0.08 + (Math.max(0, apSpent) * 0.07));
+  return Math.min(0.30, 0.05 + (Math.max(0, apSpent) * 0.05));
 }
 
 function lootTableForRoom(room) {

@@ -97,7 +97,9 @@ export default function RewardClaimSheet({
         </header>
 
         <div className="expedition-reward-status">
-          <div className="expedition-reward-sigil" aria-hidden="true">*</div>
+          <div className="expedition-reward-sigil" aria-hidden="true">
+            <img src="/sprites/coin_game.png" alt="" />
+          </div>
           <div>
             <span>{claimed ? 'Claim secured' : 'Personal reward cache'}</span>
             <strong>{payload.totalCoins ?? 0} coins</strong>
