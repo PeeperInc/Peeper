@@ -328,18 +328,18 @@ function combatEnemyRoom(id, name, enemyId, hp, attackTarget, tags = []) {
 
 const ROOM_TEMPLATES = deepFreeze({
   combat: [
-    combatEnemyRoom('bone_rat_pack', 'Bone Rat Pack', 'bone_rat', 24, 6, ['undead']),
-    combatEnemyRoom('grave_slime_pool', 'Grave Slime', 'grave_slime', 23, 6, ['ooze']),
-    combatEnemyRoom('crypt_spider_nest', 'Crypt Spider', 'crypt_spider', 22, 6, ['beast']),
-    combatEnemyRoom('lantern_skull_watch', 'Lantern Skull', 'lantern_skull', 22, 7, ['undead']),
-    combatEnemyRoom('hollow_archer_watch', 'Hollow Archer', 'hollow_archer', 21, 7, ['undead']),
-    combatEnemyRoom('thorn_hound_lair', 'Thorn Hound', 'thorn_hound', 21, 7, ['root_creature']),
-    combatEnemyRoom('moss_wraith_hollow', 'Moss Wraith', 'moss_wraith', 20, 8, ['spirit']),
-    combatEnemyRoom('root_cultist_ritual', 'Root Cultist', 'root_cultist', 20, 8, ['cultist']),
-    combatEnemyRoom('vine_mimic_den', 'Vine Mimic', 'vine_mimic', 19, 9, ['mimic']),
-    combatEnemyRoom('rootbound_guard_post', 'Rootbound Guard', 'rootbound_guard', 18, 10, ['root_creature']),
-    combatEnemyRoom('ossuary_golem_vault', 'Ossuary Golem', 'ossuary_golem', 17, 11, ['undead']),
-    combatEnemyRoom('rootbound_champion_gate', 'Rootbound Champion', 'rootbound_champion', 16, 12, ['root_creature']),
+    combatEnemyRoom('bone_rat_pack', 'Bone Rat Pack', 'bone_rat', 28, 6, ['undead']),
+    combatEnemyRoom('grave_slime_pool', 'Grave Slime', 'grave_slime', 26, 6, ['ooze']),
+    combatEnemyRoom('crypt_spider_nest', 'Crypt Spider', 'crypt_spider', 25, 6, ['beast']),
+    combatEnemyRoom('lantern_skull_watch', 'Lantern Skull', 'lantern_skull', 25, 7, ['undead']),
+    combatEnemyRoom('hollow_archer_watch', 'Hollow Archer', 'hollow_archer', 24, 7, ['undead']),
+    combatEnemyRoom('thorn_hound_lair', 'Thorn Hound', 'thorn_hound', 24, 7, ['root_creature']),
+    combatEnemyRoom('moss_wraith_hollow', 'Moss Wraith', 'moss_wraith', 23, 8, ['spirit']),
+    combatEnemyRoom('root_cultist_ritual', 'Root Cultist', 'root_cultist', 23, 8, ['cultist']),
+    combatEnemyRoom('vine_mimic_den', 'Vine Mimic', 'vine_mimic', 22, 9, ['mimic']),
+    combatEnemyRoom('rootbound_guard_post', 'Rootbound Guard', 'rootbound_guard', 21, 10, ['root_creature']),
+    combatEnemyRoom('ossuary_golem_vault', 'Ossuary Golem', 'ossuary_golem', 20, 11, ['undead']),
+    combatEnemyRoom('rootbound_champion_gate', 'Rootbound Champion', 'rootbound_champion', 18, 12, ['root_creature']),
   ],
   trap: [
     room('thorn_snare', 'trap', 'Thorn Snare', 4, ['root', 'dark'], [
@@ -416,19 +416,19 @@ const ROOM_TEMPLATES = deepFreeze({
     ], { choices: 2 }),
   ],
   boss: [
-    room('root_king_phase_1', 'boss', 'Break the Armor', 36, ['boss', 'root_creature', 'undead'], [
+    room('root_king_phase_1', 'boss', 'Break the Armor', 41, ['boss', 'root_creature', 'undead'], [
       action('break_king_armor', 'Break the bark armor', 'might', 'easy', 0, ['boss', 'root_creature']),
       action('find_king_weakpoint', 'Find a buried weak point', 'agility', 'risky', 2, ['boss', 'root_creature']),
       action('disrupt_king_runes', 'Disrupt the crown runes', 'arcana', 'risky', 2, ['boss', 'rune']),
       action('ward_king_retaliation', 'Ward the king\'s retaliation', 'spirit', 'hard', 4, ['boss', 'undead']),
     ], { phase: 1, attackTarget: 12 }),
-    room('root_king_phase_2', 'boss', 'Survive the Roots', 42, ['boss', 'root_creature'], [
+    room('root_king_phase_2', 'boss', 'Survive the Roots', 48, ['boss', 'root_creature'], [
       action('hold_back_roots', 'Hold back the root tide', 'might', 'risky', 2, ['boss', 'root']),
       action('evade_king_roots', 'Dance through the roots', 'agility', 'easy', 0, ['boss', 'root']),
       action('sever_root_magic', 'Sever the root magic', 'arcana', 'risky', 2, ['boss', 'rune']),
       action('sanctify_root_ground', 'Sanctify the tangled ground', 'spirit', 'easy', 0, ['boss', 'root']),
     ], { phase: 2, attackTarget: 13, complication: 'frightened' }),
-    room('root_king_phase_3', 'boss', 'Final Strike', 48, ['boss', 'root_creature', 'undead'], [
+    room('root_king_phase_3', 'boss', 'Final Strike', 55, ['boss', 'root_creature', 'undead'], [
       action('final_might', 'Land the final blow', 'might', 'risky', 2, ['boss']),
       action('final_agility', 'Strike the exposed heart', 'agility', 'risky', 2, ['boss']),
       action('final_arcana', 'Unmake the root crown', 'arcana', 'risky', 2, ['boss', 'rune']),

@@ -696,7 +696,7 @@ function ExpeditionOverlay({ title, kicker, onClose, children, wide = false }) {
 function ExpeditionGuidePanel() {
   const sections = [
     ['The family run', 'An expedition cannot fail or expire. One hero can finish it slowly, while an active family clears rooms much faster. Members may join after the run has started: they prepare a class, food and relics, then arrive in the family\'s current open room.'],
-    ['Preparation', 'Choose one class, one optional provision and up to three artifacts. Empty artifact slots may be filled by relics found during the run. Your choices are personal: family members do not share inventories or prepared loadouts.'],
+    ['Preparation', 'Choose one class, one optional provision and up to three artifacts. Your choices are personal: family members do not share inventories or prepared loadouts. New relics stay sealed in the final reward cache and cannot be equipped during the same run.'],
     ['AP and activity', 'Every combat roll or mini-game attempt costs 1 AP. You can hold 5 AP and recover 1 AP every hour. AP is spent when a mini-game begins, not after it ends. The final reward quietly scales with how actively each hero helped.'],
     ['Combat: d20 then damage', 'Each enemy shows its own Armor Class (AC). First roll d20: 1-3 causes a 1 HP counter, a final result below AC misses, and AC or higher hits. A hit up to 18 rolls 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Damage bonuses affect only the damage total; only Arcane Link from another Mage can add +3 to the d20.'],
     ['Room mini-games', 'Noncombat rooms use one of five challenges: Dodge the Trap, Rune Sequence, Root Crossing, Focus Hold or Shade Hunt. Starting costs 1 AP. Success always adds exactly 1 room progress. Failure spends the AP but never damages HP, and another attempt becomes available immediately unless a free retry triggers.'],
@@ -705,7 +705,7 @@ function ExpeditionGuidePanel() {
     ['Scout', 'Pathfinder is used once per expedition. It reveals three possible next rooms with the exact enemy and AC or the exact mini-game, then lets the Scout choose the family route. Warm Milk or Campfire Charm can restore the spent Pathfinder ability.'],
     ['Provisions', 'Food is consumed only when you tap it. Carrot Rations fully restore AP, while Tomato Soup fully restores HP. Hearty Potato Meal adds +2 damage to every hit in the current combat room, and Magic Squash Pie adds +3 damage for the rest of the expedition; both can only be eaten during combat. Lucky Breakfast can only be eaten in a mini-game room and adds +1 extra progress to every successful attempt in that room. Warm Milk restores your class ability, and Truffle Treat upgrades the next artifact reward.'],
     ['Artifacts', 'Only your three equipped relics work. Passive relics activate automatically for the whole expedition and are consumed when it ends. Active relics are consumed when used. Tap any relic in the top bar to see its exact effect, valid room and current availability; an unavailable relic remains safe in its slot.'],
-    ['Rooms and rewards', 'The map hides future rooms, while cleared and current rooms remain visible. Room loot is personal. Duplicate artifacts are kept as additional copies. When the Root King falls, unclaimed rewards remain available, and each hero can open a detailed reward summary later.'],
+    ['Rooms and rewards', 'The map hides future rooms, while cleared and current rooms remain visible. Spend AP in a room to earn a personal relic chance when that room is cleared; spending more AP improves that chance. Loot stays hidden until the expedition ends, with a maximum of four relics per hero. Duplicate relics remain usable copies, and the final cache also has a 30% chance to contain one unowned outfit or home decoration. Unclaimed rewards remain available after the Root King falls.'],
   ];
   return (
     <div className="expedition-guide-accordion">
@@ -1836,8 +1836,13 @@ function RoomPanel({
   const revealEvents = combatReveal.action?.events || combatReveal.action?.modifiers?.events || [];
   const revealCombatEvent = revealEvents.find(event => event.type === 'combat_roll');
   const revealDamageDice = revealCombatEvent?.damageRolls?.length || 0;
-  const visibleProgress = damagePending ? combatReveal.progressBefore : Number(room.progress || 0);
-  const progressPercent = Math.min(100, Math.round((visibleProgress / progressTarget) * 100));
+  const visibleProgress = Math.max(0, Math.min(
+    progressTarget,
+    damagePending ? Number(combatReveal.progressBefore || 0) : Number(room.progress || 0),
+  ));
+  const progressPercent = Math.round((visibleProgress / progressTarget) * 100);
+  const enemyHp = Math.max(0, progressTarget - visibleProgress);
+  const enemyHpPercent = Math.round((enemyHp / progressTarget) * 100);
   const foregroundArt = bossArt || (combatRoom ? enemyArt : null);
   const locked = room.state === 'locked';
   const hidden = room.state === 'hidden';
@@ -1862,7 +1867,7 @@ function RoomPanel({
             <span>{bossArt ? 'Boss' : 'Enemy'}</span>
             <strong>{enemyName}</strong>
             <i>
-              <b style={{ width: `${Math.max(0, Math.min(100, 100 - progressPercent))}%` }} />
+              <b style={{ width: `${enemyHpPercent}%` }} />
             </i>
           </div>
         )}
@@ -1918,8 +1923,8 @@ function RoomPanel({
         <>
           <div className="expedition-room-meter">
             <div>
-              <span>Progress</span>
-              <strong>{visibleProgress}/{progressTarget}</strong>
+              <span>{combatRoom ? 'Enemy HP' : 'Progress'}</span>
+              <strong>{combatRoom ? `${enemyHp}/${progressTarget}` : `${visibleProgress}/${progressTarget}`}</strong>
               <button
                 type="button"
                 className={`expedition-room-info-toggle${showRoomInfo ? ' active' : ''}`}
@@ -1929,7 +1934,7 @@ function RoomPanel({
                 {showRoomInfo ? 'Hide info' : 'Room info'}
               </button>
             </div>
-            <i><b style={{ width: `${progressPercent}%` }} /></i>
+            <i><b style={{ width: `${combatRoom ? enemyHpPercent : progressPercent}%` }} /></i>
           </div>
 
           {roomTraitChips.length > 0 && (

@@ -819,7 +819,7 @@ test('room mechanic choices can trade safety for higher threat risk', () => {
   assert.equal(greedy.room.threat, 3);
 });
 
-test('natural 20 grants a bonus loot roll', () => {
+test('natural 20 deals critical damage without revealing expedition loot', () => {
   const critical = resolveAttempt({
     expedition: { id: 56, status: 'active' },
     member: member({ role: 'knight' }),
@@ -832,7 +832,7 @@ test('natural 20 grants a bonus loot roll', () => {
     now: Date.UTC(2026, 5, 23),
   });
   assert.equal(critical.progressAwarded, 6);
-  assert.equal(critical.loot.artifactRolls, 1);
+  assert.deepEqual(critical.loot, {});
 });
 
 test('legacy useRoleAbility input cannot activate superseded daily role powers', () => {
@@ -1450,7 +1450,7 @@ test('finish expedition reward payload uses finish transaction time after boss d
   db.close();
 });
 
-test('transactional attempts award personal coins and artifacts only when the room is cleared', () => {
+test('transactional attempts defer all personal loot until expedition rewards', () => {
   const db = expeditionDb();
   db.prepare('INSERT INTO users (id, coins) VALUES (10, 0)').run();
   const lootVault = {
@@ -1515,8 +1515,8 @@ test('transactional attempts award personal coins and artifacts only when the ro
     rng: () => 0.99,
     now: Date.UTC(2026, 5, 23),
   }));
-  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 8);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 1);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 0);
 
   inTx(db, () => attemptRoom({
     transaction: db,
@@ -1529,8 +1529,8 @@ test('transactional attempts award personal coins and artifacts only when the ro
     rng: () => 0.99,
     now: Date.UTC(2026, 5, 23),
   }));
-  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 8);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 1);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_actions WHERE idempotency_key = ?').get('attempt-loot-clear').count, 1);
   db.close();
 });
@@ -2113,7 +2113,7 @@ test('Crooked Compass remains independent from the Scout path ability', () => {
   db.close();
 });
 
-test('transactional event minigame clears event rooms without d20 and pays loot only on clear', () => {
+test('transactional event minigame clears event rooms without d20 and defers loot', () => {
   const db = expeditionDb();
   db.prepare('INSERT INTO users (id, coins) VALUES (22, 0)').run();
   const puzzleRoom = {
@@ -2203,7 +2203,7 @@ test('transactional event minigame clears event rooms without d20 and pays loot 
   assert.equal(second.members.find(member => member.userId === 22).heroHp, 2);
   assert.equal(second.actions.at(-1).actionType, 'event_minigame');
   assert.equal(second.actions.at(-1).rawRoll, null);
-  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 22').get().coins, 12);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 22').get().coins, 0);
   db.close();
 });
 

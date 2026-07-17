@@ -397,6 +397,60 @@
   padding: 10px;
 }
 
+.expedition-reward-cosmetic {
+  padding: 10px;
+  border: 1px solid rgba(183, 255, 74, 0.22);
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(183, 255, 74, 0.1), rgba(10, 26, 17, 0.92));
+}
+
+.expedition-reward-cosmetic > article {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.expedition-reward-cosmetic > article > div:first-child {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(241, 201, 91, 0.35);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.expedition-reward-cosmetic img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.expedition-reward-cosmetic > article > div:nth-child(2) {
+  display: grid;
+  min-width: 0;
+}
+
+.expedition-reward-cosmetic strong {
+  overflow: hidden;
+  color: #f4ffe9;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expedition-reward-cosmetic span,
+.expedition-reward-cosmetic small {
+  color: #b7ff4a;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .expedition-reward-section-title {
   display: flex;
   align-items: center;

@@ -8,6 +8,7 @@ const {
   PROGRESS_BANDS,
   PROVISIONS,
   ROLES,
+  ROOM_TEMPLATES,
 } = require('./catalog');
 const {
   applyActiveArtifact,
@@ -928,62 +929,10 @@ function resolveAttempt({
   });
   nextMember.loadout = afterProgress.loadout;
   nextMember.triggerHistory = afterProgress.triggerHistory;
-  const roomClearedByAttempt = (
-    nextRoom.state === 'cleared'
-    && nextRoom.type !== 'boss'
-    && previousProgress < (nextRoom.progressTarget || Infinity)
-  );
-  const lootRoom = roomClearedByAttempt
-    ? nextRoom
-    : {
-        ...nextRoom,
-        // Room treasure opens only when the room is cleared. Natural-20 and
-        // artifact-driven bonus loot can still apply through the normal hooks.
-        loot: { coins: { min: 0, max: 0 }, artifactRolls: 0 },
-      };
-  const loot = rollAttemptLoot({ room: lootRoom, member: nextMember, rawRoll: outcomeRawRoll, rng });
-  const passiveReward = applyPassiveArtifactEffects({
-    phase: 'room_reward',
-    loadout: nextMember.loadout,
-    coins: loot.coins,
-    artifactsDisabled: artifactsDisabledForAction,
-  });
-  loot.coins = passiveReward.coins;
-  const beforeLoot = applyArtifactEffects({
-    phase: 'before_loot',
-    actionType: 'attempt',
-    expeditionId: nextExpedition.id,
-    dayKey,
-    bossPhase: nextRoom.phase,
-    stat: nextAction.stat,
-    roomType: nextRoom.type,
-    roomTags: nextRoom.tags || [],
-    actionTags: nextAction.tags || [],
-    rawRoll,
-    modifiedRoll,
-    critical: criticalRawRoll,
-    success: progressAwarded > 0,
-    successStreak: nextMember.successStreak || 0,
-    coins: loot.coins,
-    artifactRolls: loot.artifactRolls,
-    loadout: nextMember.loadout,
-    triggerHistory: nextMember.triggerHistory,
-    artifactsDisabled: artifactsDisabledForAction,
-    rng,
-  });
-  loot.coins = beforeLoot.coins * (beforeLoot.coinMultiplier || 1);
-  loot.artifactRolls = beforeLoot.artifactRolls;
-  if (loot.artifactRolls !== loot.artifacts.length) {
-    const rolled = rollPersonalLoot({
-      coinRange: { min: 0, max: 0 },
-      artifactRolls: loot.artifactRolls,
-      table: LOOT_TABLES[loot.table] || lootTableForRoom(lootRoom).table,
-      rng,
-    });
-    loot.artifacts = rolled.artifacts;
-  }
-  nextMember.loadout = beforeLoot.loadout;
-  nextMember.triggerHistory = beforeLoot.triggerHistory;
+  // Personal loot is rolled once, when the expedition is finished. Keeping
+  // attempts loot-free prevents natural 20s and mid-run vault checks from
+  // revealing or granting the final cache early.
+  const loot = {};
 
   return deepFreeze({
     expedition: nextExpedition,
@@ -1184,25 +1133,22 @@ function rowToExpedition(row) {
 
 function rowToRoom(row) {
   const payload = parseJson(row.payload_json, {});
-  const legacyCombatBalance = payload.enemyId === 'hollow_archer'
-    ? { progressTarget: 18, attackTarget: 9 }
-    : payload.enemyId === 'rootbound_guard'
-      ? { progressTarget: 21, attackTarget: 11 }
-      : row.room_type === 'boss'
-        ? {
-            progressTarget: ({ 1: 36, 2: 42, 3: 48 })[payload.phase || 1],
-            attackTarget: ({ 1: 12, 2: 13, 3: 14 })[payload.phase || 1],
-          }
-        : null;
+  const currentTemplate = row.room_type === 'boss'
+    ? ROOM_TEMPLATES.boss.find(template => template.phase === (payload.phase || 1))
+    : row.room_type === 'combat'
+      ? ROOM_TEMPLATES.combat.find(template => template.enemyId === payload.enemyId)
+      : null;
+  const progressTarget = Math.max(1, Number(currentTemplate?.progressTarget || row.progress_target || 1));
+  const progress = Math.max(0, Math.min(progressTarget, Number(row.progress || 0)));
   return {
     ...payload,
     id: row.id,
     key: row.room_key,
     type: row.room_type,
     state: row.state,
-    progress: row.progress,
-    progressTarget: legacyCombatBalance?.progressTarget || row.progress_target,
-    attackTarget: payload.attackTarget || legacyCombatBalance?.attackTarget || null,
+    progress,
+    progressTarget,
+    attackTarget: payload.attackTarget || currentTemplate?.attackTarget || null,
     support: row.support,
     unlockedAt: row.unlocked_at,
     clearedAt: row.cleared_at,
@@ -1841,13 +1787,6 @@ function attemptRoom(options) {
   }
   updateMember(transaction, expeditionId, result.member, { ap: 1, progress: result.progressAwarded });
   updateRoom(transaction, expeditionId, result.room);
-  const grantedLoot = grantPersonalLoot({
-    transaction,
-    userId,
-    loot: result.loot,
-    rng,
-    now,
-  });
   transaction.prepare(`
     UPDATE family_expeditions SET status = ?, shared_buffs_json = ?, boss_defeated_at = COALESCE(?, boss_defeated_at)
     WHERE id = ?
@@ -1875,7 +1814,7 @@ function attemptRoom(options) {
     intent,
     modifiedRoll: result.modifiedRoll,
     progressAwarded: result.progressAwarded,
-    loot: grantedLoot,
+    loot: {},
     narrationKey: action.narration?.success || null,
     now,
   });
@@ -2245,15 +2184,7 @@ function completeEventRoom(options) {
 
   updateMember(transaction, expeditionId, nextMember, { ap: 1, progress: appliedProgress });
   updateRoom(transaction, expeditionId, nextRoom);
-  let grantedLoot = {};
   if (nextRoom.state === 'cleared' && previousProgress < (nextRoom.progressTarget || Infinity)) {
-    grantedLoot = grantPersonalLoot({
-      transaction,
-      userId,
-      loot: rollEventLoot({ room: nextRoom, member: nextMember, rng }),
-      rng,
-      now,
-    });
     persistUnlocks(transaction, expeditionId, snapshot.expedition.map, nextRoom.key, now);
     snapshot = readSnapshot(transaction, expeditionId);
   }
@@ -2272,7 +2203,7 @@ function completeEventRoom(options) {
     },
     intent,
     progressAwarded: appliedProgress,
-    loot: grantedLoot,
+    loot: {},
     now,
   });
   return readSnapshot(transaction, expeditionId);
@@ -2581,22 +2512,7 @@ function applyMinigameSuccess({
   updateMember(transaction, expeditionId, memberState, { progress: progressAwarded });
   updateRoom(transaction, expeditionId, nextRoom);
 
-  let loot = {};
   if (nextRoom.state === 'cleared') {
-    const rolledLoot = rollEventLoot({ room: nextRoom, member: memberState, rng });
-    const passiveReward = applyPassiveArtifactEffects({
-      phase: 'room_reward',
-      loadout: memberState.loadout,
-      coins: rolledLoot.coins,
-    });
-    loot = grantPersonalLoot({
-      transaction,
-      userId,
-      loot: { ...rolledLoot, coins: passiveReward.coins },
-      rng,
-      now,
-    });
-    updateMember(transaction, expeditionId, memberState);
     persistUnlocks(transaction, expeditionId, snapshot.expedition.map, nextRoom.key, now);
   }
   const visualEvents = [
@@ -2612,10 +2528,10 @@ function applyMinigameSuccess({
     modifiers: { score: outcome.score ?? null, events: visualEvents },
     intent: { roomKey: room.key, outcome },
     progressAwarded,
-    loot,
+    loot: {},
     now,
   });
-  return { progressAwarded, loot, visualEvents };
+  return { progressAwarded, loot: {}, visualEvents };
 }
 
 function finishMinigameAttempt(options) {
