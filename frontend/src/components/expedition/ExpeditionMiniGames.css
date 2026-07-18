@@ -171,7 +171,7 @@
   position: absolute;
   top: 50%;
   height: 54%;
-  min-width: 32px;
+  min-width: 54px;
   transform: translateY(-50%);
   border: 1px solid #7b4a27;
   border-radius: 42% 15% 38% 18% / 34% 26% 42% 31%;
@@ -253,7 +253,6 @@
   box-shadow: 0 0 14px rgba(184, 255, 82, 0.65);
 }
 
-.root-crossing-callout,
 .shade-hunt-start-panel,
 .shade-hunt-flash-copy,
 .shade-hunt-hunt-copy {
@@ -262,16 +261,6 @@
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
-}
-
-.root-crossing-callout {
-  bottom: 12%;
-  width: min(85%, 270px);
-  padding: 7px 9px;
-  color: #d9e5cc;
-  background: rgba(4, 9, 7, 0.88);
-  border: 1px solid rgba(184, 255, 82, 0.26);
-  font-size: 10px;
 }
 
 .root-crossing-controls {

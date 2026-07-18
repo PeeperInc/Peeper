@@ -219,7 +219,6 @@ export default function RootCrossingGame({
           <i className="root-crossing-hero__aura" />
           <span>🐸</span>
         </div>
-        {phase === 'idle' && <div className="root-crossing-callout">Watch the roots. First UP starts the run and spends 1 AP.</div>}
         {phase === 'success' && <div className="expedition-minigame__result success"><b>PASSAGE CLEARED</b><span>The roots close behind you.</span></div>}
         {phase === 'failed' && <div className="expedition-minigame__result failed"><b>{lastResultRef.current?.reason === 'timeout' ? 'TOO SLOW' : 'ROOT STRIKE'}</b><span>Retry from the entrance.</span></div>}
         {phase === 'submit-error' && (

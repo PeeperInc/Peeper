@@ -1,4 +1,5 @@
 export const ROOT_CROSSING_LANE_COUNT = 6;
+const CHECKER_LANE_OFFSETS = Object.freeze([8, 58, 24, 74, 40, 15]);
 
 function hashSeed(value) {
   let hash = 2166136261;
@@ -27,12 +28,12 @@ export function buildRootCrossingLanes(seed) {
     const speed = 6.5 + random() * 3 + laneIndex * 0.25;
     const hazardCount = laneIndex < 4 ? 1 : 2;
     const spacing = 100 / hazardCount;
-    const laneOffset = random() * 100;
+    const laneOffset = CHECKER_LANE_OFFSETS[laneIndex] + random() * 6 - 3;
     const hazards = Array.from({ length: hazardCount }, (_, hazardIndex) => ({
       id: `${laneIndex}-${hazardIndex}`,
       // Keep pairs separated so a seeded lane cannot become an impassable wall.
       offset: (laneOffset + hazardIndex * spacing + random() * 8) % 100,
-      width: 8 + random() * 3,
+      width: 16 + random() * 6,
       variant: Math.floor(random() * 3),
     }));
     return { direction, speed, hazards };

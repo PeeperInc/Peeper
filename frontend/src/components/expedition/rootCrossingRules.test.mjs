@@ -22,10 +22,15 @@ test('root crossing generates sparse deterministic lanes with fair gaps', () => 
     assert.ok(lane.speed >= 6.5 + laneIndex * 0.25);
     assert.ok(lane.speed < 9.5 + laneIndex * 0.25);
     lane.hazards.forEach(hazard => {
-      assert.ok(hazard.width >= 8 && hazard.width < 11);
+      assert.ok(hazard.width >= 16 && hazard.width < 22);
     });
     if (lane.hazards.length === 2) {
       assert.ok(circularDistance(lane.hazards[0].offset, lane.hazards[1].offset) >= 42);
     }
+  });
+
+  const leadingOffsets = first.map(lane => lane.hazards[0].offset);
+  leadingOffsets.slice(1).forEach((offset, index) => {
+    assert.ok(circularDistance(offset, leadingOffsets[index]) >= 10);
   });
 });
