@@ -150,40 +150,72 @@
   z-index: 3;
 }
 
+.root-crossing-lane::before {
+  content: '';
+  position: absolute;
+  inset: 5% 0;
+  background:
+    linear-gradient(90deg, rgba(184, 255, 82, 0.025), transparent 18% 82%, rgba(184, 255, 82, 0.025)),
+    repeating-linear-gradient(90deg, transparent 0 24px, rgba(244, 199, 93, 0.025) 25px 26px);
+  border-top: 1px solid rgba(133, 164, 107, 0.06);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+}
+
 .root-crossing-lane__line {
   position: absolute;
   inset: 45% 0 auto;
-  border-top: 1px dashed rgba(244, 199, 93, 0.14);
+  border-top: 1px dashed rgba(244, 199, 93, 0.1);
 }
 
 .root-crossing-hazard {
   position: absolute;
   top: 50%;
-  height: 58%;
-  min-width: 38px;
+  height: 54%;
+  min-width: 32px;
   transform: translateY(-50%);
-  border: 1px solid #58351f;
-  border-radius: 45% 12% 40% 15%;
-  background: linear-gradient(180deg, #895132, #3d251b 48%, #1b130e);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.72), inset 0 1px rgba(255, 193, 101, 0.25);
+  border: 1px solid #7b4a27;
+  border-radius: 42% 15% 38% 18% / 34% 26% 42% 31%;
+  background:
+    radial-gradient(circle at 19% 48%, #3a2113 0 5%, transparent 6%),
+    radial-gradient(circle at 73% 38%, #c17b3f 0 4%, transparent 5%),
+    repeating-linear-gradient(104deg, transparent 0 10px, rgba(47, 24, 13, 0.36) 11px 13px),
+    linear-gradient(180deg, #b66f38 0, #70401f 45%, #3a2114 78%, #1b100b 100%);
+  box-shadow:
+    0 4px 9px rgba(0, 0, 0, 0.72),
+    0 0 8px rgba(222, 139, 61, 0.12),
+    inset 0 2px rgba(255, 206, 126, 0.34),
+    inset 0 -2px rgba(20, 8, 4, 0.58);
+}
+
+.root-crossing-hazard::before {
+  content: '';
+  position: absolute;
+  inset: 18% 8%;
+  border-top: 1px solid rgba(255, 196, 112, 0.24);
+  border-bottom: 1px solid rgba(24, 11, 6, 0.6);
+  border-radius: 50%;
+  transform: rotate(-5deg);
 }
 
 .root-crossing-hazard::after {
   content: '';
   position: absolute;
-  inset: -15% 9%;
-  border-left: 3px solid #72502f;
-  border-right: 2px solid #2e2115;
-  transform: skewX(-20deg);
+  inset: -8% 14%;
+  border-left: 3px solid #956037;
+  border-right: 2px solid #412615;
+  transform: skewX(-16deg);
+  filter: drop-shadow(1px 0 rgba(255, 201, 120, 0.15));
 }
 
 .root-crossing-hazard i {
   position: absolute;
-  width: 4px;
-  height: 10px;
-  top: -7px;
-  background: #a66e35;
+  z-index: 2;
+  width: 5px;
+  height: 11px;
+  top: -8px;
+  background: linear-gradient(90deg, #6f421f, #d39a55 52%, #70401e);
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  filter: drop-shadow(0 1px 1px #160b06);
 }
 
 .root-crossing-hazard i:nth-child(1) { left: 18%; }

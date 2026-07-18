@@ -1,54 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './ExpeditionMiniGames.css';
+import {
+  ROOT_CROSSING_LANE_COUNT,
+  buildRootCrossingLanes,
+  rootCrossingHazardX,
+} from './rootCrossingRules.mjs';
 
-const LANE_COUNT = 6;
+const LANE_COUNT = ROOT_CROSSING_LANE_COUNT;
 const DEFAULT_DURATION_MS = 15000;
 const PLAYER_X = 50;
-
-function hashSeed(value) {
-  let hash = 2166136261;
-  for (const char of String(value || 'root-crossing')) {
-    hash ^= char.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function mulberry32(seed) {
-  let value = seed >>> 0;
-  return () => {
-    value += 0x6D2B79F5;
-    let mixed = value;
-    mixed = Math.imul(mixed ^ (mixed >>> 15), mixed | 1);
-    mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
-    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function buildLanes(seed) {
-  const random = mulberry32(hashSeed(seed));
-  return Array.from({ length: LANE_COUNT }, (_, laneIndex) => {
-    const direction = laneIndex % 2 === 0 ? 1 : -1;
-    const speed = 8.5 + random() * 5.5 + laneIndex * 0.4;
-    const hazardCount = laneIndex < 4 ? 2 : 3;
-    const hazards = Array.from({ length: hazardCount }, (_, hazardIndex) => ({
-      id: `${laneIndex}-${hazardIndex}`,
-      offset: (random() * 100 + hazardIndex * (100 / hazardCount)) % 100,
-      width: 10 + random() * 5,
-      variant: Math.floor(random() * 3),
-    }));
-    return { direction, speed, hazards };
-  });
-}
-
-function wrap(value, span) {
-  return ((value % span) + span) % span;
-}
-
-function hazardX(hazard, lane, elapsedSeconds) {
-  const span = 126;
-  return wrap(hazard.offset + lane.direction * lane.speed * elapsedSeconds + 13, span) - 13;
-}
 
 function laneProgress(row) {
   return Math.round((row / (LANE_COUNT + 1)) * 100);
@@ -85,7 +45,7 @@ export default function RootCrossingGame({
   const startingRef = useRef(false);
   const rowRef = useRef(0);
   const onFinishRef = useRef(onFinish);
-  const lanes = useMemo(() => buildLanes(effectiveSeed), [effectiveSeed]);
+  const lanes = useMemo(() => buildRootCrossingLanes(effectiveSeed), [effectiveSeed]);
 
   useEffect(() => {
     onFinishRef.current = onFinish;
@@ -152,7 +112,7 @@ export default function RootCrossingGame({
         const lane = lanes[currentRow - 1];
         const elapsedSeconds = motionElapsed / 1000;
         const collided = lane.hazards.some(hazard => {
-          const x = hazardX(hazard, lane, elapsedSeconds);
+          const x = rootCrossingHazardX(hazard, lane, elapsedSeconds);
           return PLAYER_X + 3.8 >= x && PLAYER_X - 3.8 <= x + hazard.width;
         });
         if (collided) {
@@ -245,7 +205,7 @@ export default function RootCrossingGame({
                 className={`root-crossing-hazard root-crossing-hazard--${hazard.variant}`}
                 key={hazard.id}
                 style={{
-                  left: `${hazardX(hazard, lane, elapsedSeconds)}%`,
+                  left: `${rootCrossingHazardX(hazard, lane, elapsedSeconds)}%`,
                   width: `${hazard.width}%`,
                 }}
               >
