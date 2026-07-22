@@ -232,7 +232,7 @@ function progressForRoll({ rawRoll, modifiedRoll, naturalOneProtected = false })
 }
 
 function combatRollOutcome(rawRoll, attackTarget = 10) {
-  if (rawRoll <= 3) return { label: 'countered', heroDamage: 1, hit: false, damageDice: 0 };
+  if (rawRoll <= 4) return { label: 'countered', heroDamage: 1, hit: false, damageDice: 0 };
   if (rawRoll < attackTarget) return { label: 'miss', heroDamage: 0, hit: false, damageDice: 0 };
   if (rawRoll === 20) return { label: 'devastating_hit', heroDamage: 0, hit: true, damageDice: 3 };
   if (rawRoll === 19) return { label: 'critical_hit', heroDamage: 0, hit: true, damageDice: 2 };
@@ -863,6 +863,11 @@ function resolveAttempt({
     const phase = nextRoom.phase || 1;
     if (phase < 3) {
       nextRoom.phase = phase + 1;
+      const nextPhase = ROOM_TEMPLATES.boss.find(template => template.phase === nextRoom.phase);
+      if (nextPhase) {
+        nextRoom.progressTarget = nextPhase.progressTarget;
+        nextRoom.attackTarget = nextPhase.attackTarget;
+      }
       nextRoom.progress = 0;
       nextRoom.state = 'unlocked';
     } else {
@@ -1138,7 +1143,7 @@ function rowToRoom(row) {
     : row.room_type === 'combat'
       ? ROOM_TEMPLATES.combat.find(template => template.enemyId === payload.enemyId)
       : null;
-  const progressTarget = Math.max(1, Number(currentTemplate?.progressTarget || row.progress_target || 1));
+  const progressTarget = Math.max(1, Number(row.progress_target || currentTemplate?.progressTarget || 1));
   const progress = Math.max(0, Math.min(progressTarget, Number(row.progress || 0)));
   return {
     ...payload,
@@ -1153,6 +1158,46 @@ function rowToRoom(row) {
     unlockedAt: row.unlocked_at,
     clearedAt: row.cleared_at,
   };
+}
+
+function syncExpeditionRoomBalance(transaction, expeditionId) {
+  const rows = transaction.prepare(`
+    SELECT room_key, room_type, state, progress, progress_target, payload_json
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_type IN ('combat', 'boss')
+  `).all(expeditionId);
+  const update = transaction.prepare(`
+    UPDATE family_expedition_rooms
+    SET progress = ?, progress_target = ?, payload_json = ?
+    WHERE expedition_id = ? AND room_key = ?
+  `);
+
+  for (const row of rows) {
+    const payload = parseJson(row.payload_json, {});
+    const template = row.room_type === 'boss'
+      ? ROOM_TEMPLATES.boss.find(candidate => candidate.phase === Number(payload.phase || 1))
+      : ROOM_TEMPLATES.combat.find(candidate => candidate.enemyId === payload.enemyId);
+    if (!template) continue;
+    const progressTarget = Math.max(1, Number(template.progressTarget || row.progress_target || 1));
+    const attackTarget = Number(template.attackTarget || payload.attackTarget || 0) || null;
+    const progress = row.state === 'cleared'
+      ? progressTarget
+      : Math.max(0, Math.min(progressTarget, Number(row.progress || 0)));
+    const needsAttackTarget = attackTarget && attackTarget !== payload.attackTarget;
+    if (
+      progressTarget !== Number(row.progress_target)
+      || progress !== Number(row.progress)
+      || needsAttackTarget
+    ) {
+      update.run(
+        progress,
+        progressTarget,
+        stringifyJson(needsAttackTarget ? { ...payload, attackTarget } : payload),
+        expeditionId,
+        row.room_key,
+      );
+    }
+  }
 }
 
 function rowToMember(row) {
@@ -1236,6 +1281,7 @@ function readSnapshot(transaction, expeditionId) {
     SELECT * FROM family_expeditions WHERE id = ?
   `).get(expeditionId));
   if (!expedition) throw new RangeError(`Unknown expedition: ${expeditionId}`);
+  if (expedition.status !== 'finished') syncExpeditionRoomBalance(transaction, expeditionId);
   const rooms = transaction.prepare(`
     SELECT * FROM family_expedition_rooms WHERE expedition_id = ? ORDER BY id
   `).all(expeditionId).map(rowToRoom);
@@ -1461,6 +1507,7 @@ function updateRoom(transaction, expeditionId, roomResult) {
     UPDATE family_expedition_rooms SET
       state = ?,
       progress = ?,
+      progress_target = ?,
       support = ?,
       payload_json = ?,
       unlocked_at = ?,
@@ -1469,6 +1516,7 @@ function updateRoom(transaction, expeditionId, roomResult) {
   `).run(
     roomResult.state,
     roomResult.progress,
+    roomResult.progressTarget || 1,
     roomResult.support || 0,
     stringifyJson(roomPayload(roomResult)),
     roomResult.unlockedAt ?? roomResult.unlocked_at ?? null,
@@ -2948,4 +2996,5 @@ module.exports = {
   useArtifactForMember,
   claimBossReward,
   finishExpedition,
+  syncExpeditionRoomBalance,
 };

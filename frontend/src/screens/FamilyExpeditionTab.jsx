@@ -167,8 +167,8 @@ function progressOutcome(progress = 0) {
 
 function combatRollPreview(attackTarget = 10) {
   return [
-    { roll: '1-3', outcome: { detail: 'Countered: lose 1 HP' } },
-    { roll: `4-${Math.max(4, attackTarget - 1)}`, outcome: { detail: 'Miss: no damage roll' } },
+    { roll: '1-4', outcome: { detail: 'Countered: lose 1 HP' } },
+    { roll: `5-${Math.max(5, attackTarget - 1)}`, outcome: { detail: 'Miss: no damage roll' } },
     { roll: `${attackTarget}-18`, outcome: { detail: 'Hit: roll 1d6 damage' } },
     { roll: '19', outcome: { detail: 'Critical: roll 2d6 damage' } },
     { roll: '20', outcome: { detail: 'Devastating: roll 3d6 damage' } },
@@ -260,7 +260,7 @@ function roomRuleCopy(room = {}) {
   if (isCombatRoom(room)) {
     return {
       title: 'Combat roll',
-      body: `Roll d20 against AC ${room.attackTarget || (room.type === 'boss' ? 12 : 10)}. Rolls 1-3 hurt your hero. A normal hit rolls 1d6, 19 rolls 2d6, and 20 rolls 3d6. Only an ally's Arcane Link can raise the attack roll.`,
+      body: `Roll d20 against AC ${room.attackTarget || (room.type === 'boss' ? 12 : 10)}. Rolls 1-4 hurt your hero. A normal hit rolls 1d6, 19 rolls 2d6, and 20 rolls 3d6. Only an ally's Arcane Link can raise the attack roll.`,
     };
   }
   return mechanicCopy(room?.miniMechanic);
@@ -589,7 +589,7 @@ function PreparationFlow({ state, loading, onPrepare }) {
             <button type="button" onClick={() => { setArtifactIds(previous => previous.map((value, index) => index === artifactSlot ? null : value)); setPicker(null); }}><span>×</span><div><strong>Leave Empty</strong><p>Save this slot for an artifact found during the run.</p></div></button>
             {inventory.map(item => {
               const meta = artifacts.get(item.artifactId);
-              return <button type="button" key={item.artifactId} onClick={() => setArtifactDetailId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<div><strong>{meta?.name || titleize(item.artifactId)}</strong><small>{titleize(meta?.rarity || 'common')} · owned {item.quantity || 1}</small><p>{meta?.displayEffect || meta?.effect}</p></div></button>;
+              return <button type="button" key={item.artifactId} onClick={() => setArtifactDetailId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<div><strong>{meta?.name || titleize(item.artifactId)}</strong><small>{titleize(meta?.rarity || 'common')} · owned {item.quantity ?? 0}</small><p>{meta?.displayEffect || meta?.effect}</p></div></button>;
             })}
           </div>
         </ExpeditionOverlay>
@@ -698,7 +698,7 @@ function ExpeditionGuidePanel() {
     ['The family run', 'An expedition cannot fail or expire. One hero can finish it slowly, while an active family clears rooms much faster. Members may join after the run has started: they prepare a class, food and relics, then arrive in the family\'s current open room.'],
     ['Preparation', 'Choose one class, one optional provision and up to three artifacts. Your choices are personal: family members do not share inventories or prepared loadouts. New relics stay sealed in the final reward cache and cannot be equipped during the same run.'],
     ['AP and activity', 'Every combat roll or mini-game attempt costs 1 AP. You can hold 5 AP and recover 1 AP every hour. AP is spent when a mini-game begins, not after it ends. The final reward quietly scales with how actively each hero helped.'],
-    ['Combat: d20 then damage', 'Each enemy shows its own Armor Class (AC). First roll d20: 1-3 causes a 1 HP counter, a final result below AC misses, and AC or higher hits. A hit up to 18 rolls 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Damage bonuses affect only the damage total; only Arcane Link from another Mage can add +3 to the d20.'],
+    ['Combat: d20 then damage', 'Each enemy shows its own Armor Class (AC). First roll d20: 1-4 causes a 1 HP counter, a final result below AC misses, and AC or higher hits. A hit up to 18 rolls 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Damage bonuses affect only the damage total; only Arcane Link from another Mage can add +3 to the d20.'],
     ['Room mini-games', 'Noncombat rooms use one of five challenges: Dodge the Trap, Rune Sequence, Root Crossing, Focus Hold or Shade Hunt. Starting costs 1 AP. Success always adds exactly 1 room progress. Failure spends the AP but never damages HP, and another attempt becomes available immediately unless a free retry triggers.'],
     ['HP and knockout', 'Every hero has 3 HP and HP does not refill when the family enters a new room. At 0 HP the hero is knocked out for 6 hours and cannot act, then returns with all 3 HP. A Phoenix Feather revives immediately. Family Prayer heals wounded heroes and shortens every active knockout by 15%.'],
     ['Knight, Mage and Cleric', 'Thorn Guard protects the next ally who would take combat damage, blocks it and retaliates for 3 damage. Arcane Link gives the next ally +3 to one d20 and +2 damage if that attack hits. Family Prayer immediately heals every wounded hero by 1 HP, including the Cleric. These abilities recharge in 3 hours and cannot be consumed by their caster; queued ally buffs survive mini-game rooms.'],
@@ -2429,6 +2429,7 @@ function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers 
     (familyMembers || []).map(member => [member.userId, member.firstName || member.username || 'Family']),
   ), [familyMembers]);
   const inventory = (currentInventory?.length ? currentInventory : archive?.artifactInventory || [])
+    .filter(item => Number(item.quantity || 0) > 0)
     .slice()
     .sort((a, b) => {
       const rarityOrder = { legendary: 0, epic: 1, rare: 2, common: 3 };
@@ -2453,7 +2454,7 @@ function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers 
           <div className="expedition-vault-inventory">
             {inventory.length ? inventory.map(item => {
               const meta = artifacts.get(item.artifactId);
-              return <button type="button" key={item.artifactId} className={`rarity-${meta?.rarity || 'common'}`} onClick={() => setSelectedArtifactId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<strong>{meta?.name || titleize(item.artifactId)}</strong><small>x{item.quantity || 1}</small></button>;
+              return <button type="button" key={item.artifactId} className={`rarity-${meta?.rarity || 'common'}`} onClick={() => setSelectedArtifactId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<strong>{meta?.name || titleize(item.artifactId)}</strong><small>x{item.quantity ?? 0}</small></button>;
             }) : <div className="expedition-empty">No relics found yet.</div>}
           </div>
         </ExpeditionOverlay>

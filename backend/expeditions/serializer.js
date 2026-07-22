@@ -237,7 +237,7 @@ function serializePersonalEvents(memberEvents = [], userId = null) {
 }
 
 function serializeInventory(inventory = []) {
-  return inventory.map(item => ({
+  return inventory.filter(item => Number(item.quantity || 0) > 0).map(item => ({
     artifactId: item.artifactId ?? item.artifact_id,
     quantity: item.quantity,
     charges: item.charges,

@@ -319,6 +319,7 @@ test('serializer returns stable camelCase state and redacts hidden/private field
     ],
     artifactInventory: [
       { userId: 1, artifactId: 'bent_sword', quantity: 1, charges: 0 },
+      { userId: 1, artifactId: 'old_torch', quantity: 0, charges: 0 },
     ],
     pendingRewards: [
       {
@@ -483,6 +484,33 @@ test('GET /current returns AP regenerated while the player was offline', async (
 
   assert.equal(response.status, 200);
   assert.equal(response.body.member.ap, 5);
+});
+
+test('GET /current reconciles stale combat HP before serializing the room', async () => {
+  createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-hp-reconcile' });
+  const expeditionId = started.body.expedition.id;
+  const combatRoom = started.body.map.rooms.find(room => room.type === 'combat');
+  assert.ok(combatRoom);
+
+  db.prepare(`
+    UPDATE family_expedition_rooms
+    SET progress = 1, progress_target = 1
+    WHERE expedition_id = ? AND room_key = ?
+  `).run(expeditionId, combatRoom.key);
+
+  const response = await request('GET', '/current', 'tg-owner');
+  const reconciled = response.body.map.rooms.find(room => room.key === combatRoom.key);
+  const stored = db.prepare(`
+    SELECT progress, progress_target AS progressTarget
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_key = ?
+  `).get(expeditionId, combatRoom.key);
+
+  assert.equal(response.status, 200);
+  assert.equal(reconciled.progress, 1);
+  assert.equal(reconciled.progressTarget, combatRoom.progressTarget);
+  assert.deepEqual(stored, { progress: 1, progressTarget: combatRoom.progressTarget });
 });
 
 test('POST /start requires current family membership and enforces one unfinished expedition per family', async () => {
@@ -1869,8 +1897,9 @@ test('GET /artifacts only returns the authenticated user inventory', async () =>
       user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
     ) VALUES
       (?, 'bent_sword', 1, 0, 1000, 1000),
+      (?, 'old_torch', 0, 0, 1000, 1000),
       (?, 'chalk_rune', 1, 0, 1000, 1000)
-  `).run(userIds[0], userIds[1]);
+  `).run(userIds[0], userIds[0], userIds[1]);
 
   const response = await request('GET', '/artifacts', 'tg-owner');
 

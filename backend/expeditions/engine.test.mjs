@@ -465,6 +465,7 @@ test('combat rooms roll d20 to hit and d6 damage while only low attack rolls hur
 
 test('combat d20 outcome respects counter band, enemy AC, and damage dice bands', () => {
   assert.deepEqual(combatRollOutcome(3, 11), { label: 'countered', heroDamage: 1, hit: false, damageDice: 0 });
+  assert.deepEqual(combatRollOutcome(4, 11), { label: 'countered', heroDamage: 1, hit: false, damageDice: 0 });
   assert.deepEqual(combatRollOutcome(10, 11), { label: 'miss', heroDamage: 0, hit: false, damageDice: 0 });
   assert.deepEqual(combatRollOutcome(11, 11), { label: 'hit', heroDamage: 0, hit: true, damageDice: 1 });
   assert.deepEqual(combatRollOutcome(19, 14), { label: 'critical_hit', heroDamage: 0, hit: true, damageDice: 2 });
@@ -1144,7 +1145,7 @@ test('boss room advances through three phases before boss_defeated and supports 
   const phase2 = resolveAttempt({
     expedition: phase1.expedition,
     member: phase1.member,
-    room: { ...phase1.room, progress: 7 },
+    room: { ...phase1.room, progress: phase1.room.progressTarget - 1 },
     action: boss.actions[0],
     roll: 20,
     now: Date.UTC(2026, 5, 23),
@@ -1155,7 +1156,7 @@ test('boss room advances through three phases before boss_defeated and supports 
   const phase3 = resolveAttempt({
     expedition: phase2.expedition,
     member: phase2.member,
-    room: { ...phase2.room, progress: 7 },
+    room: { ...phase2.room, progress: phase2.room.progressTarget - 1 },
     action: boss.actions[0],
     roll: 20,
     now: Date.UTC(2026, 5, 23),
@@ -2550,6 +2551,26 @@ test('finishing consumes reserved passives and returns unused active copies', ()
     { artifactId: 'old_torch', quantity: 0 },
     { artifactId: 'ration_box', quantity: 1 },
   ]);
+
+  const nextExpedition = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'finish-artifact-next-create',
+    familyId: 1,
+    userId: 11,
+    seed: 'finish-artifact-next-seed',
+    map,
+    now: 103,
+  }));
+  const preparedAgain = inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'finish-artifact-next-prepare',
+    expeditionId: nextExpedition.expedition.id,
+    userId: 11,
+    role: 'scout',
+    artifactIds: ['ration_box'],
+    now: 104,
+  }));
+  assert.equal(preparedAgain.members[0].loadout[0].artifactId, 'ration_box');
   db.close();
 });
 

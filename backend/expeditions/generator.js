@@ -1,4 +1,9 @@
 const { ROOM_TEMPLATES, THEME_ID } = require('./catalog');
+
+const REQUIRED_ROOM_COUNT = 18;
+const OPTIONAL_ROOM_COUNT = 5;
+const TREASURE_ROOM_COUNT = 2;
+const TOTAL_ROOM_COUNT = REQUIRED_ROOM_COUNT + OPTIONAL_ROOM_COUNT + 2;
 const { isDeepStrictEqual } = require('node:util');
 
 const ACTION_STATS = ['might', 'agility', 'arcana', 'spirit'];
@@ -272,9 +277,9 @@ function enforceStatCoverage(rng, rooms) {
 function generateExpeditionMap(seed) {
   const normalizedSeed = String(seed);
   const rng = createSeededRandom(normalizedSeed);
-  const requiredCount = randomInt(rng, 8, 12);
-  const optionalCount = randomInt(rng, 3, 5);
-  const treasureCount = randomInt(rng, 1, 2);
+  const requiredCount = REQUIRED_ROOM_COUNT;
+  const optionalCount = OPTIONAL_ROOM_COUNT;
+  const treasureCount = TREASURE_ROOM_COUNT;
   const encounterHistory = [];
   const requiredRooms = enforceStatCoverage(rng, buildRequiredSpine(rng, requiredCount, encounterHistory));
   const optionalBranches = attachOptionalBranches(rng, requiredRooms, optionalCount, treasureCount, encounterHistory);
@@ -442,9 +447,10 @@ function validateExpeditionMapShape(map) {
   const treasureCount = map.rooms.filter(
     room => isPlainObject(room) && room.type === 'treasure',
   ).length;
-  if (requiredCount < 8 || requiredCount > 12) errors.push('Map must have 8-12 required rooms');
-  if (optionalCount < 3 || optionalCount > 5) errors.push('Map must have 3-5 optional rooms');
-  if (treasureCount < 1 || treasureCount > 2) errors.push('Map must have 1-2 treasure rooms');
+  if (map.rooms.length !== TOTAL_ROOM_COUNT) errors.push(`Map must have exactly ${TOTAL_ROOM_COUNT} rooms`);
+  if (requiredCount !== REQUIRED_ROOM_COUNT) errors.push(`Map must have exactly ${REQUIRED_ROOM_COUNT} required rooms`);
+  if (optionalCount !== OPTIONAL_ROOM_COUNT) errors.push(`Map must have exactly ${OPTIONAL_ROOM_COUNT} optional rooms`);
+  if (treasureCount !== TREASURE_ROOM_COUNT) errors.push(`Map must have exactly ${TREASURE_ROOM_COUNT} treasure rooms`);
   if (!hasAllActionStats(map.rooms)) errors.push('Map must cover all four action stats');
 
   const roomsByKey = validRoomsByKey(map.rooms);

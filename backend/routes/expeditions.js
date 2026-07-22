@@ -22,6 +22,7 @@ const {
   finishExpedition,
   regenerateAp,
   normalizeTeamAbilities,
+  syncExpeditionRoomBalance,
 } = require('../expeditions/engine');
 const { THEME_ID } = require('../expeditions/catalog');
 const { generateExpeditionMap } = require('../expeditions/generator');
@@ -174,6 +175,7 @@ function readSnapshot(expeditionId) {
     SELECT * FROM family_expeditions WHERE id = ?
   `).get(expeditionId));
   if (!expedition) return null;
+  if (expedition.status !== 'finished') syncExpeditionRoomBalance(db, expeditionId);
   const rooms = db.prepare(`
     SELECT * FROM family_expedition_rooms WHERE expedition_id = ? ORDER BY id
   `).all(expeditionId).map(rowToRoom);
@@ -218,7 +220,7 @@ function getArtifactInventory(userId) {
   return db.prepare(`
     SELECT artifact_id AS artifactId, quantity, charges
     FROM expedition_artifact_inventory
-    WHERE user_id = ?
+    WHERE user_id = ? AND quantity > 0
     ORDER BY artifact_id ASC
   `).all(userId);
 }
