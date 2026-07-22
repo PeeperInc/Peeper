@@ -1127,7 +1127,7 @@ img { animation-play-state: var(--animation-play-state, running); }
   --farm-screen-bg:
     radial-gradient(circle at 15% 7%, rgba(255,248,188,0.46), transparent 20%),
     linear-gradient(180deg, rgba(234,250,199,0.46), rgba(86,146,70,0.46)),
-    url("./assets/farm-grass-day.svg"),
+    url("/sprites/farm/farm-grass-day.svg"),
     linear-gradient(180deg,#d8efae 0%,#92cd6d 47%,#63a64c 100%);
 }
 
@@ -1156,7 +1156,7 @@ img { animation-play-state: var(--animation-play-state, running); }
   --farm-screen-bg:
     radial-gradient(circle at 78% 5%, rgba(170,218,190,0.15), transparent 20%),
     linear-gradient(180deg, rgba(7,18,16,0.64), rgba(3,10,9,0.76)),
-    url("./assets/farm-grass-day.svg"),
+    url("/sprites/farm/farm-grass-day.svg"),
     linear-gradient(180deg,#18382b 0%,#11291f 48%,#091e17 100%);
 }
 

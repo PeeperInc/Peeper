@@ -1,26 +1,28 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as api from '../api';
 import BottomSheet from '../components/BottomSheet';
-import farmIsoCarrotGrowing from '../assets/farm-iso/farm_iso_carrot_growing.png';
-import farmIsoCarrotReady from '../assets/farm-iso/farm_iso_carrot_ready.png';
-import farmIsoChickenIdle from '../assets/farm-iso/farm_iso_chicken_idle.png';
-import farmIsoChickenReady from '../assets/farm-iso/farm_iso_chicken_ready.png';
-import farmIsoCowIdle from '../assets/farm-iso/farm_iso_cow_idle.png';
-import farmIsoCowReady from '../assets/farm-iso/farm_iso_cow_ready.png';
-import farmIsoPenEmpty from '../assets/farm-iso/farm_iso_pen_empty.png';
-import farmIsoPigIdle from '../assets/farm-iso/farm_iso_pig_idle.png';
-import farmIsoPigReady from '../assets/farm-iso/farm_iso_pig_ready.png';
-import farmIsoPlotEmpty from '../assets/farm-iso/farm_iso_plot_empty.png';
-import farmIsoPotatoGrowing from '../assets/farm-iso/farm_iso_potato_growing.png';
-import farmIsoPotatoReady from '../assets/farm-iso/farm_iso_potato_ready.png';
-import farmIsoSlotEmpty from '../assets/farm-iso/farm_iso_slot_empty.png';
-import farmIsoSquash from '../assets/farm-iso/farm_iso_squash.png';
-import farmIsoTomatoGrowing from '../assets/farm-iso/farm_iso_tomato_growing.png';
-import farmIsoTomatoReady from '../assets/farm-iso/farm_iso_tomato_ready.png';
 import { FARM_RETIREMENT_LOCK_MS, getFarmSlotPostAction } from '../utils/farmSlotInteraction.mjs';
 
 const COIN_SYMBOL = '\u2726';
 const FARM_ICON = String.fromCodePoint(0x1F33E);
+const FARM_SPRITE_BASE = '/sprites/farm';
+const farmSprite = name => `${FARM_SPRITE_BASE}/${name}.png`;
+const farmIsoCarrotGrowing = farmSprite('farm_iso_carrot_growing');
+const farmIsoCarrotReady = farmSprite('farm_iso_carrot_ready');
+const farmIsoChickenIdle = farmSprite('farm_iso_chicken_idle');
+const farmIsoChickenReady = farmSprite('farm_iso_chicken_ready');
+const farmIsoCowIdle = farmSprite('farm_iso_cow_idle');
+const farmIsoCowReady = farmSprite('farm_iso_cow_ready');
+const farmIsoPenEmpty = farmSprite('farm_iso_pen_empty');
+const farmIsoPigIdle = farmSprite('farm_iso_pig_idle');
+const farmIsoPigReady = farmSprite('farm_iso_pig_ready');
+const farmIsoPlotEmpty = farmSprite('farm_iso_plot_empty');
+const farmIsoPotatoGrowing = farmSprite('farm_iso_potato_growing');
+const farmIsoPotatoReady = farmSprite('farm_iso_potato_ready');
+const farmIsoSlotEmpty = farmSprite('farm_iso_slot_empty');
+const farmIsoSquash = farmSprite('farm_iso_squash');
+const farmIsoTomatoGrowing = farmSprite('farm_iso_tomato_growing');
+const farmIsoTomatoReady = farmSprite('farm_iso_tomato_ready');
 
 const PRODUCT_ICONS = {
   carrot: '\uD83E\uDD55',

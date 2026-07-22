@@ -6,40 +6,28 @@ import ExpeditionCombatFx from '../components/expedition/ExpeditionCombatFx';
 import PersistedRoomMiniGame from '../components/expedition/PersistedRoomMiniGame';
 import RewardClaimSheet from '../components/expedition/RewardClaimSheet';
 import RoomEffectsBar from '../components/expedition/RoomEffectsBar';
-import scoutFocusHoldPreview from '../assets/expeditions/root-king/ui/scout_focus_hold_preview.png';
-import scoutRootCrossingPreview from '../assets/expeditions/root-king/ui/scout_root_crossing_preview.png';
-import scoutShadeHuntPreview from '../assets/expeditions/root-king/ui/scout_shade_hunt_preview.png';
-import scoutTimingWindowPreview from '../assets/expeditions/root-king/ui/scout_timing_window_preview.png';
 import { preferredExpeditionRoomKey } from '../utils/expeditionRoomSelection.mjs';
 import './FamilyExpeditionTab.css';
 
-const roleImages = import.meta.glob('../assets/expeditions/root-king/ui/role_*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
-const provisionImages = import.meta.glob('../assets/expeditions/root-king/provisions/*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
-const artifactImages = import.meta.glob('../assets/expeditions/root-king/artifacts/*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
-const roomImages = import.meta.glob('../assets/expeditions/root-king/rooms/*.webp', {
-  query: '?url',
-  import: 'default',
-});
-const bossImages = import.meta.glob('../assets/expeditions/root-king/bosses/root_king_phase_*.png', {
-  query: '?url',
-  import: 'default',
-});
-const enemyImages = import.meta.glob('../assets/expeditions/root-king/enemies/*.png', {
-  query: '?url',
-  import: 'default',
-});
+const EXPEDITION_SPRITE_BASE = '/sprites/expeditions/root-king';
+const roomImages = 'rooms';
+const bossImages = 'bosses';
+const enemyImages = 'enemies';
+const provisionImages = 'provisions';
+const ROOM_ART_FILES = new Set([
+  'bone_archive.webp',
+  'boss_sanctum.webp',
+  'camp_chamber.webp',
+  'collapsed_gallery.webp',
+  'crypt_gate.webp',
+  'cursed_armory.webp',
+  'flooded_catacomb.webp',
+  'root_shrine.webp',
+]);
+const scoutFocusHoldPreview = `${EXPEDITION_SPRITE_BASE}/ui/scout_focus_hold_preview.png`;
+const scoutRootCrossingPreview = `${EXPEDITION_SPRITE_BASE}/ui/scout_root_crossing_preview.png`;
+const scoutShadeHuntPreview = `${EXPEDITION_SPRITE_BASE}/ui/scout_shade_hunt_preview.png`;
+const scoutTimingWindowPreview = `${EXPEDITION_SPRITE_BASE}/ui/scout_timing_window_preview.png`;
 
 function makeIdempotencyKey(prefix) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -54,18 +42,17 @@ function titleize(value) {
     .replace(/\b\w/g, char => char.toUpperCase());
 }
 
-function assetById(modules, id) {
+function assetById(directory, id) {
   if (!id) return null;
-  const path = Object.keys(modules).find(key => key.endsWith(`/${id}.png`));
-  return path ? modules[path] : null;
+  return `${EXPEDITION_SPRITE_BASE}/${directory}/${id}.png`;
 }
 
 function roleImage(role) {
-  return assetById(roleImages, `role_${role}`);
+  return assetById('ui', `role_${role}`);
 }
 
 function artifactImage(artifactId) {
-  return assetById(artifactImages, artifactId);
+  return assetById('artifacts', artifactId);
 }
 
 function normalizeEntries(value) {
@@ -281,9 +268,10 @@ function isActionableRoom(room) {
   return room?.state === 'unlocked' && !room.clearedAt && !room.bossDefeated;
 }
 
-function findAssetModule(modules, filename) {
+function findAssetModule(directory, filename) {
   if (!filename) return null;
-  return Object.entries(modules).find(([path]) => path.endsWith(`/${filename}`))?.[1] || null;
+  if (directory === roomImages && !ROOM_ART_FILES.has(filename)) return null;
+  return `${EXPEDITION_SPRITE_BASE}/${directory}/${filename}`;
 }
 
 function roomArtFile(room) {
@@ -330,23 +318,8 @@ function enemyArtFile(room) {
   return explicit || fallbackByType[room.type] || null;
 }
 
-function useLazyAsset(modules, filename) {
-  const [url, setUrl] = useState(null);
-
-  useEffect(() => {
-    let active = true;
-    const loader = findAssetModule(modules, filename);
-    setUrl(null);
-    if (!loader) return undefined;
-    loader().then(value => {
-      if (active) setUrl(value?.default || value);
-    }).catch(() => {
-      if (active) setUrl(null);
-    });
-    return () => { active = false; };
-  }, [filename, modules]);
-
-  return url;
+function useLazyAsset(directory, filename) {
+  return findAssetModule(directory, filename);
 }
 
 function latestAction(actions) {
