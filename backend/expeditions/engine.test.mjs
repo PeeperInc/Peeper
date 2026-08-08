@@ -465,6 +465,7 @@ test('combat rooms roll d20 to hit and d6 damage while only low attack rolls hur
 
 test('combat d20 outcome respects counter band, enemy AC, and damage dice bands', () => {
   assert.deepEqual(combatRollOutcome(3, 11), { label: 'countered', heroDamage: 1, hit: false, damageDice: 0 });
+  assert.deepEqual(combatRollOutcome(4, 11), { label: 'countered', heroDamage: 1, hit: false, damageDice: 0 });
   assert.deepEqual(combatRollOutcome(10, 11), { label: 'miss', heroDamage: 0, hit: false, damageDice: 0 });
   assert.deepEqual(combatRollOutcome(11, 11), { label: 'hit', heroDamage: 0, hit: true, damageDice: 1 });
   assert.deepEqual(combatRollOutcome(19, 14), { label: 'critical_hit', heroDamage: 0, hit: true, damageDice: 2 });
@@ -819,7 +820,7 @@ test('room mechanic choices can trade safety for higher threat risk', () => {
   assert.equal(greedy.room.threat, 3);
 });
 
-test('natural 20 grants a bonus loot roll', () => {
+test('natural 20 deals critical damage without revealing expedition loot', () => {
   const critical = resolveAttempt({
     expedition: { id: 56, status: 'active' },
     member: member({ role: 'knight' }),
@@ -832,7 +833,7 @@ test('natural 20 grants a bonus loot roll', () => {
     now: Date.UTC(2026, 5, 23),
   });
   assert.equal(critical.progressAwarded, 6);
-  assert.equal(critical.loot.artifactRolls, 1);
+  assert.deepEqual(critical.loot, {});
 });
 
 test('legacy useRoleAbility input cannot activate superseded daily role powers', () => {
@@ -1144,7 +1145,7 @@ test('boss room advances through three phases before boss_defeated and supports 
   const phase2 = resolveAttempt({
     expedition: phase1.expedition,
     member: phase1.member,
-    room: { ...phase1.room, progress: 7 },
+    room: { ...phase1.room, progress: phase1.room.progressTarget - 1 },
     action: boss.actions[0],
     roll: 20,
     now: Date.UTC(2026, 5, 23),
@@ -1155,7 +1156,7 @@ test('boss room advances through three phases before boss_defeated and supports 
   const phase3 = resolveAttempt({
     expedition: phase2.expedition,
     member: phase2.member,
-    room: { ...phase2.room, progress: 7 },
+    room: { ...phase2.room, progress: phase2.room.progressTarget - 1 },
     action: boss.actions[0],
     roll: 20,
     now: Date.UTC(2026, 5, 23),
@@ -1450,7 +1451,7 @@ test('finish expedition reward payload uses finish transaction time after boss d
   db.close();
 });
 
-test('transactional attempts award personal coins and artifacts only when the room is cleared', () => {
+test('transactional attempts defer all personal loot until expedition rewards', () => {
   const db = expeditionDb();
   db.prepare('INSERT INTO users (id, coins) VALUES (10, 0)').run();
   const lootVault = {
@@ -1515,8 +1516,8 @@ test('transactional attempts award personal coins and artifacts only when the ro
     rng: () => 0.99,
     now: Date.UTC(2026, 5, 23),
   }));
-  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 8);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 1);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 0);
 
   inTx(db, () => attemptRoom({
     transaction: db,
@@ -1529,8 +1530,8 @@ test('transactional attempts award personal coins and artifacts only when the ro
     rng: () => 0.99,
     now: Date.UTC(2026, 5, 23),
   }));
-  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 8);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 1);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 10').get().coins, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM expedition_artifact_inventory WHERE user_id = 10').get().count, 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM family_expedition_actions WHERE idempotency_key = ?').get('attempt-loot-clear').count, 1);
   db.close();
 });
@@ -2113,7 +2114,7 @@ test('Crooked Compass remains independent from the Scout path ability', () => {
   db.close();
 });
 
-test('transactional event minigame clears event rooms without d20 and pays loot only on clear', () => {
+test('transactional event minigame clears event rooms without d20 and defers loot', () => {
   const db = expeditionDb();
   db.prepare('INSERT INTO users (id, coins) VALUES (22, 0)').run();
   const puzzleRoom = {
@@ -2203,7 +2204,7 @@ test('transactional event minigame clears event rooms without d20 and pays loot 
   assert.equal(second.members.find(member => member.userId === 22).heroHp, 2);
   assert.equal(second.actions.at(-1).actionType, 'event_minigame');
   assert.equal(second.actions.at(-1).rawRoll, null);
-  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 22').get().coins, 12);
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = 22').get().coins, 0);
   db.close();
 });
 
@@ -2550,6 +2551,26 @@ test('finishing consumes reserved passives and returns unused active copies', ()
     { artifactId: 'old_torch', quantity: 0 },
     { artifactId: 'ration_box', quantity: 1 },
   ]);
+
+  const nextExpedition = inTx(db, () => createExpedition({
+    transaction: db,
+    idempotencyKey: 'finish-artifact-next-create',
+    familyId: 1,
+    userId: 11,
+    seed: 'finish-artifact-next-seed',
+    map,
+    now: 103,
+  }));
+  const preparedAgain = inTx(db, () => prepareMember({
+    transaction: db,
+    idempotencyKey: 'finish-artifact-next-prepare',
+    expeditionId: nextExpedition.expedition.id,
+    userId: 11,
+    role: 'scout',
+    artifactIds: ['ration_box'],
+    now: 104,
+  }));
+  assert.equal(preparedAgain.members[0].loadout[0].artifactId, 'ration_box');
   db.close();
 });
 

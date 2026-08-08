@@ -6,39 +6,28 @@ import ExpeditionCombatFx from '../components/expedition/ExpeditionCombatFx';
 import PersistedRoomMiniGame from '../components/expedition/PersistedRoomMiniGame';
 import RewardClaimSheet from '../components/expedition/RewardClaimSheet';
 import RoomEffectsBar from '../components/expedition/RoomEffectsBar';
-import scoutFocusHoldPreview from '../assets/expeditions/root-king/ui/scout_focus_hold_preview.png';
-import scoutRootCrossingPreview from '../assets/expeditions/root-king/ui/scout_root_crossing_preview.png';
-import scoutShadeHuntPreview from '../assets/expeditions/root-king/ui/scout_shade_hunt_preview.png';
-import scoutTimingWindowPreview from '../assets/expeditions/root-king/ui/scout_timing_window_preview.png';
+import { preferredExpeditionRoomKey } from '../utils/expeditionRoomSelection.mjs';
 import './FamilyExpeditionTab.css';
 
-const roleImages = import.meta.glob('../assets/expeditions/root-king/ui/role_*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
-const provisionImages = import.meta.glob('../assets/expeditions/root-king/provisions/*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
-const artifactImages = import.meta.glob('../assets/expeditions/root-king/artifacts/*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
-const roomImages = import.meta.glob('../assets/expeditions/root-king/rooms/*.webp', {
-  query: '?url',
-  import: 'default',
-});
-const bossImages = import.meta.glob('../assets/expeditions/root-king/bosses/root_king_phase_*.png', {
-  query: '?url',
-  import: 'default',
-});
-const enemyImages = import.meta.glob('../assets/expeditions/root-king/enemies/*.png', {
-  query: '?url',
-  import: 'default',
-});
+const EXPEDITION_SPRITE_BASE = '/sprites/expeditions/root-king';
+const roomImages = 'rooms';
+const bossImages = 'bosses';
+const enemyImages = 'enemies';
+const provisionImages = 'provisions';
+const ROOM_ART_FILES = new Set([
+  'bone_archive.webp',
+  'boss_sanctum.webp',
+  'camp_chamber.webp',
+  'collapsed_gallery.webp',
+  'crypt_gate.webp',
+  'cursed_armory.webp',
+  'flooded_catacomb.webp',
+  'root_shrine.webp',
+]);
+const scoutFocusHoldPreview = `${EXPEDITION_SPRITE_BASE}/ui/scout_focus_hold_preview.png`;
+const scoutRootCrossingPreview = `${EXPEDITION_SPRITE_BASE}/ui/scout_root_crossing_preview.png`;
+const scoutShadeHuntPreview = `${EXPEDITION_SPRITE_BASE}/ui/scout_shade_hunt_preview.png`;
+const scoutTimingWindowPreview = `${EXPEDITION_SPRITE_BASE}/ui/scout_timing_window_preview.png`;
 
 function makeIdempotencyKey(prefix) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -53,18 +42,17 @@ function titleize(value) {
     .replace(/\b\w/g, char => char.toUpperCase());
 }
 
-function assetById(modules, id) {
+function assetById(directory, id) {
   if (!id) return null;
-  const path = Object.keys(modules).find(key => key.endsWith(`/${id}.png`));
-  return path ? modules[path] : null;
+  return `${EXPEDITION_SPRITE_BASE}/${directory}/${id}.png`;
 }
 
 function roleImage(role) {
-  return assetById(roleImages, `role_${role}`);
+  return assetById('ui', `role_${role}`);
 }
 
 function artifactImage(artifactId) {
-  return assetById(artifactImages, artifactId);
+  return assetById('artifacts', artifactId);
 }
 
 function normalizeEntries(value) {
@@ -166,8 +154,8 @@ function progressOutcome(progress = 0) {
 
 function combatRollPreview(attackTarget = 10) {
   return [
-    { roll: '1-3', outcome: { detail: 'Countered: lose 1 HP' } },
-    { roll: `4-${Math.max(4, attackTarget - 1)}`, outcome: { detail: 'Miss: no damage roll' } },
+    { roll: '1-4', outcome: { detail: 'Countered: lose 1 HP' } },
+    { roll: `5-${Math.max(5, attackTarget - 1)}`, outcome: { detail: 'Miss: no damage roll' } },
     { roll: `${attackTarget}-18`, outcome: { detail: 'Hit: roll 1d6 damage' } },
     { roll: '19', outcome: { detail: 'Critical: roll 2d6 damage' } },
     { roll: '20', outcome: { detail: 'Devastating: roll 3d6 damage' } },
@@ -259,7 +247,7 @@ function roomRuleCopy(room = {}) {
   if (isCombatRoom(room)) {
     return {
       title: 'Combat roll',
-      body: `Roll d20 against AC ${room.attackTarget || (room.type === 'boss' ? 12 : 10)}. Rolls 1-3 hurt your hero. A normal hit rolls 1d6, 19 rolls 2d6, and 20 rolls 3d6. Only an ally's Arcane Link can raise the attack roll.`,
+      body: `Roll d20 against AC ${room.attackTarget || (room.type === 'boss' ? 12 : 10)}. Rolls 1-4 hurt your hero. A normal hit rolls 1d6, 19 rolls 2d6, and 20 rolls 3d6. Only an ally's Arcane Link can raise the attack roll.`,
     };
   }
   return mechanicCopy(room?.miniMechanic);
@@ -272,17 +260,6 @@ function progressForPreview(modifiedRoll) {
   return 3;
 }
 
-function nextPreferredRoomKey(rooms = [], selectedRoomKey = null) {
-  const selected = rooms.find(room => room.key === selectedRoomKey);
-  if (selected && isActionableRoom(selected)) return selected.key;
-  const open = rooms.find(room => isActionableRoom(room));
-  if (open) return open.key;
-  if (selected && isVisibleRoom(selected)) return selected.key;
-  return rooms.find(room => room.state === 'cleared')?.key
-    || rooms.find(room => isVisibleRoom(room))?.key
-    || null;
-}
-
 function isVisibleRoom(room) {
   return room && !['hidden', 'locked'].includes(room.state);
 }
@@ -291,9 +268,10 @@ function isActionableRoom(room) {
   return room?.state === 'unlocked' && !room.clearedAt && !room.bossDefeated;
 }
 
-function findAssetModule(modules, filename) {
+function findAssetModule(directory, filename) {
   if (!filename) return null;
-  return Object.entries(modules).find(([path]) => path.endsWith(`/${filename}`))?.[1] || null;
+  if (directory === roomImages && !ROOM_ART_FILES.has(filename)) return null;
+  return `${EXPEDITION_SPRITE_BASE}/${directory}/${filename}`;
 }
 
 function roomArtFile(room) {
@@ -340,23 +318,8 @@ function enemyArtFile(room) {
   return explicit || fallbackByType[room.type] || null;
 }
 
-function useLazyAsset(modules, filename) {
-  const [url, setUrl] = useState(null);
-
-  useEffect(() => {
-    let active = true;
-    const loader = findAssetModule(modules, filename);
-    setUrl(null);
-    if (!loader) return undefined;
-    loader().then(value => {
-      if (active) setUrl(value?.default || value);
-    }).catch(() => {
-      if (active) setUrl(null);
-    });
-    return () => { active = false; };
-  }, [filename, modules]);
-
-  return url;
+function useLazyAsset(directory, filename) {
+  return findAssetModule(directory, filename);
 }
 
 function latestAction(actions) {
@@ -599,7 +562,7 @@ function PreparationFlow({ state, loading, onPrepare }) {
             <button type="button" onClick={() => { setArtifactIds(previous => previous.map((value, index) => index === artifactSlot ? null : value)); setPicker(null); }}><span>×</span><div><strong>Leave Empty</strong><p>Save this slot for an artifact found during the run.</p></div></button>
             {inventory.map(item => {
               const meta = artifacts.get(item.artifactId);
-              return <button type="button" key={item.artifactId} onClick={() => setArtifactDetailId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<div><strong>{meta?.name || titleize(item.artifactId)}</strong><small>{titleize(meta?.rarity || 'common')} · owned {item.quantity || 1}</small><p>{meta?.displayEffect || meta?.effect}</p></div></button>;
+              return <button type="button" key={item.artifactId} onClick={() => setArtifactDetailId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<div><strong>{meta?.name || titleize(item.artifactId)}</strong><small>{titleize(meta?.rarity || 'common')} · owned {item.quantity ?? 0}</small><p>{meta?.displayEffect || meta?.effect}</p></div></button>;
             })}
           </div>
         </ExpeditionOverlay>
@@ -706,16 +669,16 @@ function ExpeditionOverlay({ title, kicker, onClose, children, wide = false }) {
 function ExpeditionGuidePanel() {
   const sections = [
     ['The family run', 'An expedition cannot fail or expire. One hero can finish it slowly, while an active family clears rooms much faster. Members may join after the run has started: they prepare a class, food and relics, then arrive in the family\'s current open room.'],
-    ['Preparation', 'Choose one class, one optional provision and up to three artifacts. Empty artifact slots may be filled by relics found during the run. Your choices are personal: family members do not share inventories or prepared loadouts.'],
+    ['Preparation', 'Choose one class, one optional provision and up to three artifacts. Your choices are personal: family members do not share inventories or prepared loadouts. New relics stay sealed in the final reward cache and cannot be equipped during the same run.'],
     ['AP and activity', 'Every combat roll or mini-game attempt costs 1 AP. You can hold 5 AP and recover 1 AP every hour. AP is spent when a mini-game begins, not after it ends. The final reward quietly scales with how actively each hero helped.'],
-    ['Combat: d20 then damage', 'Each enemy shows its own Armor Class (AC). First roll d20: 1-3 causes a 1 HP counter, a final result below AC misses, and AC or higher hits. A hit up to 18 rolls 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Damage bonuses affect only the damage total; only Arcane Link from another Mage can add +3 to the d20.'],
+    ['Combat: d20 then damage', 'Each enemy shows its own Armor Class (AC). First roll d20: 1-4 causes a 1 HP counter, a final result below AC misses, and AC or higher hits. A hit up to 18 rolls 1d6 damage, 19 rolls 2d6, and 20 rolls 3d6. Damage bonuses affect only the damage total; only Arcane Link from another Mage can add +3 to the d20.'],
     ['Room mini-games', 'Noncombat rooms use one of five challenges: Dodge the Trap, Rune Sequence, Root Crossing, Focus Hold or Shade Hunt. Starting costs 1 AP. Success always adds exactly 1 room progress. Failure spends the AP but never damages HP, and another attempt becomes available immediately unless a free retry triggers.'],
     ['HP and knockout', 'Every hero has 3 HP and HP does not refill when the family enters a new room. At 0 HP the hero is knocked out for 6 hours and cannot act, then returns with all 3 HP. A Phoenix Feather revives immediately. Family Prayer heals wounded heroes and shortens every active knockout by 15%.'],
     ['Knight, Mage and Cleric', 'Thorn Guard protects the next ally who would take combat damage, blocks it and retaliates for 3 damage. Arcane Link gives the next ally +3 to one d20 and +2 damage if that attack hits. Family Prayer immediately heals every wounded hero by 1 HP, including the Cleric. These abilities recharge in 3 hours and cannot be consumed by their caster; queued ally buffs survive mini-game rooms.'],
     ['Scout', 'Pathfinder is used once per expedition. It reveals three possible next rooms with the exact enemy and AC or the exact mini-game, then lets the Scout choose the family route. Warm Milk or Campfire Charm can restore the spent Pathfinder ability.'],
     ['Provisions', 'Food is consumed only when you tap it. Carrot Rations fully restore AP, while Tomato Soup fully restores HP. Hearty Potato Meal adds +2 damage to every hit in the current combat room, and Magic Squash Pie adds +3 damage for the rest of the expedition; both can only be eaten during combat. Lucky Breakfast can only be eaten in a mini-game room and adds +1 extra progress to every successful attempt in that room. Warm Milk restores your class ability, and Truffle Treat upgrades the next artifact reward.'],
     ['Artifacts', 'Only your three equipped relics work. Passive relics activate automatically for the whole expedition and are consumed when it ends. Active relics are consumed when used. Tap any relic in the top bar to see its exact effect, valid room and current availability; an unavailable relic remains safe in its slot.'],
-    ['Rooms and rewards', 'The map hides future rooms, while cleared and current rooms remain visible. Room loot is personal. Duplicate artifacts are kept as additional copies. When the Root King falls, unclaimed rewards remain available, and each hero can open a detailed reward summary later.'],
+    ['Rooms and rewards', 'The map hides future rooms, while cleared and current rooms remain visible. Spend AP in a room to earn a personal relic chance when that room is cleared; spending more AP improves that chance. Loot stays hidden until the expedition ends, with a maximum of four relics per hero. Duplicate relics remain usable copies, and the final cache also has a 30% chance to contain one unowned outfit or home decoration. Unclaimed rewards remain available after the Root King falls.'],
   ];
   return (
     <div className="expedition-guide-accordion">
@@ -1846,8 +1809,13 @@ function RoomPanel({
   const revealEvents = combatReveal.action?.events || combatReveal.action?.modifiers?.events || [];
   const revealCombatEvent = revealEvents.find(event => event.type === 'combat_roll');
   const revealDamageDice = revealCombatEvent?.damageRolls?.length || 0;
-  const visibleProgress = damagePending ? combatReveal.progressBefore : Number(room.progress || 0);
-  const progressPercent = Math.min(100, Math.round((visibleProgress / progressTarget) * 100));
+  const visibleProgress = Math.max(0, Math.min(
+    progressTarget,
+    damagePending ? Number(combatReveal.progressBefore || 0) : Number(room.progress || 0),
+  ));
+  const progressPercent = Math.round((visibleProgress / progressTarget) * 100);
+  const enemyHp = Math.max(0, progressTarget - visibleProgress);
+  const enemyHpPercent = Math.round((enemyHp / progressTarget) * 100);
   const foregroundArt = bossArt || (combatRoom ? enemyArt : null);
   const locked = room.state === 'locked';
   const hidden = room.state === 'hidden';
@@ -1867,15 +1835,6 @@ function RoomPanel({
           />
         )}
         {combatRoom && !foregroundArt && <div className="expedition-enemy-fallback" />}
-        {enemyName && (
-          <div className="expedition-enemy-hud">
-            <span>{bossArt ? 'Boss' : 'Enemy'}</span>
-            <strong>{enemyName}</strong>
-            <i>
-              <b style={{ width: `${Math.max(0, Math.min(100, 100 - progressPercent))}%` }} />
-            </i>
-          </div>
-        )}
         {stageOutcome && combatVisualResolved && (
           <div className={`expedition-stage-impact ${stageDamage > 0 ? 'damage' : stageOutcome}`}>
             <strong>{stageDamage > 0 ? `-${stageDamage}` : stageOutcomeCopy[0]}</strong>
@@ -1928,8 +1887,8 @@ function RoomPanel({
         <>
           <div className="expedition-room-meter">
             <div>
-              <span>Progress</span>
-              <strong>{visibleProgress}/{progressTarget}</strong>
+              <span>{combatRoom ? 'Enemy HP' : 'Progress'}</span>
+              <strong>{combatRoom ? `${enemyHp}/${progressTarget}` : `${visibleProgress}/${progressTarget}`}</strong>
               <button
                 type="button"
                 className={`expedition-room-info-toggle${showRoomInfo ? ' active' : ''}`}
@@ -1939,7 +1898,7 @@ function RoomPanel({
                 {showRoomInfo ? 'Hide info' : 'Room info'}
               </button>
             </div>
-            <i><b style={{ width: `${progressPercent}%` }} /></i>
+            <i><b style={{ width: `${combatRoom ? enemyHpPercent : progressPercent}%` }} /></i>
           </div>
 
           {roomTraitChips.length > 0 && (
@@ -2153,11 +2112,11 @@ function ExpeditionDashboard({
 
   useEffect(() => {
     if (lastRoll?.pending || roomTransition) return;
-    if (currentMinigameAttempt?.roomKey && selectedRoomKey !== currentMinigameAttempt.roomKey) {
-      setSelectedRoomKey(currentMinigameAttempt.roomKey);
-      return;
-    }
-    const preferred = nextPreferredRoomKey(rooms, selectedRoomKey);
+    const preferred = preferredExpeditionRoomKey(
+      rooms,
+      selectedRoomKey,
+      currentMinigameAttempt?.roomKey || null,
+    );
     if (preferred !== selectedRoomKey) setSelectedRoomKey(preferred);
   }, [rooms, selectedRoomKey, currentMinigameAttempt?.roomKey, lastRoll?.pending, roomTransition]);
 
@@ -2196,7 +2155,7 @@ function ExpeditionDashboard({
   async function handleCombatExit(roomKey) {
     setRoomTransition({ phase: 'defeat', roomKey });
     await new Promise(resolve => window.setTimeout(resolve, 900));
-    const nextRoomKey = nextPreferredRoomKey(rooms, roomKey);
+    const nextRoomKey = preferredExpeditionRoomKey(rooms, roomKey);
     setLastRoll(null);
     if (!nextRoomKey || nextRoomKey === roomKey) {
       setRoomTransition(null);
@@ -2347,12 +2306,27 @@ function ExpeditionDashboard({
           <section>
             <div className="expedition-section-title">Family Prep</div>
             <div className="expedition-member-list">
-              {(state.familyMembers || []).map(memberRow => (
-                <div key={memberRow.userId} className="expedition-member-row">
-                  <span>{memberRow.firstName || memberRow.username || 'Family member'}</span>
-                  <strong>{memberRow.prepared ? titleize(memberRow.role) : 'Not ready'}</strong>
-                </div>
-              ))}
+              {(state.familyMembers || []).map(memberRow => {
+                const heroHp = Math.max(0, Math.min(3, Number(memberRow.heroHp ?? 3)));
+                const healthState = heroHp <= 0
+                  ? 'knocked-out'
+                  : heroHp < 3
+                    ? 'wounded'
+                    : 'healthy';
+                return (
+                  <div key={memberRow.userId} className="expedition-member-row">
+                    <span>{memberRow.firstName || memberRow.username || 'Family member'}</span>
+                    <div className="expedition-member-status">
+                      <strong>{memberRow.prepared ? titleize(memberRow.role) : 'Not ready'}</strong>
+                      {memberRow.prepared && (
+                        <small className={`expedition-member-hp is-${healthState}`}>
+                          {healthState === 'knocked-out' ? 'KO' : 'HP'} {heroHp}/3
+                        </small>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
 
@@ -2428,6 +2402,7 @@ function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers 
     (familyMembers || []).map(member => [member.userId, member.firstName || member.username || 'Family']),
   ), [familyMembers]);
   const inventory = (currentInventory?.length ? currentInventory : archive?.artifactInventory || [])
+    .filter(item => Number(item.quantity || 0) > 0)
     .slice()
     .sort((a, b) => {
       const rarityOrder = { legendary: 0, epic: 1, rare: 2, common: 3 };
@@ -2452,7 +2427,7 @@ function ExpeditionArchivePanel({ archive, currentInventory = [], familyMembers 
           <div className="expedition-vault-inventory">
             {inventory.length ? inventory.map(item => {
               const meta = artifacts.get(item.artifactId);
-              return <button type="button" key={item.artifactId} className={`rarity-${meta?.rarity || 'common'}`} onClick={() => setSelectedArtifactId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<strong>{meta?.name || titleize(item.artifactId)}</strong><small>x{item.quantity || 1}</small></button>;
+              return <button type="button" key={item.artifactId} className={`rarity-${meta?.rarity || 'common'}`} onClick={() => setSelectedArtifactId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<strong>{meta?.name || titleize(item.artifactId)}</strong><small>x{item.quantity ?? 0}</small></button>;
             }) : <div className="expedition-empty">No relics found yet.</div>}
           </div>
         </ExpeditionOverlay>
@@ -2497,6 +2472,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   const roleAbilityIdempotencyKeysRef = useRef(new Map());
   const provisionUseIdempotencyKeysRef = useRef(new Map());
   const eventAckIdempotencyKeysRef = useRef(new Map());
+  const loadSequenceRef = useRef(0);
   const pendingRewards = state?.pendingRewards || [];
   const pendingRewardCount = Number(state?.pendingRewardCount ?? pendingRewards.length);
   const personalEvent = state?.personalEvents?.[0] || null;
@@ -2520,16 +2496,21 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   }, []);
 
   const load = useCallback(async ({ silent = false } = {}) => {
+    const requestId = ++loadSequenceRef.current;
     if (!silent) setLoading(true);
     setError('');
     try {
-      setState(await api.getExpeditionCurrent());
+      const nextState = await api.getExpeditionCurrent();
+      if (requestId !== loadSequenceRef.current) return false;
+      setState(nextState);
       return true;
     } catch (err) {
-      setError(err.message || 'Could not load expedition');
+      if (requestId === loadSequenceRef.current) {
+        setError(err.message || 'Could not load expedition');
+      }
       return false;
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && requestId === loadSequenceRef.current) setLoading(false);
     }
   }, []);
 
@@ -2558,6 +2539,14 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   }, [load, loadArchive]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add('expedition-ui-open');
+    return () => {
+      root.classList.remove('expedition-ui-open');
+    };
+  }, []);
+
+  useEffect(() => {
     function refreshIfVisible() {
       if (document.visibilityState !== 'visible' || mutating) return;
       load({ silent: true });
@@ -2572,6 +2561,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   }, [load, mutating]);
 
   async function handleStart() {
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     startIdempotencyKeyRef.current ||= makeIdempotencyKey('expedition-start');
@@ -2598,6 +2588,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
 
   async function handlePrepare(payload) {
     if (!state?.expedition?.id) return;
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     prepareIdempotencyKeyRef.current ||= makeIdempotencyKey('expedition-prepare');
@@ -2626,6 +2617,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
 
   async function mutateExpedition(operation, fallbackMessage) {
     if (!state?.expedition?.id) return null;
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     try {
@@ -2677,6 +2669,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   async function handleMinigameStart(roomKey) {
     if (!state?.expedition?.id) return null;
     const signature = JSON.stringify({ expeditionId: state.expedition.id, roomKey });
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     try {
@@ -2705,6 +2698,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
       startedAt: attempt.startedAt,
       result,
     });
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     try {
@@ -2738,6 +2732,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   async function handleUseArtifact(roomKey, artifactId) {
     const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, roomKey, artifactId });
     if (!state?.expedition?.id) return null;
+    loadSequenceRef.current += 1;
     setMutating(true);
     setError('');
     try {

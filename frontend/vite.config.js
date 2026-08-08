@@ -29,5 +29,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Shared runtime sprites live permanently on the web server and should
+    // not be recopied into every production bundle.
+    copyPublicDir: !fs.existsSync(sharedHtmlDir),
   },
 });

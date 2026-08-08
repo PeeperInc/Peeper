@@ -319,6 +319,7 @@ test('serializer returns stable camelCase state and redacts hidden/private field
     ],
     artifactInventory: [
       { userId: 1, artifactId: 'bent_sword', quantity: 1, charges: 0 },
+      { userId: 1, artifactId: 'old_torch', quantity: 0, charges: 0 },
     ],
     pendingRewards: [
       {
@@ -483,6 +484,33 @@ test('GET /current returns AP regenerated while the player was offline', async (
 
   assert.equal(response.status, 200);
   assert.equal(response.body.member.ap, 5);
+});
+
+test('GET /current reconciles stale combat HP before serializing the room', async () => {
+  createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-hp-reconcile' });
+  const expeditionId = started.body.expedition.id;
+  const combatRoom = started.body.map.rooms.find(room => room.type === 'combat');
+  assert.ok(combatRoom);
+
+  db.prepare(`
+    UPDATE family_expedition_rooms
+    SET progress = 1, progress_target = 1
+    WHERE expedition_id = ? AND room_key = ?
+  `).run(expeditionId, combatRoom.key);
+
+  const response = await request('GET', '/current', 'tg-owner');
+  const reconciled = response.body.map.rooms.find(room => room.key === combatRoom.key);
+  const stored = db.prepare(`
+    SELECT progress, progress_target AS progressTarget
+    FROM family_expedition_rooms
+    WHERE expedition_id = ? AND room_key = ?
+  `).get(expeditionId, combatRoom.key);
+
+  assert.equal(response.status, 200);
+  assert.equal(reconciled.progress, 1);
+  assert.equal(reconciled.progressTarget, combatRoom.progressTarget);
+  assert.deepEqual(stored, { progress: 1, progressTarget: combatRoom.progressTarget });
 });
 
 test('POST /start requires current family membership and enforces one unfinished expedition per family', async () => {
@@ -744,7 +772,7 @@ test('legacy room attempts cannot activate daily role powers and legacy reveal i
   assert.match(reveal.body.error, /role-ability|update/i);
 });
 
-test('role ability endpoint queues stackable ally shields idempotently', async () => {
+test('role ability endpoint stacks different ally shields but refreshes the same caster shield', async () => {
   const { userIds } = createFamilyWithMembers(['tg-owner', 'tg-sibling']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-role-effects' });
   const expeditionId = started.body.expedition.id;
@@ -798,6 +826,80 @@ test('role ability endpoint queues stackable ally shields idempotently', async (
     `).pluck().get(expeditionId, userIds[1]),
     0,
   );
+
+  const legacyQueue = duplicate.body.expedition.sharedBuffs;
+  legacyQueue.teamAbilities.knight.push({
+    ...legacyQueue.teamAbilities.knight[0],
+    createdAt: Number(legacyQueue.teamAbilities.knight[0].createdAt || 0) + 1,
+  });
+  db.prepare(`
+    UPDATE family_expeditions SET shared_buffs_json = ? WHERE id = ?
+  `).run(JSON.stringify(legacyQueue), expeditionId);
+
+  const normalizedLegacy = await request('GET', '/current', 'tg-owner');
+  assert.equal(normalizedLegacy.status, 200);
+  assert.equal(normalizedLegacy.body.expedition.sharedBuffs.teamAbilities.knight.length, 2);
+
+  db.prepare(`
+    UPDATE family_expedition_members
+    SET role_charge = 1, role_charge_progress = 0, role_charge_ready_at = 0
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
+
+  const refreshed = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.key}/role-ability`,
+    'tg-owner',
+    { idempotencyKey: 'refresh-knight-shield' },
+  );
+  assert.equal(refreshed.status, 200);
+  const refreshedQueue = refreshed.body.expedition.sharedBuffs.teamAbilities.knight;
+  assert.equal(refreshedQueue.length, 2);
+  assert.equal(
+    refreshedQueue.filter(entry => Number(entry.sourceUserId) === userIds[0]).length,
+    1,
+  );
+  assert.equal(
+    refreshedQueue.filter(entry => Number(entry.sourceUserId) === userIds[1]).length,
+    1,
+  );
+});
+
+test('Mage refreshes their own Arcane Link instead of stacking another copy', async () => {
+  const { userIds } = createFamilyWithMembers(['tg-owner']);
+  const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-mage-refresh' });
+  const expeditionId = started.body.expedition.id;
+  const prepared = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
+    idempotencyKey: 'prepare-mage-refresh',
+    role: 'mage',
+  });
+  const room = prepared.body.map.rooms.find(candidate => candidate.state === 'unlocked');
+
+  const placed = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.key}/role-ability`,
+    'tg-owner',
+    { idempotencyKey: 'place-mage-link' },
+  );
+  assert.equal(placed.status, 200);
+  assert.equal(placed.body.expedition.sharedBuffs.teamAbilities.mage.length, 1);
+
+  db.prepare(`
+    UPDATE family_expedition_members
+    SET role_charge = 1, role_charge_progress = 0, role_charge_ready_at = 0
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(expeditionId, userIds[0]);
+
+  const refreshed = await request(
+    'POST',
+    `/${expeditionId}/rooms/${room.key}/role-ability`,
+    'tg-owner',
+    { idempotencyKey: 'refresh-mage-link' },
+  );
+  assert.equal(refreshed.status, 200);
+  assert.equal(refreshed.body.expedition.sharedBuffs.teamAbilities.mage.length, 1);
+  assert.equal(refreshed.body.visualEvents[0].type, 'mage_boost_placed');
+  assert.equal(refreshed.body.visualEvents[0].stacks, 1);
 });
 
 test('Cleric role ability exposes only a family-safe summary and each viewer own pending event', async () => {
@@ -1795,8 +1897,9 @@ test('GET /artifacts only returns the authenticated user inventory', async () =>
       user_id, artifact_id, quantity, charges, first_acquired_at, last_acquired_at
     ) VALUES
       (?, 'bent_sword', 1, 0, 1000, 1000),
+      (?, 'old_torch', 0, 0, 1000, 1000),
       (?, 'chalk_rune', 1, 0, 1000, 1000)
-  `).run(userIds[0], userIds[1]);
+  `).run(userIds[0], userIds[0], userIds[1]);
 
   const response = await request('GET', '/artifacts', 'tg-owner');
 

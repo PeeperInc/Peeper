@@ -37,7 +37,8 @@ test('generator satisfies structural constraints across 500 seeds', () => {
     const proceduralRooms = map.rooms.filter(room => room.type !== 'camp' && room.type !== 'boss');
     const actionStats = new Set(proceduralRooms.flatMap(room => room.actions.map(action => action.stat)));
 
-    assert.equal(requiredRooms.length >= 8 && requiredRooms.length <= 12, true, map.seed);
+    assert.equal(map.rooms.length, 25, map.seed);
+    assert.equal(requiredRooms.length, 18, map.seed);
     const requiredCombatCount = requiredRooms.filter(room => room.type === 'combat').length;
     assert.equal(
       requiredCombatCount >= Math.round(requiredRooms.length * 0.7),
@@ -49,8 +50,8 @@ test('generator satisfies structural constraints across 500 seeds', () => {
       eventStreak = room.type === 'combat' ? 0 : eventStreak + 1;
       assert.equal(eventStreak <= 2, true, `${map.seed}: too many event rooms in a row`);
     }
-    assert.equal(optionalRooms.length >= 3 && optionalRooms.length <= 5, true, map.seed);
-    assert.equal(treasureRooms.length >= 1 && treasureRooms.length <= 2, true, map.seed);
+    assert.equal(optionalRooms.length, 5, map.seed);
+    assert.equal(treasureRooms.length, 2, map.seed);
     assert.equal(roomKeys.size, map.rooms.length, map.seed);
     assert.deepEqual([...actionStats].sort(), [...STATS].sort(), map.seed);
     assert.equal(isBossReachable(map), true, map.seed);
@@ -168,9 +169,9 @@ test('generated room gameplay data comes from authored templates', () => {
 });
 
 test('combat HP trends down as armor class rises without changing event targets', () => {
-  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.progressTarget), [24, 23, 22, 22, 21, 21, 20, 20, 19, 18, 17, 16]);
+  assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.progressTarget), [34, 32, 30, 30, 29, 29, 28, 28, 27, 26, 24, 22]);
   assert.deepEqual(ROOM_TEMPLATES.combat.map(room => room.attackTarget), [6, 6, 6, 7, 7, 7, 8, 8, 9, 10, 11, 12]);
-  assert.deepEqual(ROOM_TEMPLATES.boss.map(room => room.progressTarget), [36, 42, 48]);
+  assert.deepEqual(ROOM_TEMPLATES.boss.map(room => room.progressTarget), [50, 58, 66]);
   assert.deepEqual(ROOM_TEMPLATES.boss.map(room => room.attackTarget), [12, 13, 14]);
   assert.deepEqual(ROOM_TEMPLATES.trap.map(room => room.progressTarget), [4, 4]);
   assert.deepEqual(ROOM_TEMPLATES.arcane.map(room => room.progressTarget), [5, 5]);

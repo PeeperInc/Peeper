@@ -170,7 +170,7 @@ function getFamilyExpeditionSummary(familyId, userId, nowTs = ts()) {
   }
 
   const member = db.prepare(`
-    SELECT ap, ap_regen_day, ap_regen_at, contribution_ap, boss_reward_claimed_at
+    SELECT ap, ap_regen_day, ap_regen_at
     FROM family_expedition_members
     WHERE expedition_id = ? AND user_id = ?
   `).get(expedition.id, userId);
@@ -179,13 +179,6 @@ function getFamilyExpeditionSummary(familyId, userId, nowTs = ts()) {
     apRegenDay: member.ap_regen_day,
     apRegenAt: member.ap_regen_at,
   }, nowTs) : null;
-  const boss = db.prepare(`
-    SELECT state
-    FROM family_expedition_rooms
-    WHERE expedition_id = ? AND room_type = 'boss'
-    LIMIT 1
-  `).get(expedition.id);
-
   return {
     active: true,
     joined: Boolean(member),
@@ -193,9 +186,8 @@ function getFamilyExpeditionSummary(familyId, userId, nowTs = ts()) {
     canJoin: expedition.status === 'active' && !member,
     needsEntry: expedition.status === 'active' && !member,
     apFull: Boolean(regenerated && regenerated.ap >= MAX_AP),
-    bossReady: expedition.status === 'active' && boss?.state === 'unlocked',
-    rewardWaiting: ['boss_defeated', 'finished'].includes(expedition.status)
-      && Boolean(member && (member.contribution_ap || 0) >= 3 && !member.boss_reward_claimed_at),
+    bossReady: false,
+    rewardWaiting: false,
     status: expedition.status,
   };
 }

@@ -31,9 +31,7 @@ const COOLDOWNS = {
   farm_crops_ready: 0,      // once until crops are harvested/replanted
   farm_animals_ready: 0,    // once until animal products are collected/new feed starts
   expedition_ap_full: 0,    // once until AP is spent below cap
-  expedition_boss_ready: 0, // once until boss is no longer attackable
-  expedition_boss_reward: 0,// once until reward is claimed
-  expedition_finished: 0,   // once while a recent finish is visible
+  expedition_finished: 0,   // once while a recent final reward is waiting
 };
 
 const EXPEDITION_AP_CAP = MAX_AP;
@@ -174,40 +172,14 @@ function getExpeditionApFullRows(now = ts()) {
   ));
 }
 
-function getExpeditionBossReadyRows() {
-  return db.prepare(`
-    SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id
-    FROM family_expeditions e
-    JOIN family_expedition_rooms r ON r.expedition_id = e.id
-    JOIN family_expedition_members m ON m.expedition_id = e.id
-    JOIN users u ON u.id = m.user_id
-    WHERE e.status = 'active'
-      AND r.room_type = 'boss'
-      AND r.state = 'unlocked'
-      AND m.prepared_at IS NOT NULL
-  `).all();
-}
-
-function getExpeditionBossRewardRows() {
-  return db.prepare(`
-    SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id
-    FROM family_expedition_members m
-    JOIN family_expeditions e ON e.id = m.expedition_id
-    JOIN users u ON u.id = m.user_id
-    WHERE e.status = 'boss_defeated'
-      AND m.prepared_at IS NOT NULL
-      AND m.contribution_ap >= 3
-      AND m.boss_reward_claimed_at IS NULL
-  `).all();
-}
-
 function getExpeditionFinishedRows(now = ts()) {
   return db.prepare(`
     SELECT u.id AS user_id, u.telegram_id, u.first_name, e.id AS expedition_id, e.finished_at
-    FROM family_expeditions e
-    JOIN family_members fm ON fm.family_id = e.family_id
-    JOIN users u ON u.id = fm.user_id
+    FROM family_expedition_pending_rewards reward
+    JOIN family_expeditions e ON e.id = reward.expedition_id
+    JOIN users u ON u.id = reward.user_id
     WHERE e.status = 'finished'
+      AND reward.claimed_at IS NULL
       AND e.finished_at IS NOT NULL
       AND e.finished_at >= ?
   `).all(now - EXPEDITION_FINISHED_RECENT_SECONDS);
@@ -226,23 +198,8 @@ async function checkExpeditionNotifications(options = {}) {
     text: () => `${String.fromCodePoint(0x26A1)} <b>Your expedition AP is full (${EXPEDITION_AP_CAP}/${EXPEDITION_AP_CAP}).</b>\n\nThe crypt is waiting. Spend your strength before it spoils.`,
   });
 
-  const bossReadyRows = getExpeditionBossReadyRows();
-  clearStaleExpeditionFlags('expedition_boss_ready', bossReadyRows);
-  await sendExpeditionRows({
-    type: 'expedition_boss_ready',
-    rows: bossReadyRows,
-    send,
-    text: () => `${String.fromCodePoint(0x1F409)} <b>The expedition boss is exposed.</b>\n\nGather the family and strike before the shadows regroup.`,
-  });
-
-  const bossRewardRows = getExpeditionBossRewardRows();
-  clearStaleExpeditionFlags('expedition_boss_reward', bossRewardRows);
-  await sendExpeditionRows({
-    type: 'expedition_boss_reward',
-    rows: bossRewardRows,
-    send,
-    text: () => `${String.fromCodePoint(0x1F3C6)} <b>A boss reward is waiting.</b>\n\nClaim your spoils from the fallen horror.`,
-  });
+  // Retire legacy boss-stage flags. Only the completed expedition reward is announced.
+  clearStaleExpeditionFlags('expedition_boss_reward', []);
 
   const finishedRows = getExpeditionFinishedRows(now);
   clearStaleExpeditionFlags('expedition_finished', finishedRows);
@@ -250,7 +207,7 @@ async function checkExpeditionNotifications(options = {}) {
     type: 'expedition_finished',
     rows: finishedRows,
     send,
-    text: () => `${String.fromCodePoint(0x1F56F)} <b>Your family expedition is finished.</b>\n\nThe dungeon grows quiet. Open Peeper to read the final tale.`,
+    text: () => `${String.fromCodePoint(0x1F3C6)} <b>Your family expedition is complete.</b>\n\nThe boss is defeated. Return to Peeper and claim your rewards.`,
   });
 }
 
@@ -430,8 +387,6 @@ module.exports = {
   checkExpeditionNotifications,
   _expeditionNotificationInternals: {
     getExpeditionApFullRows,
-    getExpeditionBossReadyRows,
-    getExpeditionBossRewardRows,
     getExpeditionFinishedRows,
   },
 };

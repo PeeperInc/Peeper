@@ -188,6 +188,8 @@ function serializeFamilyMembers(familyMembers = [], expeditionMembers = []) {
       ['prepared', Boolean(prepared)],
       ['role', prepared?.role],
       ['ap', prepared?.ap],
+      ['heroHp', prepared?.heroHp],
+      ['heroRecoverAt', prepared?.heroRecoverAt],
       ['contributionAp', prepared?.contributionAp],
       ['contributionProgress', prepared?.contributionProgress],
       ['roleCharge', prepared?.roleCharge],
@@ -235,7 +237,7 @@ function serializePersonalEvents(memberEvents = [], userId = null) {
 }
 
 function serializeInventory(inventory = []) {
-  return inventory.map(item => ({
+  return inventory.filter(item => Number(item.quantity || 0) > 0).map(item => ({
     artifactId: item.artifactId ?? item.artifact_id,
     quantity: item.quantity,
     charges: item.charges,

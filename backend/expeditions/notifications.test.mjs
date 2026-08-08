@@ -24,6 +24,7 @@ beforeEach(() => {
   db.exec(`
     DELETE FROM notifications_sent;
     DELETE FROM user_notification_settings;
+    DELETE FROM family_expedition_pending_rewards;
     DELETE FROM family_expedition_history;
     DELETE FROM family_expedition_actions;
     DELETE FROM family_expedition_members;
@@ -88,6 +89,14 @@ function prepareMember(expeditionId, userId, overrides = {}) {
   `).run(expeditionId, userId, ap, apRegenDay, apRegenAt, NOW_DAY_KEY, NOW - 1800, bossRewardClaimedAt, contributionAp);
 }
 
+function addPendingReward(expeditionId, userId, createdAt = NOW - 60) {
+  db.prepare(`
+    INSERT INTO family_expedition_pending_rewards (
+      expedition_id, user_id, payload_json, created_at
+    ) VALUES (?, ?, '{}', ?)
+  `).run(expeditionId, userId, createdAt);
+}
+
 async function collectNotifications(now = NOW) {
   const sent = [];
   await notifier.checkExpeditionNotifications({
@@ -122,7 +131,6 @@ test('expedition notifications respect the expedition_notifications setting', as
 
   assert.equal(sent.length, 0);
   assert.equal(wasSent(userId, expeditionType('expedition_ap_full', expeditionId)), false);
-  assert.equal(wasSent(userId, expeditionType('expedition_boss_ready', expeditionId)), false);
 });
 
 test('AP full notification is one-shot until AP drops below five', async () => {
@@ -162,76 +170,53 @@ test('AP full notification uses hourly lazily regenerated expedition AP', async 
   assert.equal(wasSent(userId, expeditionType('expedition_ap_full', expeditionId)), true);
 });
 
-test('boss ready notification sends to prepared members when the boss room is unlocked', async () => {
-  const userId = createUser('tg-boss', 'Rook');
-  const familyId = createFamilyWithUsers([userId]);
-  const expeditionId = createExpedition({ familyId });
-  addBossRoom(expeditionId, 'unlocked');
-  prepareMember(expeditionId, userId, { ap: 4 });
-
-  const sent = await collectNotifications();
-
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].telegramId, 'tg-boss');
-  assert.match(sent[0].text, /boss/i);
-  assert.equal(wasSent(userId, expeditionType('expedition_boss_ready', expeditionId)), true);
-  assert.equal((await collectNotifications()).length, 0);
-
-  db.prepare(`
-    UPDATE family_expedition_rooms SET state = 'locked'
-    WHERE expedition_id = ? AND room_key = 'boss_1'
-  `).run(expeditionId);
-  assert.equal((await collectNotifications()).length, 0);
-  assert.equal(wasSent(userId, expeditionType('expedition_boss_ready', expeditionId)), false);
-});
-
-test('boss reward notification sends after victory until claimed', async () => {
+test('boss stage never sends a separate approach or reward notification', async () => {
   const userId = createUser('tg-reward', 'Vesper');
-  const inactiveUserId = createUser('tg-no-reward', 'Moss');
-  const familyId = createFamilyWithUsers([userId, inactiveUserId]);
+  const familyId = createFamilyWithUsers([userId]);
   const expeditionId = createExpedition({ familyId, status: 'boss_defeated', bossDefeatedAt: NOW - 60 });
   addBossRoom(expeditionId, 'cleared');
   prepareMember(expeditionId, userId, { ap: 4, bossRewardClaimedAt: null });
-  prepareMember(expeditionId, inactiveUserId, { ap: 4, bossRewardClaimedAt: null, contributionAp: 2 });
 
   const sent = await collectNotifications();
 
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].telegramId, 'tg-reward');
-  assert.match(sent[0].text, /reward/i);
-  assert.equal(wasSent(userId, expeditionType('expedition_boss_reward', expeditionId)), true);
-  assert.equal(wasSent(inactiveUserId, expeditionType('expedition_boss_reward', expeditionId)), false);
-  assert.equal((await collectNotifications()).length, 0);
-
-  db.prepare(`
-    UPDATE family_expedition_members SET boss_reward_claimed_at = ?
-    WHERE expedition_id = ? AND user_id = ?
-  `).run(NOW, expeditionId, userId);
-  assert.equal((await collectNotifications()).length, 0);
+  assert.equal(sent.length, 0);
   assert.equal(wasSent(userId, expeditionType('expedition_boss_reward', expeditionId)), false);
+  assert.equal(wasSent(userId, expeditionType('expedition_finished', expeditionId)), false);
 });
 
-test('finished notification sends only for recent completed expeditions and resets after the recent window', async () => {
+test('finished notification sends once for a recent unclaimed reward and clears after claim', async () => {
   const userId = createUser('tg-finished', 'Selene');
   const familyId = createFamilyWithUsers([userId]);
   const expeditionId = createExpedition({ familyId, status: 'finished', finishedAt: NOW - 60 });
   prepareMember(expeditionId, userId);
+  addPendingReward(expeditionId, userId);
 
   const sent = await collectNotifications();
 
   assert.equal(sent.length, 1);
-  assert.match(sent[0].text, /finished/i);
+  assert.match(sent[0].text, /expedition is complete/i);
+  assert.match(sent[0].text, /boss is defeated/i);
+  assert.match(sent[0].text, /claim your rewards/i);
   assert.equal(wasSent(userId, expeditionType('expedition_finished', expeditionId)), true);
   assert.equal((await collectNotifications()).length, 0);
 
-  assert.equal((await collectNotifications(NOW + 25 * 3600)).length, 0);
-  assert.equal(wasSent(userId, expeditionType('expedition_finished', expeditionId)), false);
-
   db.prepare(`
-    UPDATE family_expeditions SET finished_at = ?
-    WHERE id = ?
-  `).run(NOW + 25 * 3600 - 60, expeditionId);
-  assert.equal((await collectNotifications(NOW + 25 * 3600)).length, 1);
+    UPDATE family_expedition_pending_rewards SET claimed_at = ?
+    WHERE expedition_id = ? AND user_id = ?
+  `).run(NOW, expeditionId, userId);
+  assert.equal((await collectNotifications()).length, 0);
+  assert.equal(wasSent(userId, expeditionType('expedition_finished', expeditionId)), false);
+});
+
+test('finished notification ignores rewards outside the recent window', async () => {
+  const userId = createUser('tg-finished-old', 'Old Selene');
+  const familyId = createFamilyWithUsers([userId]);
+  const expeditionId = createExpedition({ familyId, status: 'finished', finishedAt: NOW - (25 * 3600) });
+  prepareMember(expeditionId, userId);
+  addPendingReward(expeditionId, userId, NOW - (25 * 3600));
+
+  assert.equal((await collectNotifications()).length, 0);
+  assert.equal(wasSent(userId, expeditionType('expedition_finished', expeditionId)), false);
 });
 
 test('finished notification dedupe is scoped per expedition', async () => {
@@ -239,6 +224,7 @@ test('finished notification dedupe is scoped per expedition', async () => {
   const familyId = createFamilyWithUsers([userId]);
   const expeditionA = createExpedition({ familyId, status: 'finished', finishedAt: NOW - 120 });
   prepareMember(expeditionA, userId);
+  addPendingReward(expeditionA, userId, NOW - 120);
 
   const firstBatch = await collectNotifications();
   assert.equal(firstBatch.length, 1);
@@ -246,9 +232,10 @@ test('finished notification dedupe is scoped per expedition', async () => {
 
   const expeditionB = createExpedition({ familyId, status: 'finished', finishedAt: NOW - 60 });
   prepareMember(expeditionB, userId);
+  addPendingReward(expeditionB, userId);
 
   const secondBatch = await collectNotifications();
   assert.equal(secondBatch.length, 1);
-  assert.match(secondBatch[0].text, /finished/i);
+  assert.match(secondBatch[0].text, /expedition is complete/i);
   assert.equal(wasSent(userId, expeditionType('expedition_finished', expeditionB)), true);
 });

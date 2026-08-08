@@ -45,6 +45,7 @@ export default function RewardClaimSheet({
   const payload = reward?.payload || reward || {};
   const rewardId = reward?.id ?? payload.id ?? 'reward';
   const artifactEntries = Array.isArray(payload.artifacts) ? payload.artifacts : [];
+  const cosmetic = payload.cosmetic || null;
   const artifacts = useMemo(
     () => artifactEntries.map(entry => resolveRewardArtifact(entry, resolveArtifact)),
     [artifactEntries, resolveArtifact],
@@ -96,7 +97,9 @@ export default function RewardClaimSheet({
         </header>
 
         <div className="expedition-reward-status">
-          <div className="expedition-reward-sigil" aria-hidden="true">*</div>
+          <div className="expedition-reward-sigil" aria-hidden="true">
+            <img src="/sprites/coin_game.png" alt="" />
+          </div>
           <div>
             <span>{claimed ? 'Claim secured' : 'Personal reward cache'}</span>
             <strong>{payload.totalCoins ?? 0} coins</strong>
@@ -159,6 +162,25 @@ export default function RewardClaimSheet({
             <p className="expedition-reward-empty">No artifacts recovered this time.</p>
           )}
         </div>
+
+        {cosmetic ? (
+          <div className="expedition-reward-cosmetic">
+            <div className="expedition-reward-section-title">
+              <span>Rare find</span>
+              <small>30%</small>
+            </div>
+            <article>
+              <div aria-hidden="true">
+                {cosmetic.imageUrl ? <img src={cosmetic.imageUrl} alt="" /> : <span>+</span>}
+              </div>
+              <div>
+                <strong>{cosmetic.name}</strong>
+                <span>{cosmetic.kind === 'home_decor' ? 'Home decor' : 'Peeper outfit'}</span>
+              </div>
+              <small>New item</small>
+            </article>
+          </div>
+        ) : null}
 
         {error ? <p className="expedition-sheet-error" role="alert">{error}</p> : null}
 

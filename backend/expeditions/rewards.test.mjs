@@ -224,23 +224,16 @@ test('duplicate artifact rewards remain copies and contribution still controls c
       { userId: 11, contributionAp: 2 },
     ],
   });
-  const rolls = [
-    0, // room coins
-    0, // final coin base
-    0, 0.99, 0, // low contributor duplicate old_torch
-    0, 0.99, 0, // high contributor non-duplicate old_torch
-  ];
-
   const created = inTx(db, () => createPendingRewards(db, {
     expeditionId,
     now: 11_000,
-    rng: () => rolls.shift() ?? 0,
+    rng: () => 0,
   }));
   const low = created.find(reward => reward.userId === 10).payload;
   const high = created.find(reward => reward.userId === 11).payload;
 
-  assert.deepEqual(low.artifacts, [{ artifactId: 'old_torch' }]);
-  assert.deepEqual(high.artifacts, [{ artifactId: 'old_torch' }]);
+  assert.deepEqual(low.artifacts, [{ artifactId: 'fates_broken_die' }]);
+  assert.deepEqual(high.artifacts, [{ artifactId: 'fates_broken_die' }]);
   assert.equal(low.contributionAp, 1);
   assert.equal(high.contributionAp, 2);
   assert.ok(
@@ -429,5 +422,79 @@ test('invalid artifact entries cannot be claimed or hidden', () => {
   assert.equal(db.prepare(`
     SELECT claimed_at FROM family_expedition_pending_rewards WHERE id = ?
   `).pluck().get(rewardId), null);
+  db.close();
+});
+
+test('final rewards cap relics at four and can grant one unowned cosmetic', () => {
+  const db = rewardDb();
+  db.exec(`
+    CREATE TABLE family_expedition_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      expedition_id INTEGER NOT NULL,
+      room_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      action_type TEXT NOT NULL,
+      modifier_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE TABLE shop_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      slot TEXT NOT NULL,
+      is_free INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE owned_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      item_id TEXT NOT NULL,
+      purchased_at INTEGER NOT NULL,
+      UNIQUE(user_id, item_id)
+    );
+  `);
+  addUser(db, 10);
+  db.prepare(`
+    INSERT INTO shop_items (item_id, name, slot, is_free)
+    VALUES ('head_reward', 'Dungeon Crown', 'head', 0)
+  `).run();
+  const rooms = Array.from({ length: 6 }, (_, index) => ({
+    key: `fight_${index}`,
+    type: 'combat',
+    state: 'cleared',
+    loot: { coins: { min: 0, max: 0 }, artifactRolls: 0 },
+  }));
+  const expeditionId = createFinishedExpedition(db, {
+    rooms,
+    members: [{ userId: 10, contributionAp: 12 }],
+  });
+  const roomRows = db.prepare(`
+    SELECT id FROM family_expedition_rooms WHERE expedition_id = ? ORDER BY id
+  `).all(expeditionId);
+  for (const room of roomRows) {
+    db.prepare(`
+      INSERT INTO family_expedition_actions (
+        expedition_id, room_id, user_id, action_type, modifier_json
+      ) VALUES (?, ?, 10, 'attempt', '{}'), (?, ?, 10, 'attempt', '{}')
+    `).run(expeditionId, room.id, expeditionId, room.id);
+  }
+
+  const [reward] = inTx(db, () => createPendingRewards(db, {
+    expeditionId,
+    now: 11_000,
+    rng: () => 0,
+  }));
+  assert.equal(reward.payload.artifacts.length, 4);
+  assert.equal(reward.payload.cosmetic.itemId, 'head_reward');
+
+  inTx(db, () => claimPendingReward(db, {
+    rewardId: reward.id,
+    userId: 10,
+    now: 12_000,
+  }));
+  assert.equal(db.prepare(`
+    SELECT COUNT(*) FROM owned_items WHERE user_id = 10 AND item_id = 'head_reward'
+  `).pluck().get(), 1);
+  assert.equal(db.prepare(`
+    SELECT SUM(quantity) FROM expedition_artifact_inventory WHERE user_id = 10
+  `).pluck().get(), 4);
   db.close();
 });

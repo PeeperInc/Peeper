@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import hailMaryUrl from '../assets/adrian/hail_mary.glb?url';
 import adrianPlanetUrl from '../assets/adrian/adrian_planet.glb?url';
 import spaceSkydomeUrl from '../assets/adrian/space_nebula_skydome.glb?url';
-import rockyUrl from '../assets/adrian/rocky.png';
+const rockyUrl = '/sprites/adrian/rocky.png';
 import {
   ADRIAN_DURATION_SECONDS,
   ADRIAN_MAX_TAUMOEBA,

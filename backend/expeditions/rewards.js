@@ -5,12 +5,15 @@ const { applyPassiveArtifactEffects } = require('./artifactEffects');
 const {
   LOOT_TABLES,
   grantArtifact,
+  rollArtifactRarity,
   rollCoins,
-  rollPersonalLoot,
+  selectArtifactByRarity,
 } = require('./loot');
 
 const FINAL_COIN_RANGE = Object.freeze({ min: 18, max: 30 });
 const CONTRIBUTION_COIN_STEP = 4;
+const MAX_EXPEDITION_RELICS = 4;
+const COSMETIC_DROP_CHANCE = 0.3;
 const DUPLICATE_SUBSTITUTION_COINS = Object.freeze({
   common: 5,
   rare: 10,
@@ -53,6 +56,14 @@ function parseClaimableRewardPayload(text) {
       }
       return artifact.duplicate === undefined && artifact.coins === undefined;
     });
+  const validCosmetic = payload?.cosmetic == null || (
+    payload.cosmetic
+    && ['clothing', 'home_decor'].includes(payload.cosmetic.kind)
+    && typeof payload.cosmetic.itemId === 'string'
+    && payload.cosmetic.itemId.length > 0
+    && typeof payload.cosmetic.name === 'string'
+    && payload.cosmetic.name.length > 0
+  );
   const valid = payload
     && typeof payload === 'object'
     && !Array.isArray(payload)
@@ -62,6 +73,7 @@ function parseClaimableRewardPayload(text) {
     && isNonNegativeInteger(payload.totalCoins)
     && payload.totalCoins === payload.roomCoins + payload.finalCoins
     && validArtifacts
+    && validCosmetic
     && typeof payload.expeditionTitle === 'string'
     && payload.expeditionTitle.length > 0
     && Number.isInteger(payload.completedAt)
@@ -137,6 +149,7 @@ function rowToMember(row) {
     contributionAp: Math.max(0, Math.floor(Number(row.contribution_ap || 0))),
     contributionProgress: Math.max(0, Math.floor(Number(row.contribution_progress || 0))),
     loadout: normalizeLoadout(row.loadout_json),
+    provisionState: parseJson(row.provision_state_json, {}),
   };
 }
 
@@ -200,12 +213,6 @@ function rollRoomCoinPool(rooms, rng) {
   ), 0);
 }
 
-function roomArtifactRolls(rooms) {
-  return clearedRewardRooms(rooms).reduce((total, room) => (
-    total + Math.max(0, Math.floor(Number(room.loot?.artifactRolls || 0)))
-  ), 0);
-}
-
 function contributionShare(total, contributionAp, totalContributionAp) {
   if (total <= 0 || contributionAp <= 0 || totalContributionAp <= 0) return 0;
   return Math.floor((total * contributionAp) / totalContributionAp);
@@ -216,20 +223,153 @@ function duplicateSubstitutionCoins(artifactId) {
   return (DUPLICATE_SUBSTITUTION_COINS[rarity] || 0) * 2;
 }
 
-function rollArtifactPayloads({ db, userId, loadout = [], artifactRolls, rng }) {
-  const rolled = rollPersonalLoot({
-    coinRange: { min: 0, max: 0 },
-    artifactRolls,
-    table: LOOT_TABLES.boss,
-    rng,
-  });
-  const artifacts = [];
+function addRoomActivity(activity, userId, roomId, kind, amount) {
+  if (!activity.has(userId)) activity.set(userId, new Map());
+  const rooms = activity.get(userId);
+  const entry = rooms.get(roomId) || { actions: 0, attempts: 0 };
+  entry[kind] += Math.max(0, Math.floor(Number(amount || 0)));
+  rooms.set(roomId, entry);
+}
 
-  for (const artifactId of rolled.artifacts) {
-    artifacts.push({ artifactId });
+function readRewardActivity(db, expeditionId) {
+  const activity = new Map();
+  const compassRooms = new Map();
+  if (tableExists(db, 'family_expedition_actions')) {
+    const rows = db.prepare(`
+      SELECT user_id AS userId, room_id AS roomId, action_type AS actionType,
+             modifier_json AS modifierJson
+      FROM family_expedition_actions
+      WHERE expedition_id = ?
+    `).all(expeditionId);
+    for (const row of rows) {
+      if (['attempt', 'assist', 'event_minigame'].includes(row.actionType)) {
+        addRoomActivity(activity, row.userId, row.roomId, 'actions', 1);
+      }
+      if (row.actionType === 'use_artifact') {
+        const modifiers = parseJson(row.modifierJson, {});
+        if (modifiers.artifactId !== 'crooked_compass') continue;
+        if (!compassRooms.has(row.userId)) compassRooms.set(row.userId, new Set());
+        compassRooms.get(row.userId).add(row.roomId);
+      }
+    }
+  }
+  if (tableExists(db, 'family_expedition_minigame_attempts')) {
+    const rows = db.prepare(`
+      SELECT user_id AS userId, room_id AS roomId, SUM(ap_spent) AS apSpent
+      FROM family_expedition_minigame_attempts
+      WHERE expedition_id = ?
+      GROUP BY user_id, room_id
+    `).all(expeditionId);
+    for (const row of rows) addRoomActivity(activity, row.userId, row.roomId, 'attempts', row.apSpent);
+  }
+  return { activity, compassRooms };
+}
+
+function roomApForMember({ member, rooms, activity }) {
+  const memberActivity = activity.get(member.userId);
+  const result = new Map();
+  for (const room of rooms) {
+    const entry = memberActivity?.get(room.id);
+    if (entry) result.set(room.id, Math.max(entry.actions, entry.attempts));
+  }
+  if (result.size === 0 && member.contributionAp > 0) {
+    const fallbackRoom = rooms.find(room => room.state === 'cleared' && room.type !== 'camp');
+    if (fallbackRoom) result.set(fallbackRoom.id, member.contributionAp);
+  }
+  return result;
+}
+
+function relicChanceForRoom(apSpent) {
+  return Math.min(0.30, 0.05 + (Math.max(0, apSpent) * 0.05));
+}
+
+function lootTableForRoom(room) {
+  if (room.type === 'boss') return { name: 'boss', table: LOOT_TABLES.boss };
+  if (room.type === 'treasure' || (room.tags || []).includes('elite')) {
+    return { name: 'elite', table: LOOT_TABLES.elite };
+  }
+  return { name: 'base', table: LOOT_TABLES.base };
+}
+
+function upgradedLootTable(name) {
+  if (name === 'base') return { name: 'elite', table: LOOT_TABLES.elite };
+  return { name: 'boss', table: LOOT_TABLES.boss };
+}
+
+function rollArtifactPayloads({ rooms, roomAp, compassRoomIds = new Set(), provisionState = {}, rng }) {
+  const eligibleRooms = rooms.filter(room => (
+    room.state === 'cleared'
+    && room.type !== 'camp'
+    && (roomAp.get(room.id) || 0) > 0
+  ));
+  const rewardRooms = [];
+  for (const room of eligibleRooms) {
+    if (rng() < relicChanceForRoom(roomAp.get(room.id))) rewardRooms.push(room);
+    if (compassRoomIds.has(room.id)) rewardRooms.push(room);
+  }
+  const totalAp = [...roomAp.values()].reduce((total, value) => total + value, 0);
+  if (rewardRooms.length === 0 && totalAp >= 3 && eligibleRooms.length > 0) {
+    rewardRooms.push([...eligibleRooms].sort((left, right) => (
+      (roomAp.get(right.id) || 0) - (roomAp.get(left.id) || 0)
+    ))[0]);
   }
 
+  let upgradeUses = Math.max(0, Number(provisionState?.upgradeLootRarity?.uses || 0));
+  const artifacts = rewardRooms.slice(0, MAX_EXPEDITION_RELICS).map(room => {
+    let table = lootTableForRoom(room);
+    if (upgradeUses > 0) {
+      table = upgradedLootTable(table.name);
+      upgradeUses -= 1;
+    }
+    const rarity = rollArtifactRarity(rng, table.table);
+    return { artifactId: selectArtifactByRarity(rarity, rng) };
+  });
   return { artifacts, substitutionCoins: 0 };
+}
+
+function unownedCosmetics(db, userId) {
+  if (!tableExists(db, 'shop_items') || !tableExists(db, 'owned_items')) return [];
+  const clothing = tableExists(db, 'custom_sprites')
+    ? db.prepare(`
+      SELECT 'clothing' AS kind, item.item_id AS itemId, item.name, item.slot,
+             COALESCE(sprite.file_path, '/sprites/' || item.item_id || '.png') AS imageUrl
+      FROM shop_items item
+      LEFT JOIN custom_sprites sprite ON sprite.item_id = item.item_id
+      LEFT JOIN owned_items owned ON owned.user_id = ? AND owned.item_id = item.item_id
+      WHERE item.is_free = 0 AND owned.id IS NULL
+    `).all(userId)
+    : db.prepare(`
+      SELECT 'clothing' AS kind, item.item_id AS itemId, item.name, item.slot,
+             '/sprites/' || item.item_id || '.png' AS imageUrl
+      FROM shop_items item
+      LEFT JOIN owned_items owned ON owned.user_id = ? AND owned.item_id = item.item_id
+      WHERE item.is_free = 0 AND owned.id IS NULL
+    `).all(userId);
+  if (!tableExists(db, 'home_shop_items') || !tableExists(db, 'owned_home_items')) return clothing;
+  const decor = tableExists(db, 'home_custom_sprites')
+    ? db.prepare(`
+      SELECT 'home_decor' AS kind, item.item_id AS itemId, item.name, item.slot,
+             COALESCE(sprite.file_path, '/home/' || item.item_id || '.png') AS imageUrl
+      FROM home_shop_items item
+      LEFT JOIN home_custom_sprites sprite ON sprite.item_id = item.item_id
+      LEFT JOIN owned_home_items owned ON owned.user_id = ? AND owned.item_id = item.item_id
+      WHERE item.is_free = 0 AND item.is_active = 1 AND owned.id IS NULL
+    `).all(userId)
+    : db.prepare(`
+      SELECT 'home_decor' AS kind, item.item_id AS itemId, item.name, item.slot,
+             '/home/' || item.item_id || '.png' AS imageUrl
+      FROM home_shop_items item
+      LEFT JOIN owned_home_items owned ON owned.user_id = ? AND owned.item_id = item.item_id
+      WHERE item.is_free = 0 AND item.is_active = 1 AND owned.id IS NULL
+    `).all(userId);
+  return [...clothing, ...decor];
+}
+
+function rollCosmeticPayload(db, userId, rng) {
+  if (rng() >= COSMETIC_DROP_CHANCE) return null;
+  const candidates = unownedCosmetics(db, userId);
+  if (candidates.length === 0) return null;
+  return candidates[Math.min(candidates.length - 1, Math.floor(rng() * candidates.length))];
 }
 
 function buildRewardPayload({
@@ -238,7 +378,9 @@ function buildRewardPayload({
   member,
   roomCoinPool,
   totalContributionAp,
-  artifactRolls,
+  rooms,
+  roomAp,
+  compassRoomIds,
   finalCoinBase,
   rng,
 }) {
@@ -250,10 +392,10 @@ function buildRewardPayload({
   });
   const roomCoins = Math.max(0, Math.floor(Number(passiveRoomReward.coins || 0)));
   const artifactPayload = rollArtifactPayloads({
-    db,
-    userId: member.userId,
-    loadout: member.loadout,
-    artifactRolls,
+    rooms,
+    roomAp,
+    compassRoomIds,
+    provisionState: member.provisionState,
     rng,
   });
   const contributionCoins = member.contributionAp * CONTRIBUTION_COIN_STEP;
@@ -266,6 +408,7 @@ function buildRewardPayload({
     finalCoins,
     totalCoins,
     artifacts: artifactPayload.artifacts,
+    cosmetic: rollCosmeticPayload(db, member.userId, rng),
     expeditionTitle: expeditionTitle(expedition),
     completedAt: expedition.finishedAt,
   };
@@ -330,9 +473,10 @@ function createPendingRewards(db, {
     .reduce((total, member) => total + member.contributionAp, 0);
   const roomCoinPool = rollRoomCoinPool(rooms, rng);
   const finalCoinBase = rollCoins(FINAL_COIN_RANGE, rng);
-  const artifactRollCount = roomArtifactRolls(rooms);
+  const rewardActivity = readRewardActivity(db, expeditionId);
   const candidates = eligibleMembers.map(member => {
     const existing = rewardByExpeditionUser(db, expeditionId, member.userId);
+    const roomAp = roomApForMember({ member, rooms, activity: rewardActivity.activity });
     return {
       member,
       existing,
@@ -342,7 +486,9 @@ function createPendingRewards(db, {
         member,
         roomCoinPool,
         totalContributionAp,
-        artifactRolls: artifactRollCount,
+        rooms,
+        roomAp,
+        compassRoomIds: rewardActivity.compassRooms.get(member.userId) || new Set(),
         finalCoinBase,
         rng,
       }),
@@ -400,6 +546,19 @@ function grantPayload(db, userId, payload, now) {
       artifactId: artifact.artifactId,
       now,
     });
+  }
+  const cosmetic = payload.cosmetic;
+  if (cosmetic?.kind === 'clothing' && tableExists(db, 'owned_items')) {
+    db.prepare(`
+      INSERT OR IGNORE INTO owned_items (user_id, item_id, purchased_at)
+      VALUES (?, ?, ?)
+    `).run(userId, cosmetic.itemId, now);
+  }
+  if (cosmetic?.kind === 'home_decor' && tableExists(db, 'owned_home_items')) {
+    db.prepare(`
+      INSERT OR IGNORE INTO owned_home_items (user_id, item_id, purchased_at)
+      VALUES (?, ?, ?)
+    `).run(userId, cosmetic.itemId, now);
   }
 }
 
