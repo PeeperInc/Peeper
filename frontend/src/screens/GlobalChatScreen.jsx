@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import BottomSheet from '../components/BottomSheet';
 import SupporterStar from '../components/SupporterStar';
-import { avatarUrl } from '../utils/avatarUrl';
+import { ProfileAvatar, ProfileName } from '../components/ProfileCustomization';
 import * as api from '../api';
 import './GlobalChatScreen.css';
 
@@ -113,11 +113,6 @@ function formatMessageTime(value) {
 }
 
 function ChatAvatar({ user, size = 34, onClick }) {
-  const [failed, setFailed] = useState(false);
-  const source = avatarUrl(user.telegram_id);
-  const content = source && !failed
-    ? <img src={source} alt="" onError={() => setFailed(true)} />
-    : <span>🐸</span>;
   return (
     <button
       type="button"
@@ -126,7 +121,7 @@ function ChatAvatar({ user, size = 34, onClick }) {
       onClick={onClick}
       aria-label={`Open actions for ${user.first_name || 'user'}`}
     >
-      {content}
+      <ProfileAvatar user={user} size={size} />
     </button>
   );
 }
@@ -154,7 +149,7 @@ function UserActionsSheet({ target, isAdmin, currentUserId, onClose, onProfile, 
       <div className="global-chat-user-sheet-head">
         <ChatAvatar user={target} size={46} />
         <div>
-          <strong>{target.first_name || 'Peeper player'}</strong>
+          <ProfileName user={target} as="strong" />
           {target.username && <span>@{target.username}</span>}
         </div>
         <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Close</button>
@@ -192,7 +187,7 @@ function ReplyPreview({ message, onCancel }) {
   return (
     <div className="global-chat-composer-reply">
       <div>
-        <strong>Reply to {message.first_name || 'player'}</strong>
+        <strong>Reply to <ProfileName user={message} /></strong>
         <span>{message.message}</span>
       </div>
       <button type="button" onClick={onCancel} aria-label="Cancel reply">×</button>
@@ -333,7 +328,7 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
               <div className="global-chat-message-body">
                 {!isMe && (
                   <button type="button" className="global-chat-author" onClick={() => setSelectedUser(message)}>
-                    <span>{message.first_name || 'Peeper player'}</span>
+                    <ProfileName user={message} />
                     <SupporterStar user={message} size={10} />
                     {message.username && <small>@{message.username}</small>}
                   </button>
@@ -341,7 +336,10 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
                 <div className="global-chat-bubble">
                   {message.reply_to_id && message.reply_message && (
                     <div className="global-chat-reply-quote">
-                      <strong>{message.reply_first_name || 'Player'}</strong>
+                      <ProfileName
+                        user={{ first_name: message.reply_first_name || 'Player', appearance: message.replyAppearance }}
+                        as="strong"
+                      />
                       <span>{message.reply_message}</span>
                     </div>
                   )}
@@ -411,6 +409,7 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
               photo_url: selectedUser.photo_url,
               supporter_since: selectedUser.supporter_since,
               supporter_stars: selectedUser.supporter_stars,
+              appearance: selectedUser.appearance,
             });
             setSelectedUser(null);
           }}

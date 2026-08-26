@@ -86,6 +86,8 @@ export default function HomeDecorScreen({
   onSetSingleSlot,
   onToggleBackDecor,
   onReorderBackDecor,
+  onToggleForegroundItem,
+  onReorderForegroundItems,
 }) {
   const [activeTab, setActiveTab] = useState('wall_base');
   const [sortMode, setSortMode] = useState(CATALOG_SORT_MODES.NEWEST);
@@ -95,6 +97,20 @@ export default function HomeDecorScreen({
     () => new Set(activeBackDecor.map((item) => item.item_id)),
     [activeBackDecor],
   );
+  const activeForegroundSource = activeSlots.foreground_items ?? activeSlots.foreground_item;
+  const activeForegroundItems = Array.isArray(activeForegroundSource)
+    ? activeForegroundSource
+    : (activeForegroundSource ? [activeForegroundSource] : []);
+  const activeForegroundSet = useMemo(
+    () => new Set(activeForegroundItems.map((item) => item.item_id)),
+    [activeForegroundItems],
+  );
+  const isMultiSlot = activeTab === 'back_decor' || activeTab === 'foreground_item';
+  const activeMultiItems = activeTab === 'foreground_item' ? activeForegroundItems : activeBackDecor;
+  const activeMultiSet = activeTab === 'foreground_item' ? activeForegroundSet : activeBackDecorSet;
+  const toggleMultiItem = activeTab === 'foreground_item' ? onToggleForegroundItem : onToggleBackDecor;
+  const reorderMultiItems = activeTab === 'foreground_item' ? onReorderForegroundItems : onReorderBackDecor;
+  const multiLabel = activeTab === 'foreground_item' ? 'front items' : 'decor items';
 
   const ownedItems = useMemo(
     () => items.filter((item) => item.owned),
@@ -109,11 +125,11 @@ export default function HomeDecorScreen({
     [activeTab, ownedItems, sortMode],
   );
 
-  const activeSingleItemId = activeTab === 'back_decor'
+  const activeSingleItemId = isMultiSlot
     ? null
     : activeSlots?.[activeTab]?.item_id ?? null;
 
-  const canClearCurrentSlot = ['wall_base', 'floor_base', 'floor_cover', 'foreground_item'].includes(activeTab);
+  const canClearCurrentSlot = ['wall_base', 'floor_base', 'floor_cover'].includes(activeTab);
 
   return (
     <div
@@ -152,7 +168,7 @@ export default function HomeDecorScreen({
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 16px' }}>
-          {activeTab !== 'back_decor' && (
+          {!isMultiSlot && (
             <>
               {canClearCurrentSlot && activeSingleItemId && (
                 <div style={{ paddingBottom: 4 }}>
@@ -190,24 +206,24 @@ export default function HomeDecorScreen({
             </>
           )}
 
-          {activeTab === 'back_decor' && (
+          {isMultiSlot && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {tabItems.length === 0 ? (
                 <div className="card" style={{ textAlign: 'center', color: 'var(--text-hint)' }}>
-                  You do not own back decor yet. Buy some in the shop first.
+                  You do not own {multiLabel} yet. Buy some in the shop first.
                 </div>
               ) : (
                 <div className="home-decor-grid">
                   {tabItems.map((item) => {
-                    const enabled = activeBackDecorSet.has(item.item_id);
+                    const enabled = activeMultiSet.has(item.item_id);
                     return (
                       <DecorGridCard
                         key={item.item_id}
                         item={item}
                         selected={enabled}
-                        disabled={busySlot === 'back_decor'}
+                        disabled={busySlot === activeTab}
                         label={enabled ? `${CHECK_LABEL} Placed` : ''}
-                        onClick={() => onToggleBackDecor(item.item_id, !enabled)}
+                        onClick={() => toggleMultiItem(item.item_id, !enabled)}
                       />
                     );
                   })}
@@ -222,16 +238,16 @@ export default function HomeDecorScreen({
                   Drag enabled decor rows. Lower rows render above earlier ones.
                 </div>
 
-                {activeBackDecor.length > 1 ? (
+                {activeMultiItems.length > 1 ? (
                   <BackDecorReorderList
-                    items={activeBackDecor}
-                    disabled={busySlot === 'back_decor'}
+                    items={activeMultiItems}
+                    disabled={busySlot === activeTab}
                     saving={reorderBusy}
-                    onReorder={onReorderBackDecor}
+                    onReorder={reorderMultiItems}
                   />
                 ) : (
                   <div style={{ color: 'var(--text-hint)', fontSize: 13 }}>
-                    Enable at least two decor items to reorder them.
+                    Enable at least two {multiLabel} to reorder them.
                   </div>
                 )}
               </div>

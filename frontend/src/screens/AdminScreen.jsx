@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { isAdmin } from '../adminConfig';
-import { avatarUrl } from '../utils/avatarUrl';
+import { getProfileNameEffectClass, getProfileNameStyleCss, ProfileAvatar, ProfileName } from '../components/ProfileCustomization';
 import './AdminScreen.css';
 
 const CLOTHING_SLOTS = ['head', 'body', 'hands', 'fren', 'face'];
@@ -716,16 +716,292 @@ function HomeItemRow({ item, onDeleted, onRefresh }) {
   );
 }
 
-function MuteAvatar({ mute }) {
-  const [failed, setFailed] = useState(false);
-  const source = avatarUrl(mute.telegramId);
+function ProfileItemPreview({ item }) {
+  if (item.type === 'title') {
+    return <div className="admin-profile-title-preview">{item.titleText || item.name}</div>;
+  }
+  if (item.type === 'name_style') {
+    return <div className={`admin-profile-name-preview${getProfileNameEffectClass(item)}`} style={getProfileNameStyleCss(item)}>Peeper</div>;
+  }
+  if (!item.filePath) return <div className="admin-profile-no-art">PNG<br />not uploaded</div>;
+  return <img src={`${item.filePath}?v=${item.createdAt || 0}`} alt="" className={`admin-profile-${item.type}-preview`} />;
+}
+
+function NameStyleFields({ value, onChange }) {
+  const update = patch => onChange({ ...value, ...patch });
   return (
-    <div className="admin-mute-avatar">
-      {source && !failed
-        ? <img src={source} alt="" onError={() => setFailed(true)} />
-        : <span>{String(mute.firstName || '?').charAt(0).toUpperCase()}</span>}
+    <div className="admin-profile-name-fields">
+      <label>
+        Primary color
+        <span className="admin-profile-color-control">
+          <input type="color" value={value.nameColor} onChange={event => update({ nameColor: event.target.value.toUpperCase() })} />
+          <input value={value.nameColor} onChange={event => update({ nameColor: event.target.value.toUpperCase() })} maxLength={7} />
+        </span>
+      </label>
+      <label className="admin-profile-switch">
+        <input
+          type="checkbox"
+          checked={Boolean(value.nameColorSecondary)}
+          onChange={event => update({ nameColorSecondary: event.target.checked ? '#FFD75E' : '' })}
+        />
+        Use two-color gradient
+      </label>
+      {value.nameColorSecondary && (
+        <label>
+          Gradient end
+          <span className="admin-profile-color-control">
+            <input type="color" value={value.nameColorSecondary} onChange={event => update({ nameColorSecondary: event.target.value.toUpperCase() })} />
+            <input value={value.nameColorSecondary} onChange={event => update({ nameColorSecondary: event.target.value.toUpperCase() })} maxLength={7} />
+          </span>
+        </label>
+      )}
+      <label>
+        Glow color
+        <span className="admin-profile-color-control">
+          <input type="color" value={value.nameGlowColor} onChange={event => update({ nameGlowColor: event.target.value.toUpperCase() })} />
+          <input value={value.nameGlowColor} onChange={event => update({ nameGlowColor: event.target.value.toUpperCase() })} maxLength={7} />
+        </span>
+      </label>
+      <label>
+        Glow strength
+        <select value={value.nameGlowStrength} onChange={event => update({ nameGlowStrength: Number(event.target.value) })}>
+          <option value={0}>None</option>
+          <option value={1}>Soft</option>
+          <option value={2}>Bright</option>
+          <option value={3}>Neon</option>
+        </select>
+      </label>
+      <div className={`admin-profile-name-live${getProfileNameEffectClass(value)}`} style={getProfileNameStyleCss(value)}>Peeper</div>
     </div>
   );
+}
+
+function ProfileItemEditor({ item, onRefresh }) {
+  const [name, setName] = useState(item.name);
+  const [titleText, setTitleText] = useState(item.titleText || '');
+  const [nameStyle, setNameStyle] = useState({
+    nameColor: item.nameColor || '#F4FFE9',
+    nameColorSecondary: item.nameColorSecondary || '',
+    nameGlowColor: item.nameGlowColor || item.nameColor || '#B8FF57',
+    nameGlowStrength: item.nameGlowStrength || 0,
+    nameEffect: item.nameEffect || null,
+  });
+  const [price, setPrice] = useState(item.price);
+  const [active, setActive] = useState(item.active);
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await adminFetch('PATCH', `/profile-items/${item.itemId}`, {
+        name,
+        titleText: item.type === 'title' ? titleText : null,
+        ...(item.type === 'name_style' ? nameStyle : {}),
+        price: Number(price),
+        isActive: active,
+      });
+      if (file && ['frame', 'scene'].includes(item.type)) {
+        const form = new FormData();
+        form.append('itemId', item.itemId);
+        form.append('file', file);
+        await adminFetch('POST', '/profile-items/upload', form);
+      }
+      setMsg({ type: 'success', text: `${name} updated` });
+      await onRefresh();
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not update profile item' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      return;
+    }
+    setBusy(true);
+    try {
+      await adminFetch('DELETE', `/profile-items/${item.itemId}`);
+      await onRefresh();
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not delete profile item' });
+    } finally {
+      setBusy(false);
+      setDeleteArmed(false);
+    }
+  }
+
+  if (item.system) {
+    return (
+      <article className="admin-profile-item system">
+        <div className="admin-profile-item-art"><ProfileItemPreview item={item} /></div>
+        <div className="admin-profile-item-main">
+          <span>SYSTEM TITLE</span>
+          <strong>{item.name}</strong>
+          <small>Granted automatically to configured production admins. Hidden from the public shop.</small>
+        </div>
+        <div className="admin-profile-owner-count">{item.ownerCount}<small>owners</small></div>
+      </article>
+    );
+  }
+
+  return (
+    <details className="admin-profile-item">
+      <summary>
+        <div className="admin-profile-item-art"><ProfileItemPreview item={item} /></div>
+        <div className="admin-profile-item-main">
+          <span>{item.type.toUpperCase()} · {item.active ? 'PUBLISHED' : 'HIDDEN'}</span>
+          <strong>{item.name}</strong>
+          <small>{item.itemId} · {item.price} ✦ · {item.ownerCount} owners</small>
+        </div>
+      </summary>
+      <div className="admin-profile-editor">
+        <label>Name<input value={name} onChange={event => setName(event.target.value)} maxLength={40} /></label>
+        {item.type === 'title' && <label>Visible title<input value={titleText} onChange={event => setTitleText(event.target.value)} maxLength={32} /></label>}
+        {item.type === 'name_style' && <NameStyleFields value={nameStyle} onChange={setNameStyle} />}
+        <label>Price<input type="number" min="0" value={price} onChange={event => setPrice(event.target.value)} /></label>
+        {['frame', 'scene'].includes(item.type) && (
+          <label>
+            Replace exact PNG
+            <input type="file" accept="image/png" onChange={event => setFile(event.target.files?.[0] || null)} />
+          </label>
+        )}
+        <label className="admin-profile-switch">
+          <input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} />
+          Published in Profile Studio
+        </label>
+        <div className="admin-profile-editor-actions">
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Saving...' : 'Save'}</button>
+          <button type="button" className="btn btn-ghost" disabled={busy} onClick={remove}>{deleteArmed ? 'Tap again to delete' : 'Delete'}</button>
+        </div>
+        <Msg msg={msg} />
+      </div>
+    </details>
+  );
+}
+
+function ProfileItemsPanel() {
+  const [items, setItems] = useState([]);
+  const [assetGuide, setAssetGuide] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [type, setType] = useState('frame');
+  const [name, setName] = useState('');
+  const [titleText, setTitleText] = useState('');
+  const [nameStyle, setNameStyle] = useState({
+    nameColor: '#F4FFE9',
+    nameColorSecondary: '',
+    nameGlowColor: '#B8FF57',
+    nameGlowStrength: 1,
+    nameEffect: null,
+  });
+  const [price, setPrice] = useState(100);
+  const [active, setActive] = useState(true);
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await adminFetch('GET', '/profile-items');
+      setItems(data.items || []);
+      setAssetGuide(data.assetGuide || null);
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not load profile catalog' });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function create(event) {
+    event.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      const result = await adminFetch('POST', '/profile-items', {
+        type,
+        name,
+        titleText,
+        ...(type === 'name_style' ? nameStyle : {}),
+        price: Number(price),
+        isActive: active,
+      });
+      if (['frame', 'scene'].includes(type)) {
+        if (!file) throw new Error(`Choose the required ${type === 'frame' ? '1024x1024' : '1240x640'} PNG`);
+        const form = new FormData();
+        form.append('itemId', result.item.itemId);
+        form.append('file', file);
+        await adminFetch('POST', '/profile-items/upload', form);
+        await adminFetch('PATCH', `/profile-items/${result.item.itemId}`, { isActive: active });
+      }
+      setName('');
+      setTitleText('');
+      setFile(null);
+      setMsg({ type: 'success', text: result.message || 'Profile item created' });
+      await load();
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not create profile item' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const requiredSize = type === 'frame'
+    ? `${assetGuide?.frame?.width || 1024}×${assetGuide?.frame?.height || 1024}`
+    : `${assetGuide?.scene?.width || 1240}×${assetGuide?.scene?.height || 640}`;
+
+  return (
+    <section className="admin-section-panel admin-profile-panel">
+      <div className="admin-section-heading">
+        <div>
+          <span>PROFILE STUDIO</span>
+          <h2>Customization</h2>
+          <p>Frames: 1024×1024 transparent PNG. Scenes: 1240×640 PNG. Titles and safe name effects need no asset.</p>
+        </div>
+        <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>Refresh</button>
+      </div>
+
+      <form className="admin-profile-create" onSubmit={create}>
+        <div className="admin-profile-type-tabs">
+          {['frame', 'scene', 'title', 'name_style'].map(value => (
+            <button type="button" key={value} className={type === value ? 'active' : ''} onClick={() => { setType(value); setFile(null); }}>
+              {value === 'name_style' ? 'name fx' : value}
+            </button>
+          ))}
+        </div>
+        <label>Catalog name<input value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Moss Crown" maxLength={40} required /></label>
+        {type === 'title' ? (
+          <label>Visible title<input value={titleText} onChange={event => setTitleText(event.target.value)} placeholder="e.g. Dungeon Cartographer" maxLength={32} required /></label>
+        ) : type === 'name_style' ? (
+          <NameStyleFields value={nameStyle} onChange={setNameStyle} />
+        ) : (
+          <label>
+            {requiredSize} PNG {type === 'frame' ? 'with transparent center' : ''}
+            <input type="file" accept="image/png" onChange={event => setFile(event.target.files?.[0] || null)} required />
+          </label>
+        )}
+        <label>Price in coins<input type="number" min="0" max="1000000" value={price} onChange={event => setPrice(event.target.value)} /></label>
+        <label className="admin-profile-switch"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} />Publish immediately</label>
+        <button type="submit" className="btn btn-primary btn-full" disabled={busy}>{busy ? 'Creating...' : `Create ${type}`}</button>
+        <Msg msg={msg} />
+      </form>
+
+      <div className="admin-profile-list-head"><strong>Catalog</strong><span>{items.length} items</span></div>
+      {loading && <div className="admin-empty-state">Loading profile catalog...</div>}
+      {!loading && items.map(item => <ProfileItemEditor key={item.itemId} item={item} onRefresh={load} />)}
+    </section>
+  );
+}
+
+function MuteAvatar({ mute }) {
+  return <ProfileAvatar user={mute} size={44} className="admin-mute-avatar" />;
 }
 
 function ModerationPanel() {
@@ -786,7 +1062,7 @@ function ModerationPanel() {
           <MuteAvatar mute={mute} />
           <div className="admin-mute-main">
             <div className="admin-mute-name">
-              <strong>{mute.firstName || 'Peeper player'}</strong>
+              <ProfileName user={mute} as="strong" />
               {mute.username && <span>@{mute.username}</span>}
             </div>
             <div className={`admin-mute-duration${mute.mutedUntil === null ? ' permanent' : ''}`}>
@@ -794,7 +1070,7 @@ function ModerationPanel() {
             </div>
             <small>
               Telegram ID: {mute.telegramId} · muted {formatAdminDate(mute.createdAt)}
-              {mute.mutedBy?.firstName ? ` by ${mute.mutedBy.firstName}` : ''}
+              {mute.mutedBy?.firstName && <> by <ProfileName user={mute.mutedBy} /></>}
             </small>
           </div>
           <button
@@ -939,12 +1215,13 @@ export default function AdminScreen() {
       <header className="admin-header">
         <span>CONTROL CENTER</span>
         <h1>Admin Panel</h1>
-        <p>Catalog, home assets, moderation and live product metrics.</p>
+        <p>Catalog, profile goods, home assets, moderation and live product metrics.</p>
       </header>
 
       <nav className="admin-section-tabs" aria-label="Admin sections">
         {[
           ['items', 'Items', 'Catalog'],
+          ['profiles', 'Profiles', 'Studio'],
           ['home', 'Home', 'Decor'],
           ['moderation', 'Mutes', 'Global Chat'],
           ['stats', 'Stats', 'Activity'],
@@ -985,6 +1262,7 @@ export default function AdminScreen() {
 
       {adminSection === 'moderation' && <ModerationPanel />}
       {adminSection === 'stats' && <StatsPanel />}
+      {adminSection === 'profiles' && <ProfileItemsPanel />}
 
       {adminSection === 'items' && (
         <>

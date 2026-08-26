@@ -65,10 +65,12 @@ function DecorPreview({ filePath, name, size = 72 }) {
 function homeWithPreviewItem(home, item) {
   const currentSlots = home?.slots || {};
   const slots = { ...currentSlots };
-  if (item.slot === 'back_decor') {
-    const currentDecor = Array.isArray(currentSlots.back_decor) ? currentSlots.back_decor : [];
+  if (item.slot === 'back_decor' || item.slot === 'foreground_item') {
+    const targetSlot = item.slot === 'foreground_item' ? 'foreground_items' : item.slot;
+    const currentSource = currentSlots[targetSlot] ?? currentSlots[item.slot];
+    const currentDecor = Array.isArray(currentSource) ? currentSource : (currentSource ? [currentSource] : []);
     const maxOrder = currentDecor.reduce((highest, decor) => Math.max(highest, Number(decor.sort_order) || 0), 0);
-    slots.back_decor = [
+    slots[targetSlot] = [
       ...currentDecor.filter(decor => decor.item_id !== item.item_id),
       { ...item, sort_order: maxOrder + 1 },
     ];

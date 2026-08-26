@@ -4,6 +4,7 @@ const { validateTelegramInit } = require('../auth');
 const { syncOwnedPeeper } = require('../peeperState');
 const { getFridgeState } = require('../fridgeState');
 const { isNotificationEnabled } = require('../notificationSettings');
+const { incrementProfileAchievementStat } = require('../profileCustomization');
 const {
   getUserFamily,
   serveFamilyBigFeast,
@@ -537,6 +538,7 @@ router.post('/inventory/family-big-feast', validateTelegramInit, (req, res) => {
       beforeServe: () => {
         consumeInventoryValue(user.id, 'vegetable', FAMILY_BIG_FEAST_RECIPE.vegetableValue, now);
         consumeInventoryValue(user.id, 'animal', FAMILY_BIG_FEAST_RECIPE.animalValue, now);
+        incrementProfileAchievementStat(user.id, 'farm_big_feasts_served');
       },
     });
   } catch (error) {

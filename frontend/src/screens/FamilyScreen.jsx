@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import FamilyProfile from '../components/FamilyProfile';
 import BottomSheet from '../components/BottomSheet';
 import SupporterStar from '../components/SupporterStar';
+import { ProfileAvatar, ProfileName } from '../components/ProfileCustomization';
 import FamilyExpeditionTab from './FamilyExpeditionTab';
 import { useApp } from '../context/AppContext';
 import * as api from '../api';
-import { avatarUrl } from '../utils/avatarUrl';
 
 function formatBigFeastCooldown(seconds) {
   const safeSeconds = Math.max(0, Math.floor(seconds || 0));
@@ -20,20 +20,6 @@ function formatBigFeastCooldown(seconds) {
   return `${Math.max(1, minutes)}m`;
 }
 
-function Avatar({ telegramId, name, size = 36 }) {
-  const [err, setErr] = useState(false);
-  const src = avatarUrl(telegramId);
-  if (src && !err) return (
-    <img src={src} alt={name} onError={() => setErr(true)}
-      style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-  );
-  return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: 'var(--accent-light)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.45, flexShrink: 0 }}>
-      🐸
-    </div>
-  );
-}
 
 function LifeBar({ hp, alive }) {
   const pct = Math.max(0, Math.min(100, hp || 0));
@@ -432,11 +418,10 @@ function InviteSheet({ family, memberCount, onClose, onInvited }) {
               padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
               background: confirm?.id === u.id ? 'var(--accent-light)' : 'var(--bg-secondary)',
               marginBottom: 8, border: confirm?.id === u.id ? '1.5px solid var(--accent)' : '1.5px solid transparent' }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-card)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🐸</div>
+            <ProfileAvatar user={u} size={38} />
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 14 }}>
-                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.first_name}</span>
+                <ProfileName user={u} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
                 <SupporterStar user={u} size={12} />
               </div>
               {u.username && <div style={{ fontSize: 12, color: 'var(--text-hint)' }}>@{u.username}</div>}
@@ -453,7 +438,7 @@ function InviteSheet({ family, memberCount, onClose, onInvited }) {
           <div style={{ marginTop: 12, padding: 14, background: 'var(--accent-light)',
             borderRadius: 14, border: '1.5px solid var(--accent)' }}>
             <div style={{ fontSize: 14, marginBottom: 12, lineHeight: 1.4 }}>
-              Invite <strong>{confirm.first_name}</strong> to <strong>{family.name}</strong>?
+              Invite <ProfileName user={confirm} as="strong" /> to <strong>{family.name}</strong>?
               They'll get a Telegram notification with Accept/Decline buttons.
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -596,10 +581,10 @@ function FamilyManagementSheet({ family, members, currentUserId, userCoins, onCl
               onClick={() => setCandidate({ type: view, member })}
               style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 5, background: 'var(--bg-secondary)', color: 'var(--text-primary)', textAlign: 'left', cursor: 'pointer' }}
             >
-              <Avatar telegramId={member.telegram_id} name={memberLabel(member)} size={38} />
+              <ProfileAvatar user={member} size={42} />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <strong style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 14 }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{memberLabel(member)}</span>
+                  <ProfileName user={member} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{memberLabel(member)}</ProfileName>
                   <SupporterStar user={member} size={12} />
                 </strong>
                 {member.username && <small style={{ color: 'var(--text-secondary)' }}>@{member.username}</small>}
@@ -746,10 +731,10 @@ function MembersTab({
             padding: '10px 16px', borderBottom: '1px solid var(--border)',
             background: family.founder_id === m.id ? 'rgba(255,215,0,0.06)' : 'transparent',
             cursor: !isMe && onViewProfile ? 'pointer' : 'default' }}>
-            <Avatar telegramId={m.telegram_id} name={m.first_name} size={40} />
+            <ProfileAvatar user={m} size={44} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.first_name}</span>
+                <ProfileName user={m} style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
                 <SupporterStar user={m} size={12} />
                 {family.founder_id === m.id && (
                   <span style={{ fontSize: 10, fontWeight: 800, color: '#b8860b',
@@ -887,11 +872,11 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
           return (
             <div key={m.id} style={{ display: 'flex', flexDirection: isMe ? 'row-reverse' : 'row',
               gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
-              {!isMe && <Avatar telegramId={m.telegram_id} name={m.first_name} size={28} />}
+              {!isMe && <ProfileAvatar user={m} size={30} />}
               <div style={{ maxWidth: '72%' }}>
                 {!isMe && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-hint)', marginBottom: 2, paddingLeft: 4 }}>
-                    <span>{m.first_name}</span>
+                    <ProfileName user={m} />
                     <SupporterStar user={m} size={10} />
                   </div>
                 )}

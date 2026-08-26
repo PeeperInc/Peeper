@@ -5,6 +5,11 @@ const { validateTelegramInit } = require('../auth');
 const { getHomeSummary } = require('../homeState');
 const { liveStats } = require('../gameLogic');
 const { getSupporterSummary } = require('../supportState');
+const { attachProfileAppearances, getProfileAppearance, getProfileAppearances } = require('../profileCustomization');
+
+function withAppearance(user) {
+  return user ? { ...user, appearance: getProfileAppearance(user.id) } : user;
+}
 
 function getAliveLongevityRows() {
   const raw = db.prepare(`
@@ -82,7 +87,7 @@ router.get('/search', validateTelegramInit, (req, res) => {
     LIMIT 10
   `).all(`%${query}%`, `%${query}%`);
 
-  res.json({ users });
+  res.json({ users: attachProfileAppearances(users) });
 });
 
 /**
@@ -109,6 +114,11 @@ router.get('/:userId/profile', validateTelegramInit, (req, res) => {
     ORDER BY gr.gift_price DESC, gr.sent_at DESC
     LIMIT 10
   `).all(userId);
+  const giftSenderAppearances = getProfileAppearances(topGifts.map(gift => gift.sender_id));
+  const decoratedTopGifts = topGifts.map(gift => ({
+    ...gift,
+    sender_appearance: giftSenderAppearances.get(Number(gift.sender_id)) || null,
+  }));
 
   const totalGifts = db.prepare(
     'SELECT COUNT(*) AS count FROM gifts_received WHERE recipient_id = ?'
@@ -129,9 +139,10 @@ router.get('/:userId/profile', validateTelegramInit, (req, res) => {
     user: {
       ...user,
       supporter: getSupporterSummary(user),
+      appearance: getProfileAppearance(user.id),
     },
     peeper,
-    topGifts,
+    topGifts: decoratedTopGifts,
     totalGifts,
     ageDays,
     ranks: getUserRanks(userId, peeper),
@@ -146,12 +157,12 @@ router.get('/:userId/profile', validateTelegramInit, (req, res) => {
  */
 router.get('/leaderboard/longevity', validateTelegramInit, (req, res) => {
   const rows = getAliveLongevityRows().slice(0, 50);
-  res.json({ leaderboard: rows });
+  res.json({ leaderboard: attachProfileAppearances(rows) });
 });
 
 router.get('/leaderboard/gifts', validateTelegramInit, (req, res) => {
   const rows = getGiftValueRows(50);
-  res.json({ leaderboard: rows });
+  res.json({ leaderboard: attachProfileAppearances(rows) });
 });
 
 module.exports = router;

@@ -1,9 +1,10 @@
 const HOME_PRICE_COINS = 1000;
 const HOME_CANVAS_WIDTH = 600;
 const HOME_CANVAS_HEIGHT = 840;
-const HOME_SINGLE_SLOTS = ['wall_base', 'floor_base', 'floor_cover', 'foreground_item'];
+const HOME_SINGLE_SLOTS = ['wall_base', 'floor_base', 'floor_cover'];
 const HOME_MULTI_SLOT = 'back_decor';
-const HOME_ALLOWED_SLOTS = [...HOME_SINGLE_SLOTS, HOME_MULTI_SLOT];
+const HOME_FOREGROUND_MULTI_SLOT = 'foreground_item';
+const HOME_ALLOWED_SLOTS = [...HOME_SINGLE_SLOTS, HOME_MULTI_SLOT, HOME_FOREGROUND_MULTI_SLOT];
 const HOME_STARTER_WALL_ITEM_ID = 'home_wall_base_empty_starter';
 const HOME_FRIDGE_DECOR_ITEM_ID = 'home_back_decor_old_red_fridge';
 const HOME_BUILTIN_WALL_PATH = '/sprites/basewall.png';
@@ -22,6 +23,7 @@ module.exports = {
   HOME_CANVAS_HEIGHT,
   HOME_SINGLE_SLOTS,
   HOME_MULTI_SLOT,
+  HOME_FOREGROUND_MULTI_SLOT,
   HOME_ALLOWED_SLOTS,
   HOME_STARTER_WALL_ITEM_ID,
   HOME_FRIDGE_DECOR_ITEM_ID,

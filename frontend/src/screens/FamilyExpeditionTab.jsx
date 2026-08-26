@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ProfileName } from '../components/ProfileCustomization';
 import * as api from '../api';
 import assetCatalog from '../assets/expeditions/root-king/asset-catalog.json';
 import ArtifactDetailSheet from '../components/expedition/ArtifactDetailSheet';
@@ -2315,7 +2316,7 @@ function ExpeditionDashboard({
                     : 'healthy';
                 return (
                   <div key={memberRow.userId} className="expedition-member-row">
-                    <span>{memberRow.firstName || memberRow.username || 'Family member'}</span>
+                    <ProfileName user={memberRow}>{memberRow.firstName || memberRow.username || 'Family member'}</ProfileName>
                     <div className="expedition-member-status">
                       <strong>{memberRow.prepared ? titleize(memberRow.role) : 'Not ready'}</strong>
                       {memberRow.prepared && (

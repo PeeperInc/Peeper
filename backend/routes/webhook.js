@@ -833,6 +833,10 @@ async function renderHome(home, peeper) {
   const backDecor = Array.isArray(slots.back_decor)
     ? [...slots.back_decor].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
     : [];
+  const foregroundSource = slots.foreground_items ?? slots.foreground_item;
+  const foregroundItems = Array.isArray(foregroundSource)
+    ? [...foregroundSource].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    : (foregroundSource ? [foregroundSource] : []);
 
   await drawHomeLayer(ctx, loadImage, HOME_BUILTIN_WALL_PATH);
   await drawHomeLayer(ctx, loadImage, slots.wall_base?.file_path);
@@ -854,7 +858,9 @@ async function renderHome(home, peeper) {
     false
   );
 
-  await drawHomeLayer(ctx, loadImage, slots.foreground_item?.file_path);
+  for (const item of foregroundItems) {
+    await drawHomeLayer(ctx, loadImage, item.file_path);
+  }
 
   try {
     return canvas.toBuffer('image/png');

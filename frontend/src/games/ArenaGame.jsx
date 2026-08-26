@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PeeperSprite from '../components/PeeperSprite';
 import BottomSheet from '../components/BottomSheet';
 import SupporterStar from '../components/SupporterStar';
+import { ProfileName } from '../components/ProfileCustomization';
 import * as api from '../api';
 import { assetUrl } from '../utils/assetUrl';
 
@@ -313,7 +314,9 @@ function HpBar({ player, align = 'left' }) {
   return (
     <div style={{ flex: 1, textAlign: align }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: align === 'right' ? 'flex-end' : 'flex-start', gap: 4, fontWeight: 900, fontSize: 12, color: '#fff6e6', textShadow: OUTLINE_SHADOW }}>
-        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player?.firstName || 'Waiting...'}</span>
+        <ProfileName user={player} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {player?.firstName || 'Waiting...'}
+        </ProfileName>
         <SupporterStar user={player} size={11} />
       </div>
       <div style={{ marginTop: 4, height: 10, borderRadius: 3, background: 'rgba(0,0,0,0.58)', border: '1px solid rgba(0,0,0,0.9)', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.55)' }}>
@@ -726,7 +729,7 @@ function InviteSheet({ matchId, onClose, onToast }) {
             >
               <span style={{ minWidth: 0 }}>
                 <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 5, maxWidth: '100%' }}>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.first_name}</span>
+                  <ProfileName user={user} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
                   <SupporterStar user={user} size={12} />
                 </strong>
                 {user.username && <span style={{ color: 'var(--text-secondary)', marginLeft: 6 }}>@{user.username}</span>}
@@ -774,7 +777,9 @@ function ArenaLeaderboard({ data }) {
           >
             <span style={{ color: '#ffd66b' }}>#{row.rank}</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.firstName || row.username || 'Fighter'}</span>
+              <ProfileName user={row} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {row.firstName || row.username || 'Fighter'}
+              </ProfileName>
               <SupporterStar user={row} size={11} />
             </span>
             <span style={{ textAlign: 'right', color: 'rgba(255,246,230,0.82)' }}>{row.wins}W</span>

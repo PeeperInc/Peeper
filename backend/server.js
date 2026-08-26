@@ -14,7 +14,7 @@ app.use(cors({
     'http://127.0.0.1:5173',
     'http://localhost:3000',
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Telegram-Init-Data'],
 }));
 
@@ -35,6 +35,7 @@ app.use('/api/arena', require('./routes/arena'));
 app.use('/api/farm', require('./routes/farm'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/expeditions', require('./routes/expeditions'));
+app.use('/api/profile-customization', require('./routes/profileCustomization'));
 
 // Items catalog (no auth needed for the list itself)
 const { CLOTHING_ITEMS, GIFT_ITEMS } = require('./items');

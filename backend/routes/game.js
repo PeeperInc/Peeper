@@ -21,6 +21,7 @@ const {
   setCasinoJackpot,
 } = require('../appSettings');
 const { resolveCasinoSpinCredits, resolveCasinoSpinUsage, normalizeFreeSpins } = require('../casinoFreeSpins');
+const { incrementProfileAchievementStat } = require('../profileCustomization');
 const {
   ENERGY_DRINK_COST,
   ENERGY_DRINK_DAILY_LIMIT,
@@ -548,6 +549,7 @@ router.post('/casino/spin', validateTelegramInit, (req, res) => {
     db.prepare('UPDATE peepers SET last_played = ? WHERE user_id = ?').run(newLastPlayed, user.id);
     db.prepare('UPDATE users SET coins = coins - ? + ?, casino_free_spins = ? WHERE id = ?')
       .run(creditState.spinCostPaid, payout, creditState.freeSpinsAfter, user.id);
+    if (jackpotWon) incrementProfileAchievementStat(user.id, 'casino_jackpots_won');
     setCasinoJackpot(poolAfterPayout);
   })();
 

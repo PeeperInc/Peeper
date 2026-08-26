@@ -24,6 +24,10 @@ export default function HomeScene({
 }) {
   const slots = home?.slots || {};
   const backDecor = Array.isArray(slots.back_decor) ? [...slots.back_decor].sort((a, b) => a.sort_order - b.sort_order) : [];
+  const foregroundSource = slots.foreground_items ?? slots.foreground_item;
+  const foregroundItems = Array.isArray(foregroundSource)
+    ? [...foregroundSource].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    : (foregroundSource ? [foregroundSource] : []);
   const resolvedShellClassName = shellClassName || (fullscreen
     ? 'personal-home-canvas personal-home-canvas-fullscreen'
     : 'personal-home-canvas');
@@ -65,7 +69,9 @@ export default function HomeScene({
           </div>
         )}
 
-        <HomeLayerImage item={slots.foreground_item} />
+        {foregroundItems.map((item) => (
+          <HomeLayerImage key={`${item.item_id}-${item.sort_order}`} item={item} />
+        ))}
       </div>
     </div>
   );
