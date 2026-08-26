@@ -18,6 +18,10 @@ export default function VisitHomeScene({ home, viewerPeeper, ownerPeeper }) {
   const backDecor = Array.isArray(slots.back_decor)
     ? [...slots.back_decor].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
     : [];
+  const foregroundSource = slots.foreground_items ?? slots.foreground_item;
+  const foregroundItems = Array.isArray(foregroundSource)
+    ? [...foregroundSource].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    : (foregroundSource ? [foregroundSource] : []);
 
   return (
     <div
@@ -68,7 +72,9 @@ export default function VisitHomeScene({ home, viewerPeeper, ownerPeeper }) {
           </div>
         )}
 
-        <HomeLayerImage item={slots.foreground_item} />
+        {foregroundItems.map((item) => (
+          <HomeLayerImage key={`${item.item_id}-${item.sort_order}`} item={item} />
+        ))}
       </div>
     </div>
   );

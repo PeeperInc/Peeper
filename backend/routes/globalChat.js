@@ -4,6 +4,7 @@ const express = require('express');
 const db = require('../database');
 const { validateTelegramInit } = require('../auth');
 const { isAdminTelegramId } = require('../adminAccess');
+const { getProfileAppearances } = require('../profileCustomization');
 const {
   CHAT_MESSAGE_LIMIT,
   GlobalChatError,
@@ -27,7 +28,7 @@ function handleChatError(res, error) {
 }
 
 function messageRows() {
-  return db.prepare(`
+  const rows = db.prepare(`
     SELECT gm.id, gm.message, gm.message_type, gm.sent_at, gm.reply_to_id,
            u.id AS user_id, u.first_name, u.username, u.telegram_id,
            u.photo_url, u.supporter_since, u.supporter_stars,
@@ -46,6 +47,12 @@ function messageRows() {
     ORDER BY gm.id DESC
     LIMIT ?
   `).all(CHAT_MESSAGE_LIMIT).reverse();
+  const appearances = getProfileAppearances(rows.flatMap(row => [row.user_id, row.reply_user_id]));
+  return rows.map(row => ({
+    ...row,
+    appearance: appearances.get(Number(row.user_id)) || null,
+    replyAppearance: appearances.get(Number(row.reply_user_id)) || null,
+  }));
 }
 
 router.get('/messages', validateTelegramInit, (req, res) => {

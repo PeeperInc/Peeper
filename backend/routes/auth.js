@@ -11,6 +11,11 @@ const { getFridgeState } = require('../fridgeState');
 const { getFarmSummary } = require('../farmState');
 const { getSupporterSummary } = require('../supportState');
 const { getNextDirtyAt } = require('../dirtyCycle');
+const {
+  getProfileAppearance,
+  grantAdminTitleIfNeeded,
+  syncProfileAchievementUnlocks,
+} = require('../profileCustomization');
 
 function tgApiCall(token, method) {
   return new Promise((resolve) => {
@@ -88,6 +93,8 @@ router.post('/login', validateTelegramInit, async (req, res) => {
   );
 
   const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(telegramId);
+  grantAdminTitleIfNeeded(user);
+  syncProfileAchievementUnlocks(user.id);
 
   if (!db.prepare('SELECT id FROM peepers WHERE user_id = ?').get(user.id)) {
     db.prepare(`
@@ -119,6 +126,7 @@ router.post('/login', validateTelegramInit, async (req, res) => {
       photo_url:   freshUser.photo_url,
       coins:       freshUser.coins,
       supporter:   getSupporterSummary(freshUser),
+      appearance:  getProfileAppearance(freshUser.id),
     },
     peeper,
     ownedItems,

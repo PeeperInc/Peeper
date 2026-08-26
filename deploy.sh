@@ -26,9 +26,15 @@ sudo mkdir -p "${WEB_ROOT}"
 # Remove only frontend build assets — preserve uploaded runtime content
 # such as clothing sprites, gifts, personal-home decor, and avatars.
 sudo find "${WEB_ROOT}" -maxdepth 1 -mindepth 1 \
-    ! -name 'sprites' ! -name 'gifts' ! -name 'home' ! -name 'avatars' \
+    ! -name 'sprites' ! -name 'gifts' ! -name 'home' ! -name 'avatars' ! -name 'profile' \
     -exec rm -rf {} +
 sudo cp -r frontend/dist/* "${WEB_ROOT}/"
+
+# Keep admin-uploaded profile art and install bundled starter frames/scenes.
+if [ -d "html/profile" ]; then
+    sudo mkdir -p "${WEB_ROOT}/profile"
+    sudo cp -r html/profile/* "${WEB_ROOT}/profile/"
+fi
 
 # ── 3. Deploy backend ─────────────────────────────────────────────────────────
 echo "🖥  Deploying backend to ${BACKEND_DIR}..."

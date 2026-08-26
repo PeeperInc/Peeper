@@ -7,10 +7,10 @@ import HomePurchaseSheet from '../components/HomePurchaseSheet';
 import HomeScene from '../components/HomeScene';
 import BottomSheet from '../components/BottomSheet';
 import StatusBars from '../components/StatusBars';
+import { ProfileAvatar, ProfileName } from '../components/ProfileCustomization';
 import PersonalHomeScreen from './PersonalHomeScreen';
 import FarmScreen from './FarmScreen';
 import { HOME_PRICE_COINS } from '../homeConstants';
-import { avatarUrl } from '../utils/avatarUrl';
 import { shouldPauseHomeRuntime } from '../utils/gameplayRuntime.mjs';
 import * as api from '../api';
 
@@ -774,40 +774,6 @@ function GameLoadingOverlay({ gameId }) {
   );
 }
 
-function UserAvatar({ telegramId, name }) {
-  const [err, setErr] = useState(false);
-  const src = avatarUrl(telegramId);
-
-  if (src && !err) {
-    return (
-      <img
-        src={src}
-        alt={name}
-        onError={() => setErr(true)}
-        style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        width: 36,
-        height: 36,
-        borderRadius: '50%',
-        background: 'var(--accent-light)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 18,
-        flexShrink: 0,
-      }}
-    >
-      🐸
-    </div>
-  );
-}
-
 export default function HomeScreen({
   onProfileOpen,
   onViewProfile,
@@ -1269,10 +1235,10 @@ export default function HomeScreen({
             <div className="home-screen-top-stack" ref={topStackRef}>
               <div className="home-screen-top-row">
                 <button className="home-screen-profile-card" onClick={onProfileOpen}>
-                  <UserAvatar telegramId={user?.telegram_id} name={user?.first_name} />
+                  <ProfileAvatar user={user} size={36} />
                   <div className="home-screen-profile-copy">
                     <div className="home-screen-profile-name">
-                      {user?.first_name || 'Peeper Owner'}
+                      <ProfileName user={user} />
                       {user?.supporter?.donated && <TelegramStarIcon size={13} className="supporter-inline-star" />}
                     </div>
                     <div className="home-screen-profile-subtitle">

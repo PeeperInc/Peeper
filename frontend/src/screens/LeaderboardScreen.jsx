@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import FamilyProfile from '../components/FamilyProfile';
 import SupporterStar from '../components/SupporterStar';
+import { ProfileAvatar, ProfileName } from '../components/ProfileCustomization';
 import * as api from '../api';
-import { avatarUrl } from '../utils/avatarUrl';
 
 function formatAge(seconds) {
   const d = Math.floor(seconds / 86400);
@@ -15,20 +15,6 @@ function RankBadge({ rank }) {
   if (rank === 2) return <span className="lb-rank silver">🥈</span>;
   if (rank === 3) return <span className="lb-rank bronze">🥉</span>;
   return <span className="lb-rank">#{rank}</span>;
-}
-
-function UserAvatar({ telegramId, name }) {
-  const [err, setErr] = useState(false);
-  const src = avatarUrl(telegramId);
-  if (src && !err) {
-    return (
-      <img src={src} alt={name} onError={() => setErr(true)}
-        style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-    );
-  }
-  return (
-    <div className="avatar-circle" style={{ width: 38, height: 38, fontSize: 20, flexShrink: 0 }}>🐸</div>
-  );
 }
 
 function formatGiftCount(count) {
@@ -99,12 +85,10 @@ function LeaderboardList({ rows, type, onViewProfile }) {
           onClick={() => onViewProfile(row.id)}
         >
           <RankBadge rank={i + 1} />
-          <UserAvatar telegramId={row.telegram_id} name={row.first_name} />
+          <ProfileAvatar user={row} size={42} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, fontWeight: 600, fontSize: 14 }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {row.first_name}
-              </span>
+              <ProfileName user={row} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
               <SupporterStar user={row} size={12} />
             </div>
             {row.username && (

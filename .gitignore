@@ -4,7 +4,13 @@ node_modules/
 # Build outputs
 dist/
 frontend/dist/
-html/
+html/*
+!html/profile/
+html/profile/*
+!html/profile/frames/
+!html/profile/scenes/
+!html/profile/frames/*.png
+!html/profile/scenes/*.png
 
 # Environment and secrets
 .env
@@ -25,6 +31,7 @@ peeper.db
 peeper.db-*
 
 # Logs and temp files
+tmp/
 *.log
 *.tmp
 *.temp

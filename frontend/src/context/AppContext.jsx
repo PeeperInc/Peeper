@@ -526,6 +526,34 @@ export function AppProvider({ children }) {
     }
   }, [showToast]);
 
+  const toggleForegroundItem = useCallback(async (itemId, enabled) => {
+    try {
+      const result = await api.toggleForegroundItem(itemId, enabled);
+      if (result.assetVersion) {
+        dispatch({ type: 'SET_ASSET_VERSION', payload: result.assetVersion });
+      }
+      showToast(result.message || 'Home updated!');
+      return result;
+    } catch (err) {
+      showToast(err.message || 'Could not update foreground decor');
+      throw err;
+    }
+  }, [showToast]);
+
+  const reorderForegroundItems = useCallback(async (itemIds) => {
+    try {
+      const result = await api.reorderForegroundItems(itemIds);
+      if (result.assetVersion) {
+        dispatch({ type: 'SET_ASSET_VERSION', payload: result.assetVersion });
+      }
+      showToast(result.message || 'Foreground order updated!');
+      return result;
+    } catch (err) {
+      showToast(err.message || 'Could not reorder foreground decor');
+      throw err;
+    }
+  }, [showToast]);
+
   const sendGift = useCallback(async (recipientId, giftId, message, isPrivate) => {
     try {
       const result = await api.sendGift(recipientId, giftId, message, isPrivate);
@@ -563,6 +591,8 @@ export function AppProvider({ children }) {
       updateHomeLayout,
       toggleBackDecor,
       reorderBackDecor,
+      toggleForegroundItem,
+      reorderForegroundItems,
       sendGift,
     }}>
       {children}

@@ -121,6 +121,13 @@ function getSortedBackDecor(home) {
     : [];
 }
 
+function getSortedForegroundItems(home) {
+  const items = home?.slots?.foreground_items ?? home?.slots?.foreground_item;
+  return Array.isArray(items)
+    ? [...items].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    : (items ? [items] : []);
+}
+
 async function drawHomeInterior(ctx, loadImage, home) {
   const slots = home?.slots || {};
   const backDecor = getSortedBackDecor(home);
@@ -181,7 +188,9 @@ async function renderHomeScene(home, peeper) {
     false
   );
 
-  await drawHomeLayer(ctx, loadImage, slots.foreground_item?.file_path);
+  for (const item of getSortedForegroundItems(home)) {
+    await drawHomeLayer(ctx, loadImage, item.file_path);
+  }
 
   try {
     return canvas.toBuffer('image/png');
@@ -222,7 +231,9 @@ async function renderVisitHomeScene(home, viewerPeeper, ownerPeeper) {
     true
   );
 
-  await drawHomeLayer(ctx, loadImage, slots.foreground_item?.file_path);
+  for (const item of getSortedForegroundItems(home)) {
+    await drawHomeLayer(ctx, loadImage, item.file_path);
+  }
 
   try {
     return canvas.toBuffer('image/png');

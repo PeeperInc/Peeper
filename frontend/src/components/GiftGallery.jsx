@@ -3,6 +3,7 @@ import { GIFT_ITEMS } from '../itemsData';
 import * as api from '../api';
 import BottomSheet from './BottomSheet';
 import SupporterStar from './SupporterStar';
+import { ProfileName } from './ProfileCustomization';
 import { GIFT_SORT_MODES, getGiftSortLabel, sortGifts } from '../utils/giftSort.mjs';
 
 const PAGE_SIZE = 20;
@@ -59,8 +60,11 @@ function GiftModal({ gift, isOwner, onClose, onViewProfile }) {
   const senderUsername = gift.sender_username || null;
   const senderId       = gift.sender_id       || null;
   const sender = {
+    first_name: senderName,
+    username: senderUsername,
     supporter_since: gift.sender_supporter_since,
     supporter_stars: gift.sender_supporter_stars,
+    appearance: gift.sender_appearance,
   };
 
   const canViewSender = senderId && onViewProfile;
@@ -115,7 +119,7 @@ function GiftModal({ gift, isOwner, onClose, onViewProfile }) {
           >
             <div style={{ fontSize: 12, color: 'var(--text-hint)', marginBottom: 4 }}>From</div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontSize: 16, fontWeight: 700, color: canViewSender ? 'var(--accent)' : 'var(--text-primary)' }}>
-              <span>{senderName}</span>
+              <ProfileName user={sender} />
               <SupporterStar user={sender} size={13} />
             </div>
             {senderUsername && (

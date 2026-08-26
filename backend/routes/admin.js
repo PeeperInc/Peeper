@@ -13,6 +13,16 @@ const {
   HOME_CANVAS_WIDTH,
   HOME_STARTER_WALL_ITEM_ID,
 } = require('../homeConstants');
+const {
+  ADMIN_TITLE_ITEM_ID,
+  PROFILE_FRAME_SIZE,
+  PROFILE_SCENE_HEIGHT,
+  PROFILE_SCENE_WIDTH,
+  getProfileAppearances,
+  makeItemId: makeProfileItemId,
+  normalizeType: normalizeProfileItemType,
+  serializeItem: serializeProfileItem,
+} = require('../profileCustomization');
 
 // Admin access by Telegram ID — stable, works regardless of username privacy settings
 const PROD_HTML_DIR = '/var/www/peeper.frenzyradio.online/html';
@@ -39,6 +49,44 @@ function getHomeDir() {
   return fs.existsSync(PROD_HTML_DIR)
     ? path.join(PROD_HTML_DIR, 'home')
     : path.join(getLocalAssetRoot(), 'home');
+}
+
+function getProfileAssetDir(type) {
+  const folder = type === 'frame' ? 'frames' : 'scenes';
+  const root = fs.existsSync(PROD_HTML_DIR) ? PROD_HTML_DIR : getLocalAssetRoot();
+  return path.join(root, 'profile', folder);
+}
+
+function readPngBufferDimensions(buffer) {
+  const pngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+  if (!Buffer.isBuffer(buffer) || buffer.length < 24 || !pngSignature.every((byte, index) => buffer[index] === byte)) {
+    throw new Error('Invalid PNG file');
+  }
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+function validateNameStyleInput(source, current = null) {
+  const normalizeColor = (value) => {
+    const color = String(value || '').trim().toUpperCase();
+    return /^#[0-9A-F]{6}$/.test(color) ? color : null;
+  };
+  const primaryInput = source?.nameColor ?? current?.name_color ?? '#F4FFE9';
+  const secondaryInput = source?.nameColorSecondary ?? current?.name_color_secondary ?? '';
+  const glowInput = source?.nameGlowColor ?? current?.name_glow_color ?? primaryInput;
+  const primary = normalizeColor(primaryInput);
+  const secondary = String(secondaryInput || '').trim() ? normalizeColor(secondaryInput) : null;
+  const glow = normalizeColor(glowInput);
+  const glowStrength = Math.max(0, Math.min(3, Number.parseInt(
+    source?.nameGlowStrength ?? current?.name_glow_strength ?? 0,
+    10,
+  ) || 0));
+
+  if (!primary) return { error: 'Primary name color must be a valid #RRGGBB color' };
+  if (String(secondaryInput || '').trim() && !secondary) {
+    return { error: 'Secondary name color must be empty or a valid #RRGGBB color' };
+  }
+  if (!glow) return { error: 'Glow color must be a valid #RRGGBB color' };
+  return { values: { primary, secondary, glow, glowStrength } };
 }
 
 function readPngDimensions(filePath) {
@@ -104,7 +152,7 @@ router.get('/chat-mutes', validateTelegramInit, requireAdmin, (_req, res) => {
   const nowTs = Math.floor(Date.now() / 1000);
   db.prepare('DELETE FROM global_chat_mutes WHERE muted_until IS NOT NULL AND muted_until <= ?').run(nowTs);
 
-  const mutes = db.prepare(`
+  const muteRows = db.prepare(`
     SELECT mute.user_id, mute.muted_until, mute.created_at,
            target.telegram_id, target.first_name, target.username, target.photo_url,
            actor.id AS actor_user_id, actor.first_name AS actor_first_name,
@@ -113,18 +161,22 @@ router.get('/chat-mutes', validateTelegramInit, requireAdmin, (_req, res) => {
     JOIN users target ON target.id = mute.user_id
     LEFT JOIN users actor ON actor.id = mute.muted_by
     ORDER BY mute.muted_until IS NULL DESC, mute.created_at DESC
-  `).all().map(row => ({
+  `).all();
+  const appearances = getProfileAppearances(muteRows.flatMap(row => [row.user_id, row.actor_user_id]));
+  const mutes = muteRows.map(row => ({
     userId: row.user_id,
     telegramId: row.telegram_id,
     firstName: row.first_name,
     username: row.username,
     photoUrl: row.photo_url,
+    appearance: appearances.get(Number(row.user_id)) || null,
     mutedUntil: row.muted_until,
     createdAt: row.created_at,
     mutedBy: row.actor_user_id ? {
       userId: row.actor_user_id,
       firstName: row.actor_first_name,
       username: row.actor_username,
+      appearance: appearances.get(Number(row.actor_user_id)) || null,
     } : null,
   }));
 
@@ -244,6 +296,16 @@ const uploadHome = multer({
     if (!byMime && !byExt && !generic) {
       return cb(new Error(`Only PNG or GIF files allowed (got: ${file.mimetype})`));
     }
+    cb(null, true);
+  },
+});
+
+const uploadProfileAsset = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const isPng = file.mimetype === 'image/png' || String(file.originalname || '').toLowerCase().endsWith('.png');
+    if (!isPng) return cb(new Error('Only PNG files allowed'));
     cb(null, true);
   },
 });
@@ -583,6 +645,7 @@ router.delete('/home-items/:itemId', validateTelegramInit, requireAdmin, (req, r
     db.prepare('DELETE FROM home_shop_items WHERE item_id = ?').run(itemId);
     db.prepare('DELETE FROM owned_home_items WHERE item_id = ?').run(itemId);
     db.prepare('DELETE FROM home_back_decor_enabled WHERE item_id = ?').run(itemId);
+    db.prepare('DELETE FROM home_foreground_items_enabled WHERE item_id = ?').run(itemId);
     db.prepare('DELETE FROM home_custom_sprites WHERE item_id = ?').run(itemId);
     db.prepare(`
       UPDATE personal_homes
@@ -653,6 +716,175 @@ router.post('/home-items/upload', validateTelegramInit, requireAdmin, (req, res)
       res.json({ message: `Uploaded: ${itemId}${savedExt}`, url: filePath, itemId });
     });
   });
+
+// ── PROFILE CUSTOMIZATION ───────────────────────────────────────────────────
+
+router.get('/profile-items', validateTelegramInit, requireAdmin, (_req, res) => {
+  const items = db.prepare(`
+    SELECT item.*,
+           (SELECT COUNT(*) FROM owned_profile_customizations owned WHERE owned.item_id = item.item_id) AS owner_count
+    FROM profile_customization_items item
+    ORDER BY item.type, item.is_system DESC, item.created_at DESC
+  `).all().map(row => ({ ...serializeProfileItem(row), ownerCount: Number(row.owner_count || 0) }));
+  res.json({
+    items,
+    assetGuide: {
+      frame: { width: PROFILE_FRAME_SIZE, height: PROFILE_FRAME_SIZE, format: 'PNG' },
+      scene: { width: PROFILE_SCENE_WIDTH, height: PROFILE_SCENE_HEIGHT, format: 'PNG' },
+    },
+  });
+});
+
+router.post('/profile-items', validateTelegramInit, requireAdmin, (req, res) => {
+  const type = normalizeProfileItemType(req.body?.type);
+  const name = String(req.body?.name || '').trim();
+  const titleText = String(req.body?.titleText || '').trim();
+  const price = Math.max(0, Math.min(1_000_000, Number.parseInt(req.body?.price, 10) || 0));
+  const requestedActive = req.body?.isActive == null ? 1 : (req.body.isActive ? 1 : 0);
+  const isActive = ['title', 'name_style'].includes(type) ? requestedActive : 0;
+
+  if (!type) return res.status(400).json({ error: 'Type must be frame, scene, title or name style' });
+  if (name.length < 2 || name.length > 40) return res.status(400).json({ error: 'Name must be 2-40 characters' });
+  if (type === 'title' && (titleText.length < 2 || titleText.length > 32)) {
+    return res.status(400).json({ error: 'Title text must be 2-32 characters' });
+  }
+  const styleResult = type === 'name_style' ? validateNameStyleInput(req.body) : { values: {} };
+  if (styleResult.error) return res.status(400).json({ error: styleResult.error });
+
+  const itemId = makeProfileItemId(type, name);
+  if (!itemId) return res.status(400).json({ error: 'Name must contain Latin letters or numbers for the item ID' });
+  if (db.prepare('SELECT 1 FROM profile_customization_items WHERE item_id = ?').get(itemId)) {
+    return res.status(409).json({ error: `Profile item "${itemId}" already exists` });
+  }
+
+  db.prepare(`
+    INSERT INTO profile_customization_items (
+      item_id, name, type, price, title_text, file_path,
+      name_color, name_color_secondary, name_glow_color, name_glow_strength,
+      is_active, is_system
+    ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 0)
+  `).run(
+    itemId,
+    name,
+    type,
+    price,
+    type === 'title' ? titleText : null,
+    styleResult.values.primary || null,
+    styleResult.values.secondary || null,
+    styleResult.values.glow || null,
+    styleResult.values.glowStrength || 0,
+    isActive,
+  );
+
+  const row = db.prepare('SELECT * FROM profile_customization_items WHERE item_id = ?').get(itemId);
+  res.json({ item: serializeProfileItem(row), message: `${name} added to Profile Studio` });
+});
+
+router.patch('/profile-items/:itemId', validateTelegramInit, requireAdmin, (req, res) => {
+  const itemId = String(req.params.itemId || '').replace(/[^a-z0-9_]/gi, '');
+  const current = db.prepare('SELECT * FROM profile_customization_items WHERE item_id = ?').get(itemId);
+  if (!current) return res.status(404).json({ error: 'Profile item not found' });
+  if (current.is_system) return res.status(400).json({ error: 'System profile items cannot be edited' });
+
+  const name = req.body?.name == null ? current.name : String(req.body.name).trim();
+  const titleText = req.body?.titleText == null ? current.title_text : String(req.body.titleText).trim();
+  const price = req.body?.price == null
+    ? current.price
+    : Math.max(0, Math.min(1_000_000, Number.parseInt(req.body.price, 10) || 0));
+  const isActive = req.body?.isActive == null ? current.is_active : (req.body.isActive ? 1 : 0);
+
+  if (name.length < 2 || name.length > 40) return res.status(400).json({ error: 'Name must be 2-40 characters' });
+  if (current.type === 'title' && (String(titleText || '').length < 2 || String(titleText || '').length > 32)) {
+    return res.status(400).json({ error: 'Title text must be 2-32 characters' });
+  }
+  const styleResult = current.type === 'name_style'
+    ? validateNameStyleInput(req.body, current)
+    : { values: {} };
+  if (styleResult.error) return res.status(400).json({ error: styleResult.error });
+
+  db.prepare(`
+    UPDATE profile_customization_items
+    SET name = ?, price = ?, title_text = ?,
+        name_color = ?, name_color_secondary = ?, name_glow_color = ?, name_glow_strength = ?,
+        is_active = ?
+    WHERE item_id = ?
+  `).run(
+    name,
+    price,
+    current.type === 'title' ? titleText : null,
+    styleResult.values.primary || null,
+    styleResult.values.secondary || null,
+    styleResult.values.glow || null,
+    styleResult.values.glowStrength || 0,
+    isActive,
+    itemId,
+  );
+
+  const updated = db.prepare('SELECT * FROM profile_customization_items WHERE item_id = ?').get(itemId);
+  res.json({ item: serializeProfileItem(updated), message: `${name} updated` });
+});
+
+router.post('/profile-items/upload', validateTelegramInit, requireAdmin, (req, res) => {
+  uploadProfileAsset.single('file')(req, res, (error) => {
+    if (error) return res.status(400).json({ error: error.message });
+    if (!req.file) return res.status(400).json({ error: 'Choose a PNG file' });
+
+    const itemId = String(req.body?.itemId || '').replace(/[^a-z0-9_]/gi, '');
+    const item = db.prepare('SELECT * FROM profile_customization_items WHERE item_id = ?').get(itemId);
+    if (!item) return res.status(404).json({ error: 'Profile item not found' });
+    if (!['frame', 'scene'].includes(item.type)) {
+      return res.status(400).json({ error: 'Titles and name styles do not use image files' });
+    }
+
+    let dimensions;
+    try {
+      dimensions = readPngBufferDimensions(req.file.buffer);
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError.message });
+    }
+
+    const expected = item.type === 'frame'
+      ? { width: PROFILE_FRAME_SIZE, height: PROFILE_FRAME_SIZE }
+      : { width: PROFILE_SCENE_WIDTH, height: PROFILE_SCENE_HEIGHT };
+    if (dimensions.width !== expected.width || dimensions.height !== expected.height) {
+      return res.status(400).json({
+        error: `${item.type === 'frame' ? 'Profile frame' : 'Profile scene'} must be exactly ${expected.width}x${expected.height}px`,
+      });
+    }
+
+    const directory = getProfileAssetDir(item.type);
+    fs.mkdirSync(directory, { recursive: true });
+    const destination = path.join(directory, `${itemId}.png`);
+    fs.writeFileSync(destination, req.file.buffer);
+    const folder = item.type === 'frame' ? 'frames' : 'scenes';
+    const filePath = `/profile/${folder}/${itemId}.png`;
+    db.prepare('UPDATE profile_customization_items SET file_path = ? WHERE item_id = ?').run(filePath, itemId);
+
+    res.json({
+      itemId,
+      url: filePath,
+      width: dimensions.width,
+      height: dimensions.height,
+      message: `${item.name} PNG uploaded`,
+    });
+  });
+});
+
+router.delete('/profile-items/:itemId', validateTelegramInit, requireAdmin, (req, res) => {
+  const itemId = String(req.params.itemId || '').replace(/[^a-z0-9_]/gi, '');
+  const item = db.prepare('SELECT * FROM profile_customization_items WHERE item_id = ?').get(itemId);
+  if (!item) return res.status(404).json({ error: 'Profile item not found' });
+  if (item.is_system || item.item_id === ADMIN_TITLE_ITEM_ID) {
+    return res.status(400).json({ error: 'System profile items cannot be deleted' });
+  }
+
+  db.prepare('DELETE FROM profile_customization_items WHERE item_id = ?').run(itemId);
+  if (item.file_path) {
+    const directory = getProfileAssetDir(item.type);
+    try { fs.unlinkSync(path.join(directory, `${itemId}.png`)); } catch {}
+  }
+  res.json({ message: `${item.name} deleted` });
+});
 
 router.get('/stats', validateTelegramInit, requireAdmin, (req, res) => {
   const now24h = Math.floor(Date.now() / 1000) - 86400;

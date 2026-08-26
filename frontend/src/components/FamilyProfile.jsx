@@ -1,23 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import * as api from '../api';
-import { avatarUrl } from '../utils/avatarUrl';
 import BottomSheet from './BottomSheet';
 import SupporterStar from './SupporterStar';
-
-function Avatar({ telegramId, name, size = 42 }) {
-  const [err, setErr] = useState(false);
-  const src = avatarUrl(telegramId);
-  if (src && !err) return (
-    <img src={src} alt={name} onError={() => setErr(true)}
-      style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-  );
-  return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: 'var(--accent-light)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.45, flexShrink: 0 }}>
-      🐸
-    </div>
-  );
-}
+import { ProfileAvatar, ProfileName } from './ProfileCustomization';
 
 function LifeBar({ hp, alive }) {
   const pct = Math.max(0, Math.min(100, hp || 0));
@@ -162,11 +147,11 @@ export default function FamilyProfile({ familyId, inviteCode = null, onBack, onV
             {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx+1}`}
           </div>
 
-          <Avatar telegramId={m.telegram_id} name={m.first_name} size={42} />
+          <ProfileAvatar user={m} size={46} />
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.first_name}</span>
+              <ProfileName user={m} style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
               <SupporterStar user={m} size={12} />
               {family.founder_id === m.id && (
                 <span style={{ fontSize: 10, fontWeight: 800, color: '#b8860b',

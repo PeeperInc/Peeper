@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../database');
 const { validateTelegramInit } = require('../auth');
 const {
+  HOME_FOREGROUND_MULTI_SLOT,
   HOME_MULTI_SLOT,
   HOME_PRICE_COINS,
   HOME_SINGLE_SLOTS,
@@ -10,6 +11,7 @@ const {
 const {
   assertHomeOwned,
   getBackDecor,
+  getForegroundItems,
   getFullHomeState,
   getHomeCatalog,
   getHomeItemRow,
@@ -220,6 +222,8 @@ router.post('/layout', validateTelegramInit, (req, res) => {
 
   const updates = {};
   const ownedSet = getOwnedHomeItemSet(user.id);
+  const legacyForegroundProvided = Object.prototype.hasOwnProperty.call(req.body || {}, HOME_FOREGROUND_MULTI_SLOT);
+  let legacyForegroundItemId = null;
 
   for (const slot of HOME_SINGLE_SLOTS) {
     if (!Object.prototype.hasOwnProperty.call(req.body || {}, slot)) continue;
@@ -240,31 +244,55 @@ router.post('/layout', validateTelegramInit, (req, res) => {
     updates[slot] = itemId;
   }
 
-  if (Object.keys(updates).length === 0) {
+  if (legacyForegroundProvided) {
+    const itemId = req.body[HOME_FOREGROUND_MULTI_SLOT];
+    if (itemId != null && itemId !== '') {
+      const item = getHomeItemRow(itemId);
+      if (!item || item.slot !== HOME_FOREGROUND_MULTI_SLOT) {
+        return res.status(400).json({ error: `Invalid foreground item: ${itemId}` });
+      }
+      if (!ownedSet.has(itemId)) {
+        return res.status(400).json({ error: `You do not own ${item.name}` });
+      }
+      legacyForegroundItemId = itemId;
+    }
+  }
+
+  if (Object.keys(updates).length === 0 && !legacyForegroundProvided) {
     return res.status(400).json({ error: 'No layout changes provided' });
   }
 
   const current = db.prepare(`
-    SELECT wall_base_item_id, floor_base_item_id, floor_cover_item_id, foreground_item_id
+    SELECT wall_base_item_id, floor_base_item_id, floor_cover_item_id
     FROM personal_homes
     WHERE user_id = ?
   `).get(user.id);
 
-  db.prepare(`
-    UPDATE personal_homes SET
-      wall_base_item_id = ?,
-      floor_base_item_id = ?,
-      floor_cover_item_id = ?,
-      foreground_item_id = ?,
-      updated_at = strftime('%s','now')
-    WHERE user_id = ?
-  `).run(
-    Object.prototype.hasOwnProperty.call(updates, 'wall_base') ? updates.wall_base : current.wall_base_item_id,
-    Object.prototype.hasOwnProperty.call(updates, 'floor_base') ? updates.floor_base : current.floor_base_item_id,
-    Object.prototype.hasOwnProperty.call(updates, 'floor_cover') ? updates.floor_cover : current.floor_cover_item_id,
-    Object.prototype.hasOwnProperty.call(updates, 'foreground_item') ? updates.foreground_item : current.foreground_item_id,
-    user.id
-  );
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE personal_homes SET
+        wall_base_item_id = ?,
+        floor_base_item_id = ?,
+        floor_cover_item_id = ?,
+        updated_at = strftime('%s','now')
+      WHERE user_id = ?
+    `).run(
+      Object.prototype.hasOwnProperty.call(updates, 'wall_base') ? updates.wall_base : current.wall_base_item_id,
+      Object.prototype.hasOwnProperty.call(updates, 'floor_base') ? updates.floor_base : current.floor_base_item_id,
+      Object.prototype.hasOwnProperty.call(updates, 'floor_cover') ? updates.floor_cover : current.floor_cover_item_id,
+      user.id
+    );
+
+    if (legacyForegroundProvided) {
+      db.prepare('DELETE FROM home_foreground_items_enabled WHERE user_id = ?').run(user.id);
+      if (legacyForegroundItemId) {
+        db.prepare(`
+          INSERT INTO home_foreground_items_enabled (user_id, item_id, sort_order, enabled_at)
+          VALUES (?, ?, 1, strftime('%s','now'))
+        `).run(user.id, legacyForegroundItemId);
+      }
+    }
+  })();
 
   res.json({
     message: 'Home layout updated!',
@@ -365,6 +393,102 @@ router.post('/back-decor/reorder', validateTelegramInit, (req, res) => {
   res.json({
     message: 'Decor order updated!',
     backDecor: getBackDecor(user.id),
+    ...getFullHomeState(user.id),
+    ...getPublicAppSettings(),
+  });
+});
+
+router.post('/foreground-items/toggle', validateTelegramInit, (req, res) => {
+  const user = getUser(req);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  try {
+    assertHomeOwned(user.id);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+
+  const { itemId, enabled } = req.body || {};
+  if (!itemId || typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'itemId and enabled are required' });
+  }
+
+  const item = getHomeItemRow(itemId);
+  if (!item || item.slot !== HOME_FOREGROUND_MULTI_SLOT) {
+    return res.status(400).json({ error: 'Invalid foreground item' });
+  }
+
+  const ownedSet = getOwnedHomeItemSet(user.id);
+  if (!ownedSet.has(itemId)) {
+    return res.status(400).json({ error: `You do not own ${item.name}` });
+  }
+
+  if (enabled) {
+    const nextOrder = db.prepare(`
+      SELECT COALESCE(MAX(sort_order) + 1, 1) AS next_order
+      FROM home_foreground_items_enabled
+      WHERE user_id = ?
+    `).get(user.id).next_order;
+
+    db.prepare(`
+      INSERT OR IGNORE INTO home_foreground_items_enabled (user_id, item_id, sort_order, enabled_at)
+      VALUES (?, ?, ?, strftime('%s','now'))
+    `).run(user.id, itemId, nextOrder);
+  } else {
+    db.prepare(`
+      DELETE FROM home_foreground_items_enabled
+      WHERE user_id = ? AND item_id = ?
+    `).run(user.id, itemId);
+  }
+
+  res.json({
+    message: enabled ? `${item.name} placed in front!` : `${item.name} removed from your home.`,
+    foregroundItems: getForegroundItems(user.id),
+    ...getFullHomeState(user.id),
+    ...getPublicAppSettings(),
+  });
+});
+
+router.post('/foreground-items/reorder', validateTelegramInit, (req, res) => {
+  const user = getUser(req);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  try {
+    assertHomeOwned(user.id);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+
+  const { itemIds } = req.body || {};
+  if (!Array.isArray(itemIds) || itemIds.length === 0) {
+    return res.status(400).json({ error: 'itemIds must be a non-empty array' });
+  }
+
+  const enabledItems = getForegroundItems(user.id);
+  const enabledIds = enabledItems.map((item) => item.item_id);
+  const enabledSet = new Set(enabledIds);
+  const payloadSet = new Set(itemIds);
+
+  if (itemIds.length !== enabledIds.length) {
+    return res.status(400).json({ error: 'Foreground order payload does not match enabled item set' });
+  }
+  if (payloadSet.size !== itemIds.length || itemIds.some((itemId) => !enabledSet.has(itemId))) {
+    return res.status(400).json({ error: 'Foreground order payload contains invalid items' });
+  }
+
+  db.transaction(() => {
+    itemIds.forEach((itemId, index) => {
+      db.prepare(`
+        UPDATE home_foreground_items_enabled
+        SET sort_order = ?
+        WHERE user_id = ? AND item_id = ?
+      `).run(index + 1, user.id, itemId);
+    });
+  })();
+
+  res.json({
+    message: 'Foreground order updated!',
+    foregroundItems: getForegroundItems(user.id),
     ...getFullHomeState(user.id),
     ...getPublicAppSettings(),
   });

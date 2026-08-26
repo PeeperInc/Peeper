@@ -19,6 +19,7 @@ const { isNotificationEnabled } = require('../notificationSettings');
 const { serializeFamilyMemberStats } = require('../familyMemberStats');
 const { regenerateAp } = require('../expeditions/engine');
 const { MAX_AP } = require('../expeditions/catalog');
+const { attachProfileAppearances } = require('../profileCustomization');
 
 const BIG_FEAST_COST = 100;
 const BIG_FEAST_COOLDOWN = 7 * 24 * 3600;
@@ -356,7 +357,7 @@ router.get('/me', validateTelegramInit, (req, res) => {
 
   // Compute live stats for each member
   const now = ts();
-  const membersWithStats = members.map(m => serializeFamilyMemberStats(m, now));
+  const membersWithStats = attachProfileAppearances(members.map(m => serializeFamilyMemberStats(m, now)));
 
   // Check if current user already fed someone today (UTC day)
   const todayStart = Math.floor(new Date().setUTCHours(0,0,0,0) / 1000);
@@ -532,7 +533,7 @@ router.get('/messages', validateTelegramInit, (req, res) => {
     LIMIT 50
   `).all(family.id).reverse(); // oldest first
 
-  res.json({ messages });
+  res.json({ messages: attachProfileAppearances(messages, 'user_id') });
 });
 
 router.post('/messages/read', validateTelegramInit, (req, res) => {
@@ -691,7 +692,7 @@ router.get('/:familyId/profile', validateTelegramInit, (req, res) => {
   `).all(familyId);
 
   const now = ts();
-  const membersWithStats = members.map(m => serializeFamilyMemberStats(m, now));
+  const membersWithStats = attachProfileAppearances(members.map(m => serializeFamilyMemberStats(m, now)));
 
   // Stats
   const giftStats = db.prepare(`

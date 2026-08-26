@@ -168,11 +168,63 @@ db.exec(`
     PRIMARY KEY (user_id, item_id)
   );
 
+  CREATE TABLE IF NOT EXISTS home_foreground_items_enabled (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_id    TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    enabled_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (user_id, item_id)
+  );
+
   CREATE TABLE IF NOT EXISTS home_custom_sprites (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id     TEXT UNIQUE NOT NULL,
     file_path   TEXT NOT NULL,
     uploaded_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS profile_customization_items (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id    TEXT UNIQUE NOT NULL,
+    name       TEXT NOT NULL,
+    type       TEXT NOT NULL CHECK(type IN ('frame', 'scene', 'title', 'name_style')),
+    price      INTEGER NOT NULL DEFAULT 0,
+    title_text TEXT DEFAULT NULL,
+    file_path  TEXT DEFAULT NULL,
+    name_color TEXT DEFAULT NULL,
+    name_color_secondary TEXT DEFAULT NULL,
+    name_glow_color TEXT DEFAULT NULL,
+    name_glow_strength INTEGER NOT NULL DEFAULT 0,
+    name_effect TEXT DEFAULT NULL,
+    unlock_type TEXT DEFAULT NULL,
+    unlock_value INTEGER NOT NULL DEFAULT 0,
+    unlock_text TEXT DEFAULT NULL,
+    is_active  INTEGER NOT NULL DEFAULT 1,
+    is_system  INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS owned_profile_customizations (
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_id     TEXT NOT NULL REFERENCES profile_customization_items(item_id) ON DELETE CASCADE,
+    acquired_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (user_id, item_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS user_profile_customization (
+    user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    frame_item_id TEXT DEFAULT NULL REFERENCES profile_customization_items(item_id) ON DELETE SET NULL,
+    scene_item_id TEXT DEFAULT NULL REFERENCES profile_customization_items(item_id) ON DELETE SET NULL,
+    title_item_id TEXT DEFAULT NULL REFERENCES profile_customization_items(item_id) ON DELETE SET NULL,
+    name_style_item_id TEXT DEFAULT NULL REFERENCES profile_customization_items(item_id) ON DELETE SET NULL,
+    updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS profile_achievement_stats (
+    user_id                   INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    farm_big_feasts_served    INTEGER NOT NULL DEFAULT 0,
+    casino_jackpots_won       INTEGER NOT NULL DEFAULT 0,
+    updated_at                INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   );
 
   -- Add new columns to existing tables if upgrading
@@ -203,6 +255,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_support_donations_user ON support_donations(user_id);
   CREATE INDEX IF NOT EXISTS idx_owned_home_user ON owned_home_items(user_id);
   CREATE INDEX IF NOT EXISTS idx_home_back_decor_order ON home_back_decor_enabled(user_id, sort_order);
+  CREATE INDEX IF NOT EXISTS idx_home_foreground_items_order ON home_foreground_items_enabled(user_id, sort_order);
+  CREATE INDEX IF NOT EXISTS idx_profile_customization_type ON profile_customization_items(type, is_active, created_at);
+  CREATE INDEX IF NOT EXISTS idx_owned_profile_customizations_user ON owned_profile_customizations(user_id, acquired_at);
 `);
 
 // Safe column additions for existing databases (ALTER TABLE IF NOT EXISTS column doesn't exist)
@@ -255,6 +310,60 @@ const migrateShopItemsSlotConstraintIfNeeded = () => {
   })();
 };
 
+const migrateProfileCustomizationTypeConstraintIfNeeded = () => {
+  const sql = getTableSql('profile_customization_items');
+  if (!sql || sql.includes("'name_style'")) return;
+
+  const foreignKeysEnabled = db.pragma('foreign_keys', { simple: true });
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec(`
+      BEGIN IMMEDIATE;
+
+      CREATE TABLE profile_customization_items_new (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id    TEXT UNIQUE NOT NULL,
+        name       TEXT NOT NULL,
+        type       TEXT NOT NULL CHECK(type IN ('frame', 'scene', 'title', 'name_style')),
+        price      INTEGER NOT NULL DEFAULT 0,
+        title_text TEXT DEFAULT NULL,
+        file_path  TEXT DEFAULT NULL,
+        name_color TEXT DEFAULT NULL,
+        name_color_secondary TEXT DEFAULT NULL,
+        name_glow_color TEXT DEFAULT NULL,
+        name_glow_strength INTEGER NOT NULL DEFAULT 0,
+        name_effect TEXT DEFAULT NULL,
+        unlock_type TEXT DEFAULT NULL,
+        unlock_value INTEGER NOT NULL DEFAULT 0,
+        unlock_text TEXT DEFAULT NULL,
+        is_active  INTEGER NOT NULL DEFAULT 1,
+        is_system  INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+      );
+
+      INSERT INTO profile_customization_items_new (
+        id, item_id, name, type, price, title_text, file_path,
+        is_active, is_system, created_at
+      )
+      SELECT id, item_id, name, type, price, title_text, file_path,
+             is_active, is_system, created_at
+      FROM profile_customization_items;
+
+      DROP TABLE profile_customization_items;
+      ALTER TABLE profile_customization_items_new RENAME TO profile_customization_items;
+      CREATE INDEX idx_profile_customization_type
+        ON profile_customization_items(type, is_active, created_at);
+
+      COMMIT;
+    `);
+  } catch (error) {
+    if (db.inTransaction) db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    if (foreignKeysEnabled) db.pragma('foreign_keys = ON');
+  }
+};
+
 addColumnIfMissing('users',   'photo_url',       'TEXT DEFAULT NULL');
 addColumnIfMissing('users',   'photo_updated_at', 'INTEGER DEFAULT 0');
 addColumnIfMissing('users',   'supporter_since', 'INTEGER DEFAULT NULL');
@@ -275,6 +384,16 @@ addColumnIfMissing('peepers', 'fridge_owned',  'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('peepers', 'fridge_food_until', 'INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'fridge_purchased_at', 'INTEGER DEFAULT NULL');
 migrateShopItemsSlotConstraintIfNeeded();
+migrateProfileCustomizationTypeConstraintIfNeeded();
+addColumnIfMissing('profile_customization_items', 'name_color', 'TEXT DEFAULT NULL');
+addColumnIfMissing('profile_customization_items', 'name_color_secondary', 'TEXT DEFAULT NULL');
+addColumnIfMissing('profile_customization_items', 'name_glow_color', 'TEXT DEFAULT NULL');
+addColumnIfMissing('profile_customization_items', 'name_glow_strength', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('profile_customization_items', 'name_effect', 'TEXT DEFAULT NULL');
+addColumnIfMissing('profile_customization_items', 'unlock_type', 'TEXT DEFAULT NULL');
+addColumnIfMissing('profile_customization_items', 'unlock_value', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('profile_customization_items', 'unlock_text', 'TEXT DEFAULT NULL');
+addColumnIfMissing('user_profile_customization', 'name_style_item_id', 'TEXT DEFAULT NULL REFERENCES profile_customization_items(item_id) ON DELETE SET NULL');
 
 // Migrate existing alive peepers: set hp_saved_at=now so liveStats doesn't double-count
 db.prepare(`
@@ -299,6 +418,22 @@ addColumnIfMissing('gifts_received', 'is_private', 'INTEGER DEFAULT 0');
 addColumnIfMissing('gifts_received', 'is_seen',    'INTEGER DEFAULT 0');
 addColumnIfMissing('home_shop_items', 'is_free',   'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('home_shop_items', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
+
+// Foreground decor used to be a single column. Move existing selections into
+// the ordered multi-layer table, then retire the legacy value permanently.
+db.transaction(() => {
+  db.prepare(`
+    INSERT OR IGNORE INTO home_foreground_items_enabled (user_id, item_id, sort_order, enabled_at)
+    SELECT user_id, foreground_item_id, 1, updated_at
+    FROM personal_homes
+    WHERE foreground_item_id IS NOT NULL AND foreground_item_id != ''
+  `).run();
+  db.prepare(`
+    UPDATE personal_homes
+    SET foreground_item_id = NULL
+    WHERE foreground_item_id IS NOT NULL
+  `).run();
+})();
 
 
 // ── Family invites ────────────────────────────────────────────────────────────
@@ -1003,11 +1138,81 @@ db.prepare(`
   VALUES (?, '/sprites/basewall.png')
 `).run(HOME_STARTER_WALL_ITEM_ID);
 
+const {
+  PROFILE_CATALOG_ITEMS,
+  RETIRED_PROFILE_CATALOG_ITEM_IDS,
+} = require('./profileCustomizationCatalog');
+const insertProfileCatalogItem = db.prepare(`
+  INSERT OR IGNORE INTO profile_customization_items (
+    item_id, name, type, price, title_text, file_path,
+    name_color, name_color_secondary, name_glow_color, name_glow_strength, name_effect,
+    unlock_type, unlock_value, unlock_text, is_active, is_system
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+`);
+const updateProfileCatalogAssetPath = db.prepare(`
+  UPDATE profile_customization_items
+  SET file_path = ?
+  WHERE item_id = ? AND is_system = 0
+`);
+db.transaction(() => {
+  const deleteRetiredProfileItem = db.prepare(`
+    DELETE FROM profile_customization_items
+    WHERE item_id = ? AND is_system = 0
+  `);
+  for (const itemId of RETIRED_PROFILE_CATALOG_ITEM_IDS) {
+    deleteRetiredProfileItem.run(itemId);
+  }
+  for (const item of PROFILE_CATALOG_ITEMS) {
+    insertProfileCatalogItem.run(
+      item.itemId,
+      item.name,
+      item.type,
+      item.price || 0,
+      item.titleText || null,
+      item.filePath || null,
+      item.nameColor || null,
+      item.nameColorSecondary || null,
+      item.nameGlowColor || null,
+      item.nameGlowStrength || 0,
+      item.nameEffect || null,
+      item.unlockType || null,
+      item.unlockValue || 0,
+      item.unlockText || null,
+    );
+    if (item.filePath) updateProfileCatalogAssetPath.run(item.filePath, item.itemId);
+  }
+})();
+
 db.prepare(`
   UPDATE home_custom_sprites
   SET file_path = '/sprites/basewall.png'
   WHERE item_id = ?
 `).run(HOME_STARTER_WALL_ITEM_ID);
+
+db.prepare(`
+  INSERT INTO profile_customization_items (
+    item_id, name, type, price, title_text, file_path, is_active, is_system
+  ) VALUES ('title_admin', 'Admin', 'title', 0, 'Admin', NULL, 0, 1)
+  ON CONFLICT(item_id) DO UPDATE SET
+    name = 'Admin',
+    type = 'title',
+    price = 0,
+    title_text = 'Admin',
+    file_path = NULL,
+    is_active = 0,
+    is_system = 1
+`).run();
+
+const { ADMIN_TELEGRAM_IDS } = require('./adminAccess');
+const adminPlaceholders = ADMIN_TELEGRAM_IDS.map(() => '?').join(', ');
+if (adminPlaceholders) {
+  db.prepare(`
+    INSERT OR IGNORE INTO owned_profile_customizations (user_id, item_id)
+    SELECT id, 'title_admin'
+    FROM users
+    WHERE telegram_id IN (${adminPlaceholders})
+  `).run(...ADMIN_TELEGRAM_IDS);
+}
 
 const expeditionRewardsBackfilled = db.prepare(`
   SELECT 1 FROM app_settings

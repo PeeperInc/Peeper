@@ -106,7 +106,7 @@ function serializeBackDecorRow(row) {
   };
 }
 
-function getBackDecor(userId) {
+function getOrderedHomeItems(userId, tableName) {
   return db.prepare(`
     SELECT
       i.item_id,
@@ -115,12 +115,20 @@ function getBackDecor(userId) {
       COALESCE(s.file_path, '/home/' || i.item_id || '.png') AS file_path,
       e.sort_order,
       e.enabled_at
-    FROM home_back_decor_enabled e
+    FROM ${tableName} e
     JOIN home_shop_items i ON i.item_id = e.item_id
     LEFT JOIN home_custom_sprites s ON s.item_id = i.item_id
     WHERE e.user_id = ?
     ORDER BY e.sort_order ASC, e.enabled_at ASC, e.item_id ASC
   `).all(userId).map(serializeBackDecorRow);
+}
+
+function getBackDecor(userId) {
+  return getOrderedHomeItems(userId, 'home_back_decor_enabled');
+}
+
+function getForegroundItems(userId) {
+  return getOrderedHomeItems(userId, 'home_foreground_items_enabled');
 }
 
 function getFullHomeState(userId) {
@@ -138,6 +146,7 @@ function getFullHomeState(userId) {
           floor_base: null,
           floor_cover: null,
           back_decor: [],
+          foreground_items: [],
           foreground_item: null,
         },
       },
@@ -155,6 +164,8 @@ function getFullHomeState(userId) {
     WHERE user_id = ?
   `).get(userId);
 
+  const foregroundItems = getForegroundItems(userId);
+
   return {
     home: {
       ...summary,
@@ -167,7 +178,8 @@ function getFullHomeState(userId) {
         floor_base: serializeHomeItem(getHomeItemRow(row.floor_base_item_id)),
         floor_cover: serializeHomeItem(getHomeItemRow(row.floor_cover_item_id)),
         back_decor: getBackDecor(userId),
-        foreground_item: serializeHomeItem(getHomeItemRow(row.foreground_item_id)),
+        foreground_items: foregroundItems,
+        foreground_item: foregroundItems.at(-1) || null,
       },
     },
   };
@@ -208,6 +220,7 @@ function assertHomeOwned(userId) {
 module.exports = {
   assertHomeOwned,
   getBackDecor,
+  getForegroundItems,
   getFullHomeState,
   getHomeCatalog,
   getHomeItemRow,

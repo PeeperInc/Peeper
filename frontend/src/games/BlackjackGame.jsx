@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from '../components/BottomSheet';
 import SupporterStar from '../components/SupporterStar';
+import { ProfileAvatar, ProfileName } from '../components/ProfileCustomization';
 import { useApp } from '../context/AppContext';
 import * as api from '../api';
 import { assetUrl } from '../utils/assetUrl';
-import { avatarUrl } from '../utils/avatarUrl';
 
 const COIN = '\u2726';
 const TABLE_LAYOUT_WIDTH = 430;
@@ -263,16 +263,10 @@ function SpriteAsset({ candidateNames, alt, width, height, style, fallback = nul
 }
 
 function SeatAvatar({ seat, active = false, highlight = false, flashOn = true, size = 38 }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const avatarSrc = seat.photoUrl || avatarUrl(seat.userId);
   const highlightBorder = flashOn ? 'rgba(255,214,111,0.98)' : 'rgba(119,240,165,0.96)';
   const highlightGlow = flashOn
     ? '0 0 0 4px rgba(255,214,111,0.22), 0 0 22px rgba(255,214,111,0.36)'
     : '0 0 0 5px rgba(119,240,165,0.2), 0 0 28px rgba(119,240,165,0.34)';
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [avatarSrc]);
 
   return (
     <div
@@ -280,7 +274,7 @@ function SeatAvatar({ seat, active = false, highlight = false, flashOn = true, s
         width: size,
         height: size,
         borderRadius: '50%',
-        overflow: 'hidden',
+        overflow: 'visible',
         display: 'grid',
         placeItems: 'center',
         background: highlight
@@ -292,16 +286,7 @@ function SeatAvatar({ seat, active = false, highlight = false, flashOn = true, s
         transition: 'transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease',
       }}
     >
-      {avatarSrc && !imageFailed ? (
-        <img
-          src={avatarSrc}
-          alt={seat.displayName}
-          onError={() => setImageFailed(true)}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-        />
-      ) : (
-        <div style={{ fontSize: 17, lineHeight: 1, transform: 'translateY(1px)' }}>{'\uD83D\uDC38'}</div>
-      )}
+      <ProfileAvatar user={seat} size={size} />
     </div>
   );
 }
@@ -695,7 +680,7 @@ function SeatMarker({ seat, isCurrentTurn, isWinner, flashOn = true, onClick }) 
         }}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 3, maxWidth: '100%' }}>
-          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seat.displayName}</span>
+          <ProfileName user={seat} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seat.displayName}</ProfileName>
           <SupporterStar user={seat} size={10} />
         </span>
       </div>
@@ -922,7 +907,7 @@ function SeatInfoSheet({ seat, onClose, onViewProfile }) {
         <SeatAvatar seat={seat} size={46} />
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 17, fontWeight: 900, color: 'var(--text-primary)' }}>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seat.displayName}</span>
+            <ProfileName user={seat} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seat.displayName}</ProfileName>
             <SupporterStar user={seat} size={14} />
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
@@ -1040,45 +1025,8 @@ function JoinCodeSheet({ busy, presetLobbyId, onClose, onSubmit }) {
   );
 }
 
-function SearchAvatar({ telegramId, name, size = 36 }) {
-  const [imgError, setImgError] = useState(false);
-  const src = avatarUrl(telegramId);
-
-  if (src && !imgError) {
-    return (
-      <img
-        src={src}
-        alt={name || 'Player'}
-        onError={() => setImgError(true)}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          objectFit: 'cover',
-          flexShrink: 0,
-          background: 'rgba(255,255,255,0.08)',
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        display: 'grid',
-        placeItems: 'center',
-        flexShrink: 0,
-        background: 'rgba(255,255,255,0.08)',
-        border: '1px solid rgba(255,255,255,0.12)',
-        fontSize: Math.round(size * 0.5),
-      }}
-    >
-      {String.fromCodePoint(0x1F438)}
-    </div>
-  );
+function SearchAvatar({ user, size = 36 }) {
+  return <ProfileAvatar user={user} size={size} />;
 }
 
 function InvitePlayerSheet({ busy, onClose, onInvite }) {
@@ -1182,10 +1130,10 @@ function InvitePlayerSheet({ busy, onClose, onInvite }) {
                 cursor: 'pointer',
               }}
             >
-              <SearchAvatar telegramId={player.telegram_id} name={player.first_name} />
+              <SearchAvatar user={player} size={40} />
               <span style={{ minWidth: 0, flex: 1 }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 14, fontWeight: 800 }}>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.first_name || 'Peeper'}</span>
+                  <ProfileName user={player} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.first_name || 'Peeper'}</ProfileName>
                   <SupporterStar user={player} size={12} />
                 </span>
                 {player.username && (

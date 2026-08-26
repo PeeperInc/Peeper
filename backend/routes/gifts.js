@@ -4,6 +4,7 @@ const db = require('../database');
 const { validateTelegramInit } = require('../auth');
 const { GIFT_ITEMS, getGiftCatalog } = require('../items');
 const { isNotificationEnabled } = require('../notificationSettings');
+const { attachProfileAppearances, getProfileAppearances } = require('../profileCustomization');
 
 const APP_URL = 'https://peeper.frenzyradio.online';
 
@@ -56,7 +57,7 @@ router.get('/search', validateTelegramInit, (req, res) => {
     LIMIT 10
   `).all(`%${query}%`, `%${query}%`, selfUser?.id ?? 0);
 
-  res.json({ users: results });
+  res.json({ users: attachProfileAppearances(results) });
 });
 
 /** POST /api/gifts/send */
@@ -137,7 +138,12 @@ router.get('/received/:userId', validateTelegramInit, (req, res) => {
       gr.sent_at DESC
   `).all(isOwner ? 1 : 0, userId, isOwner ? 1 : 0);
 
-  res.json({ gifts, topGifts: gifts, totalCount: gifts.length });
+  const appearances = getProfileAppearances(gifts.map(gift => gift.sender_id));
+  const decoratedGifts = gifts.map(gift => ({
+    ...gift,
+    sender_appearance: appearances.get(Number(gift.sender_id)) || null,
+  }));
+  res.json({ gifts: decoratedGifts, topGifts: decoratedGifts, totalCount: decoratedGifts.length });
 });
 
 /**

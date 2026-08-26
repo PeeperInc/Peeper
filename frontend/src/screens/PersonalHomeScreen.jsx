@@ -17,6 +17,8 @@ export default function PersonalHomeScreen({ onClose }) {
     updateHomeLayout,
     toggleBackDecor,
     reorderBackDecor,
+    toggleForegroundItem,
+    reorderForegroundItems,
   } = useApp();
 
   const [homeState, setHomeState] = useState(null);
@@ -100,6 +102,26 @@ export default function PersonalHomeScreen({ onClose }) {
     }
   }, [applyHomeState, reorderBackDecor]);
 
+  const handleToggleForegroundItem = useCallback(async (itemId, enabled) => {
+    setBusySlot('foreground_item');
+    try {
+      const result = await toggleForegroundItem(itemId, enabled);
+      applyHomeState(result);
+    } finally {
+      setBusySlot(null);
+    }
+  }, [applyHomeState, toggleForegroundItem]);
+
+  const handleReorderForegroundItems = useCallback(async (itemIds) => {
+    setReorderBusy(true);
+    try {
+      const result = await reorderForegroundItems(itemIds);
+      applyHomeState(result);
+    } finally {
+      setReorderBusy(false);
+    }
+  }, [applyHomeState, reorderForegroundItems]);
+
   if (shopOpen) {
     return (
       <HomeShopScreen
@@ -124,6 +146,8 @@ export default function PersonalHomeScreen({ onClose }) {
         onSetSingleSlot={handleSetSingleSlot}
         onToggleBackDecor={handleToggleBackDecor}
         onReorderBackDecor={handleReorderBackDecor}
+        onToggleForegroundItem={handleToggleForegroundItem}
+        onReorderForegroundItems={handleReorderForegroundItems}
       />
     );
   }

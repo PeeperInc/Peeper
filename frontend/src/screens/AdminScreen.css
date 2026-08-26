@@ -223,23 +223,7 @@
 }
 
 .admin-mute-avatar {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid rgba(184, 255, 87, 0.2);
-  border-radius: 50%;
-  background: var(--bg-secondary);
-  color: var(--accent);
-  font-size: 15px;
-  font-weight: 950;
-}
-
-.admin-mute-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  overflow: visible;
 }
 
 .admin-mute-main {
@@ -303,13 +287,290 @@
     grid-template-columns: 34px minmax(0, 1fr);
   }
 
-  .admin-mute-avatar {
-    width: 34px;
-    height: 34px;
-  }
-
   .admin-unmute-button {
     grid-column: 2;
     justify-self: start;
   }
+}
+
+.admin-profile-create,
+.admin-profile-editor {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: rgba(3, 18, 10, 0.72);
+  padding: 11px;
+}
+
+.admin-profile-create label,
+.admin-profile-editor label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-profile-create input:not([type='checkbox']),
+.admin-profile-editor input:not([type='checkbox']),
+.admin-profile-create select,
+.admin-profile-editor select {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  padding: 9px;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-transform: none;
+}
+
+.admin-profile-create input[type='file'],
+.admin-profile-editor input[type='file'] {
+  padding: 7px !important;
+  font-size: 10px !important;
+}
+
+.admin-profile-type-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.admin-profile-type-tabs button {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #06170e;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-profile-type-tabs button.active {
+  border-color: rgba(184, 255, 87, 0.58);
+  background: rgba(94, 151, 43, 0.3);
+  color: var(--accent);
+}
+
+.admin-profile-switch {
+  display: flex !important;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px !important;
+  border: 1px solid var(--border);
+  padding: 7px 9px;
+  color: var(--text-primary) !important;
+  text-transform: none !important;
+}
+
+.admin-profile-switch input {
+  accent-color: var(--accent);
+}
+
+.admin-profile-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 2px 7px;
+}
+
+.admin-profile-list-head strong {
+  font-size: 14px;
+}
+
+.admin-profile-list-head span {
+  color: var(--text-hint);
+  font-size: 9px;
+}
+
+.admin-profile-item {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: rgba(3, 18, 10, 0.78);
+}
+
+details.admin-profile-item {
+  display: block;
+}
+
+.admin-profile-item > summary {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  list-style: none;
+  padding: 8px;
+}
+
+.admin-profile-item > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-profile-item.system {
+  padding: 8px;
+}
+
+.admin-profile-item-art {
+  display: grid;
+  width: 62px;
+  height: 52px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(184, 255, 87, 0.16);
+  border-radius: 4px;
+  background: #06150d;
+}
+
+.admin-profile-frame-preview {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+}
+
+.admin-profile-scene-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-profile-title-preview {
+  max-width: 54px;
+  overflow: hidden;
+  border: 1px solid rgba(211, 255, 135, 0.5);
+  border-radius: 2px;
+  padding: 3px 4px;
+  color: #dfffaa;
+  font-size: 6px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-profile-name-preview {
+  max-width: 56px;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-profile-name-fields {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(184, 255, 87, 0.18);
+  border-radius: 4px;
+  background: rgba(5, 24, 13, 0.72);
+  padding: 8px;
+}
+
+.admin-profile-color-control {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.admin-profile-color-control input[type='color'] {
+  width: 42px;
+  height: 36px;
+  padding: 3px !important;
+}
+
+.admin-profile-name-live {
+  display: grid;
+  min-height: 50px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background:
+    linear-gradient(rgba(184, 255, 87, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(184, 255, 87, 0.04) 1px, transparent 1px),
+    #04110a;
+  background-size: 12px 12px;
+  font-size: 20px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.admin-profile-no-art {
+  color: var(--text-hint);
+  font-size: 7px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.admin-profile-item-main {
+  min-width: 0;
+}
+
+.admin-profile-item-main span,
+.admin-profile-item-main strong,
+.admin-profile-item-main small {
+  display: block;
+}
+
+.admin-profile-item-main span {
+  color: var(--accent);
+  font-size: 7px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.admin-profile-item-main strong {
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-profile-item-main small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-hint);
+  font-size: 8px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+}
+
+.admin-profile-owner-count {
+  min-width: 42px;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.admin-profile-owner-count small {
+  display: block;
+  color: var(--text-hint);
+  font-size: 6px;
+  text-transform: uppercase;
+}
+
+.admin-profile-editor {
+  border-width: 1px 0 0;
+  border-radius: 0;
+}
+
+.admin-profile-editor-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }

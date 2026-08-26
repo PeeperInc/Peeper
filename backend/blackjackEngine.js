@@ -1,4 +1,5 @@
 const db = require('./database');
+const { getProfileAppearances } = require('./profileCustomization');
 const { compareDealerHands, comparePvpHands } = require('./blackjackHandUtils');
 const {
   createBlackjackInviteToken,
@@ -124,7 +125,7 @@ function getInviteByToken(token) {
 
 function getLobbyMembers(lobbyId) {
   return db.prepare(`
-    SELECT m.*, u.username, u.first_name, u.photo_url, u.supporter_since, u.supporter_stars
+    SELECT m.*, u.telegram_id, u.username, u.first_name, u.photo_url, u.supporter_since, u.supporter_stars
     FROM blackjack_lobby_members m
     JOIN users u ON u.id = m.user_id
     WHERE m.lobby_id = ?
@@ -1175,6 +1176,7 @@ function serializeLobbyState(lobbyId, userId) {
   touchLobbyMember(lobbyId, userId);
 
   const members = getLobbyMembers(lobbyId);
+  const memberAppearances = getProfileAppearances(members.map(tableMember => tableMember.user_id));
   const bets = getLobbyBets(lobbyId);
   const pendingBetByUserId = new Map(bets.map((bet) => [Number(bet.user_id), bet]));
   const round = getRoundById(lobby.current_round_id);
@@ -1209,12 +1211,14 @@ function serializeLobbyState(lobbyId, userId) {
 
     return {
       userId: tableMember.user_id,
+      telegramId: tableMember.telegram_id,
       seatIndex: tableMember.seat_index,
       firstName: tableMember.first_name,
       username: tableMember.username,
       photoUrl: tableMember.photo_url || null,
       supporter_since: tableMember.supporter_since,
       supporter_stars: tableMember.supporter_stars,
+      appearance: memberAppearances.get(Number(tableMember.user_id)) || null,
       displayName: formatUserLabel(tableMember),
       isSelf,
       status: buildSeatStatus({

@@ -107,6 +107,8 @@ export const buyHomeItem = (itemId) => post('/home/buy-item', { itemId });
 export const updateHomeLayout = (payload) => post('/home/layout', payload);
 export const toggleBackDecor = (itemId, enabled) => post('/home/back-decor/toggle', { itemId, enabled });
 export const reorderBackDecor = (itemIds) => post('/home/back-decor/reorder', { itemIds });
+export const toggleForegroundItem = (itemId, enabled) => post('/home/foreground-items/toggle', { itemId, enabled });
+export const reorderForegroundItems = (itemIds) => post('/home/foreground-items/reorder', { itemIds });
 export const getVisitHome = (userId) => get(`/home/visit/${userId}`);
 export const sendVisitHomePhoto = (userId) => post(`/home/visit/${userId}/photo`, {});
 
@@ -131,6 +133,10 @@ export const searchUsers = (q) => get(`/users/search?q=${encodeURIComponent(q)}`
 export const getUserProfile = (userId) => get(`/users/${userId}/profile`);
 export const getLongevityBoard = () => get('/users/leaderboard/longevity');
 export const getGiftsBoard = () => get('/users/leaderboard/gifts');
+
+export const getProfileCustomizationCatalog = () => get('/profile-customization/catalog');
+export const buyProfileCustomization = (itemId) => post('/profile-customization/buy', { itemId });
+export const equipProfileCustomization = (type, itemId = null) => post('/profile-customization/equip', { type, itemId });
 
 export const getItems = () => get('/items');
 

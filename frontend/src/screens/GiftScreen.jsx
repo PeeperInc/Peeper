@@ -1,18 +1,8 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import SupporterStar from '../components/SupporterStar';
+import { ProfileAvatar, ProfileName } from '../components/ProfileCustomization';
 import * as api from '../api';
-import { avatarUrl } from '../utils/avatarUrl';
-
-function UserAvatar({ telegramId, name, size = 38 }) {
-  const [err, setErr] = useState(false);
-  const src = avatarUrl(telegramId);
-  if (src && !err) return (
-    <img src={src} alt={name} onError={() => setErr(true)}
-      style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-  );
-  return <div className="avatar-circle" style={{ width: size, height: size, fontSize: size * 0.5, flexShrink: 0 }}>🐸</div>;
-}
 
 function GiftImage({ gift, size = 64, lazy = false }) {
   const [err,        setErr]       = useState(false);
@@ -203,7 +193,7 @@ export default function GiftScreen({ initialRecipient = null }) {
         <GiftImage gift={giftObj} size={100} />
         <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>Gift Sent!</div>
         <div style={{ fontSize: 14, color: 'var(--text-secondary)', textAlign: 'center' }}>
-          {giftObj?.name} is flying to {recipient?.first_name} 🐸
+          {giftObj?.name} is flying to <ProfileName user={recipient} /> 🐸
         </div>
         <button className="btn btn-primary" onClick={() => {
           setSent(false); setStep(1); setSelectedGift(null);
@@ -330,10 +320,10 @@ export default function GiftScreen({ initialRecipient = null }) {
 
           {searchResults.map(u => (
             <div key={u.id} className="lb-row" style={{ cursor: 'pointer' }} onClick={() => selectRecipient(u)}>
-              <UserAvatar telegramId={u.telegram_id} name={u.first_name} />
+              <ProfileAvatar user={u} size={42} />
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 14 }}>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.first_name}</span>
+                  <ProfileName user={u} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
                   <SupporterStar user={u} size={12} />
                 </div>
                 {u.username && <div style={{ fontSize: 12, color: 'var(--text-hint)' }}>@{u.username}</div>}
@@ -361,10 +351,10 @@ export default function GiftScreen({ initialRecipient = null }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px 0' }}>
             <GiftImage gift={giftObj} size={36} />
             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>→</span>
-            <UserAvatar telegramId={recipient?.telegram_id} name={recipient?.first_name} size={32} />
+            <ProfileAvatar user={recipient} size={36} />
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 14 }}>
-                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recipient?.first_name}</span>
+                <ProfileName user={recipient} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
                 <SupporterStar user={recipient} size={12} />
               </div>
               {recipient?.username && <div style={{ fontSize: 11, color: 'var(--text-hint)' }}>@{recipient.username}</div>}

@@ -1,5 +1,6 @@
 const db = require('./database');
 const { liveStats } = require('./gameLogic');
+const { getProfileAppearance, getProfileAppearances } = require('./profileCustomization');
 const {
   ARENA_STAKE,
   ARENA_HP,
@@ -428,7 +429,7 @@ function getArenaWinsRows() {
   `).all();
 }
 
-function serializeArenaLeaderboardRow(row, index) {
+function serializeArenaLeaderboardRow(row, index, appearance = null) {
   return {
     rank: index + 1,
     userId: row.id,
@@ -437,16 +438,20 @@ function serializeArenaLeaderboardRow(row, index) {
     photoUrl: row.photo_url,
     supporter_since: row.supporter_since,
     supporter_stars: row.supporter_stars,
+    appearance,
     wins: Math.max(0, Number(row.wins) || 0),
   };
 }
 
 function getArenaLeaderboard(userId, limit = 10) {
   const rows = getArenaWinsRows();
-  const topRows = rows.slice(0, limit).map(serializeArenaLeaderboardRow);
+  const user = getUser(userId);
+  const appearances = getProfileAppearances([...rows.map(row => row.id), user?.id]);
+  const topRows = rows.slice(0, limit).map((row, index) => (
+    serializeArenaLeaderboardRow(row, index, appearances.get(Number(row.id)) || null)
+  ));
   const selfIndex = rows.findIndex((row) => Number(row.id) === Number(userId));
   const selfWinRow = selfIndex >= 0 ? rows[selfIndex] : null;
-  const user = getUser(userId);
   const self = user ? {
     rank: selfWinRow ? selfIndex + 1 : null,
     userId: user.id,
@@ -455,6 +460,7 @@ function getArenaLeaderboard(userId, limit = 10) {
     photoUrl: user.photo_url,
     supporter_since: user.supporter_since,
     supporter_stars: user.supporter_stars,
+    appearance: appearances.get(Number(user.id)) || null,
     wins: selfWinRow ? Math.max(0, Number(selfWinRow.wins) || 0) : 0,
   } : null;
 
@@ -688,6 +694,7 @@ function serializeUser(userId) {
     photoUrl: row.photo_url,
     supporter_since: row.supporter_since,
     supporter_stars: row.supporter_stars,
+    appearance: getProfileAppearance(row.id),
     outfit: {
       slot_head: row.slot_head,
       slot_body: row.slot_body,

@@ -25,6 +25,7 @@ const {
   syncExpeditionRoomBalance,
 } = require('../expeditions/engine');
 const { THEME_ID } = require('../expeditions/catalog');
+const { attachProfileAppearances } = require('../profileCustomization');
 const { generateExpeditionMap } = require('../expeditions/generator');
 const {
   serializeExpeditionState,
@@ -203,7 +204,7 @@ function getCurrentFamily(userId) {
 }
 
 function getFamilyMembers(familyId) {
-  return db.prepare(`
+  const members = db.prepare(`
     SELECT
       u.id AS userId,
       u.first_name AS firstName,
@@ -214,6 +215,7 @@ function getFamilyMembers(familyId) {
     WHERE fm.family_id = ?
     ORDER BY fm.joined_at ASC, u.id ASC
   `).all(familyId);
+  return attachProfileAppearances(members, 'userId');
 }
 
 function getArtifactInventory(userId) {
