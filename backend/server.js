@@ -1,7 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors    = require('cors');
+const db = require('./database');
 const { getTelegramWebhookSecret } = require('./telegramWebhookAuth');
+const { startExpeditionIdempotencyRetention } = require('./expeditions/idempotencyRetention');
 
 const app = express();
 
@@ -63,6 +65,11 @@ app.listen(PORT, () => {
   // Start notification worker
   const notifier = require('./notifier');
   notifier.start(process.env.BOT_TOKEN);
+
+  // Idempotent minigame replays are only needed for short-lived client retries.
+  // Prune them on startup and once per day so their large response payloads do
+  // not grow the database without bounds.
+  startExpeditionIdempotencyRetention(db);
 
   // Register Telegram webhook
   const token = process.env.BOT_TOKEN;
