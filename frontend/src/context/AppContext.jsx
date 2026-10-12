@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
 import * as api from '../api';
 import { FALLBACK_ASSET_VERSION, setAssetVersion } from '../utils/assetUrl';
+import { useSausageQuestRewards } from '../hooks/useSausageQuestRewards';
 
 const AppContext = createContext(null);
 
@@ -33,6 +34,7 @@ const INITIAL = {
   assetVersion: FALLBACK_ASSET_VERSION,
   casinoJackpot: 0,
   casinoFreeSpins: 0,
+  sausageQuest: null,
   energyDrink: null,
   fridge: null,
   toast: null,
@@ -60,6 +62,7 @@ function reducer(state, action) {
         assetVersion: action.payload.assetVersion || state.assetVersion,
         casinoJackpot: action.payload.casinoJackpot ?? state.casinoJackpot,
         casinoFreeSpins: action.payload.casinoFreeSpins ?? state.casinoFreeSpins,
+        sausageQuest: action.payload.sausageQuest ?? state.sausageQuest,
         energyDrink: action.payload.energyDrink ?? state.energyDrink,
         fridge: action.payload.fridge ?? state.fridge,
         cooldowns: { feed: 0, play: 0, action: 0 },
@@ -81,6 +84,7 @@ function reducer(state, action) {
         assetVersion: action.payload.assetVersion || state.assetVersion,
         casinoJackpot: action.payload.casinoJackpot ?? state.casinoJackpot,
         casinoFreeSpins: action.payload.casinoFreeSpins ?? state.casinoFreeSpins,
+        sausageQuest: action.payload.sausageQuest ?? state.sausageQuest,
         energyDrink: action.payload.energyDrink ?? state.energyDrink,
         fridge: action.payload.fridge ?? state.fridge,
       };
@@ -152,6 +156,7 @@ export function AppProvider({ children }) {
           assetVersion: result.assetVersion,
           casinoJackpot: result.casinoJackpot,
           casinoFreeSpins: result.casinoFreeSpins,
+          sausageQuest: result.sausageQuest,
           energyDrink: result.energyDrink,
           fridge: result.fridge,
         },
@@ -175,6 +180,11 @@ export function AppProvider({ children }) {
   const applyCasinoJackpot = useCallback((nextJackpot) => {
     dispatch({ type: 'SET_CASINO_JACKPOT', payload: nextJackpot });
   }, []);
+
+  const applySausageQuestResult = useCallback((result) => {
+    dispatch({ type: 'UPDATE_GAME', payload: result });
+  }, []);
+  const sausageRewards = useSausageQuestRewards(state.user?.id, applySausageQuestResult);
 
   const feedPeeper = useCallback(async (foodType) => {
     try {
@@ -575,6 +585,10 @@ export function AppProvider({ children }) {
       refreshHomeSummary,
       applyAssetVersion,
       applyCasinoJackpot,
+      applySausageQuestResult,
+      completeSausageQuestLevel: sausageRewards.complete,
+      pendingSausageQuestRewards: sausageRewards.pendingCount,
+      lastSausageQuestReward: sausageRewards.lastReward,
       feedPeeper,
       playPeeper,
       getCasinoState,

@@ -1,0 +1,19 @@
+.sausage-quest-shell { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; background: #120a1f; padding-top: var(--tg-total-top, 0px); padding-bottom: var(--tg-safe-bottom, 0px); }
+.sausage-quest-header { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 8px 12px; color: #f3e3c3; background: #1d1b26; border-bottom: 1px solid #f4b32a55; }
+.sausage-quest-back { width: 38px; height: 38px; flex: 0 0 38px; border: 1px solid #f4b32a55; background: #f4b32a12; color: #f4b32a; border-radius: 12px; font-size: 22px; cursor: pointer; }
+.sausage-quest-heading { min-width: 0; }
+.sausage-quest-heading strong { display: block; font-size: 13px; }
+.sausage-quest-heading small, .sausage-quest-progress small { display: block; font-size: 10px; margin-top: 3px; color: #f3e3c399; }
+.sausage-quest-progress { margin-left: auto; text-align: right; min-width: 0; }
+.sausage-quest-progress strong { color: #f4b32a; font-size: 13px; }
+.sausage-quest-stage { position: relative; flex: 1; min-height: 0; }
+.sausage-quest-stage iframe { display: block; border: 0; width: 100%; height: 100%; background: #120a1f; }
+.sausage-quest-loading { position: absolute; inset: 0; background: #120a1f; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; color: #f3e3c3; text-align: center; padding: 24px; }
+.sausage-quest-loading > span { font-size: 54px; }
+.sausage-quest-loading strong { font-size: 22px; color: #f4b32a; }
+.sausage-quest-loading p { margin: 0; color: #f3e3c399; }
+.sausage-quest-loading button { border: 1px solid #f4b32a88; border-radius: 12px; background: #f4b32a14; color: #f4b32a; padding: 12px 18px; font-weight: 700; cursor: pointer; }
+@keyframes sausage-daily-pulse { 0%, 100% { box-shadow: 0 2px 12px #f4b32a20; } 50% { box-shadow: 0 0 0 2px #f4b32a66, 0 4px 22px #f4b32a35; } }
+.sausage-daily-available { animation: sausage-daily-pulse 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .sausage-daily-available { animation: none; box-shadow: 0 0 0 2px #f4b32a66; } }
+@media (max-width: 360px) { .sausage-quest-header { gap: 6px; padding: 6px 8px; } .sausage-quest-heading strong { font-size: 12px; } .sausage-quest-progress small { max-width: 140px; } }

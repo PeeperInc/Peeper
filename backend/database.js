@@ -1229,4 +1229,6 @@ if (!expeditionRewardsBackfilled) {
   })();
 }
 
+require('./sausageQuest/schema').ensureSausageQuestSchema(db);
+
 module.exports = db;
