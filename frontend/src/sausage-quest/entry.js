@@ -65,4 +65,3 @@ function requestId() {
   document.getElementById('card').textContent = 'Could not load Sausage Quest. Close and reopen the game to try again.';
   window.parent.postMessage({ channel: CHANNEL, type: 'load-error', error: error.message }, location.origin);
 } })();
-
