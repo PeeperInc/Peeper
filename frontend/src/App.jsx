@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
 import * as api from './api';
 import { AppRoot } from '@telegram-apps/telegram-ui';
 import { AppProvider, useApp } from './context/AppContext';
@@ -15,10 +15,13 @@ import OutfitsScreen  from './screens/OutfitsScreen';
 import FamilyProfile  from './components/FamilyProfile';
 import AdminScreen      from './screens/AdminScreen';
 import GlobalChatScreen from './screens/GlobalChatScreen';
+import FrontierBoundary from './frontier/FrontierBoundary';
+const FrontierScreen = lazy(() => import('./screens/FrontierScreen'));
 
 // ── Tabs config ─────────────────────────────────────────────────────────────
 const BASE_TABS = [
   { id: 'home',        label: 'Home',       icon: '🏠' },
+  { id: 'world',       label: 'World',      icon: '🌿' },
   { id: 'outfits',     label: 'Outfits',    icon: '👗' },
   { id: 'family',      label: 'Family',     icon: '👨‍👩‍👧' },
   { id: 'gift',        label: 'Gift',       icon: '🎁' },
@@ -147,6 +150,7 @@ function AppContent() {
   const [blackjackInviteToken, setBlackjackInviteToken] = useState(null);
   const [arenaInviteToken, setArenaInviteToken] = useState(null);
   const [gameplayOpen, setGameplayOpen] = useState(false);
+  const [frontierMissionId,setFrontierMissionId] = useState(null);
   const tabBarRef = useRef(null);
 
   const [topGifts,    setTopGifts]    = useState([]);
@@ -312,6 +316,28 @@ function AppContent() {
     <div className="app-shell">
       <Toast />
 
+      {activeTab === 'world' && (
+        <FrontierBoundary onClose={() => setActiveTab('home')}>
+        <Suspense fallback={
+          <div role="status" style={{ position: 'fixed', inset: 0, zIndex: 90, background: '#121d18', color: '#c0d48f', display: 'grid', placeItems: 'center' }}>
+            Opening the commons…
+          </div>
+        }>
+          <FrontierScreen
+            onClose={() => { setActiveTab('home'); setFrontierMissionId(null); }}
+            onViewProfile={id => openProfile(id)}
+            onSendGift={recipient => { setGiftRecipient(recipient); setActiveTab('gift'); }}
+            onOpenFamily={({ familyId, inviteCode }) => {
+              setActiveTab('chat');
+              setViewingFamilyId(familyId);
+              setViewingFamilyInviteCode(inviteCode || null);
+            }}
+            initialMissionId={frontierMissionId}
+          />
+        </Suspense>
+        </FrontierBoundary>
+      )}
+
       {/* Profile overlay */}
       {showProfile && (
         <div style={{
@@ -401,6 +427,7 @@ function AppContent() {
         {activeTab === 'leaderboard' && <LeaderboardScreen onViewProfile={(id) => openProfile(id)} />}
         {activeTab === 'chat'        && (
           <GlobalChatScreen
+            onOpenFrontier={id => {setFrontierMissionId(id);setActiveTab('world');}}
             onViewProfile={(id) => openProfile(id)}
             onSendGift={(recipient) => {
               setGiftRecipient(recipient);
@@ -417,7 +444,7 @@ function AppContent() {
       </div>
 
       {/* Bottom Tab Bar */}
-      <nav className="tab-bar" ref={tabBarRef}>
+      <nav className="tab-bar" ref={tabBarRef} {...(activeTab === 'world' ? {inert:'', 'aria-hidden':true} : {})}>
         {TABS.map(tab => (
           <button
             key={tab.id}

@@ -8,9 +8,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@peeper/frontier-core": "file:../backend/frontier/core",
     "@react-three/fiber": "^8.18.0",
     "@telegram-apps/sdk-react": "^3.3.9",
     "@telegram-apps/telegram-ui": "^2.1.6",
+    "pixi.js": "^8.20.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.180.0"

@@ -24,29 +24,50 @@ function getInitData() {
   }))}&auth_date=9999999999&hash=devhash`;
 }
 
-async function request(method, path, body) {
-  const resp = await fetch(`${BASE}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Telegram-Init-Data': getInitData(),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+async function request(method, path, body, timeoutMs = 0) {
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const resp = await fetch(`${BASE}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Telegram-Init-Data': getInitData(),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      ...(controller ? { signal: controller.signal } : {}),
+    });
 
-  const data = await resp.json().catch(() => ({}));
+    const data = await resp.json().catch(() => ({}));
 
-  if (!resp.ok) {
-    throw { status: resp.status, message: data.error || 'Unknown error', data };
-  }
+    if (!resp.ok) {
+      throw { status: resp.status, message: data.error || 'Unknown error', data };
+    }
 
-  return data;
+    return data;
+  } finally { if (timeout) clearTimeout(timeout); }
 }
 
 const get = (path) => request('GET', path);
 const post = (path, body) => request('POST', path, body);
 
 export const login = () => post('/auth/login');
+
+async function frontierRequest(method,path,body) {
+  try {return await request(method,`/frontier${path}`,body,15000);}
+  catch(error){if(error.name==='AbortError'||error instanceof TypeError||error.status>=500)throw {status:error.status,message:'Connection interrupted. Your progress is saved; try again.'};throw error;}
+}
+export const frontierTravel = to => frontierRequest('POST','/travel',{to});
+export const frontierState = () => frontierRequest('GET','/state');
+export const frontierTicket = () => frontierRequest('POST','/ticket', {});
+export const frontierStartJob = (kind, requestId) => frontierRequest('POST','/jobs', {kind,requestId});
+export const frontierJob = id => frontierRequest('GET',`/jobs/${encodeURIComponent(id)}`);
+export const frontierJobAction = (id, payload) => frontierRequest('POST',`/jobs/${encodeURIComponent(id)}/action`, payload);
+export const frontierCancelJob = id => frontierRequest('POST',`/jobs/${encodeURIComponent(id)}/cancel`, {});
+export const frontierCreateMission = (kind,role,requestId,load='cart') => frontierRequest('POST','/missions', {kind,role,requestId,load});
+export const frontierMission = id => frontierRequest('GET',`/missions/${encodeURIComponent(id)}`);
+export const frontierMissionAction = (id,action,payload={}) => frontierRequest('POST',`/missions/${encodeURIComponent(id)}/${encodeURIComponent(action)}`,payload);
+export const frontierCosmetic = (action,item) => frontierRequest('POST',`/cosmetics/${encodeURIComponent(action)}`,{item});
 
 export const getGameState = () => get('/game/state');
 export const getCasinoState = () => get('/game/casino/state');
@@ -202,3 +223,9 @@ export const acknowledgeExpeditionEvents = (eventIds, idempotencyKey) =>
 export const expeditionLog = (expeditionId) => get(`/expeditions/${expeditionId}/log`);
 export const expeditionHistory = () => get('/expeditions/history');
 export const expeditionArtifacts = () => get('/expeditions/artifacts');
+
+export const frontierBossPrepare = (item,amount,requestId) => frontierRequest('POST','/boss/prepare',{item,amount,requestId});
+export const frontierStartAssault = requestId => frontierRequest('POST','/boss/attacks',{requestId});
+export const frontierAssault = id => frontierRequest('GET',`/boss/attacks/${encodeURIComponent(id)}`);
+export const frontierAssaultAction = (id,payload) => frontierRequest('POST',`/boss/attacks/${encodeURIComponent(id)}/action`,payload);
+export const frontierCancelAssault = id => frontierRequest('POST',`/boss/attacks/${encodeURIComponent(id)}/cancel`,{});

@@ -195,7 +195,7 @@ function ReplyPreview({ message, onCancel }) {
   );
 }
 
-export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFamily, onUnreadChange }) {
+export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFamily, onUnreadChange, onOpenFrontier }) {
   const { user, showToast } = useApp();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -343,7 +343,20 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
                       <span>{message.reply_message}</span>
                     </div>
                   )}
-                  {message.message_type === 'family_invite' && message.family_id ? (
+                  {message.frontier_mission ? (
+                    <button
+                      type="button"
+                      className="global-chat-family-card"
+                      onClick={() => onOpenFrontier?.(message.frontier_mission.id)}
+                      disabled={message.frontier_mission.status !== 'lobby'}
+                    >
+                      <span>BEYOND THE FOG · PUBLIC PARTY</span>
+                      <strong>{message.frontier_mission.kind === 'boss' ? 'Leech King patrol' : 'Caravan delivery'}</strong>
+                      <small>{message.frontier_mission.status === 'lobby'
+                        ? `${message.frontier_mission.members}/3 players · Choose your role`
+                        : message.frontier_mission.status === 'cancelled' ? 'Departure cancelled' : 'This party has departed'}</small>
+                    </button>
+                  ) : message.message_type === 'family_invite' && message.family_id ? (
                     <button
                       type="button"
                       className="global-chat-family-card"
