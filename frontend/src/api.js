@@ -24,7 +24,7 @@ function getInitData() {
   }))}&auth_date=9999999999&hash=devhash`;
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, signal) {
   const resp = await fetch(`${BASE}${path}`, {
     method,
     headers: {
@@ -32,6 +32,7 @@ async function request(method, path, body) {
       'X-Telegram-Init-Data': getInitData(),
     },
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   });
 
   const data = await resp.json().catch(() => ({}));
@@ -49,6 +50,21 @@ const post = (path, body) => request('POST', path, body);
 export const login = () => post('/auth/login');
 
 export const getGameState = () => get('/game/state');
+async function sausageQuestRequest(operation, payload) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const result = await request('POST', `/game/sausage-quest/${operation}`, payload, controller.signal);
+    if (!Number.isInteger(result.sausageQuest?.dayKey) || !Number.isFinite(result.coins)) {
+      throw new Error('Incomplete reward response. Please retry.');
+    }
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+export const startSausageQuestLevel = (payload) => sausageQuestRequest('start', payload);
+export const finishSausageQuestLevel = (payload) => sausageQuestRequest('finish', payload);
 export const getCasinoState = () => get('/game/casino/state');
 export const spinCasino = () => post('/game/casino/spin', {});
 export const getBlackjackLobbies = () => get('/blackjack/lobbies');
