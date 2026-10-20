@@ -2,6 +2,14 @@
 
 Branch: `astraupdate`. No deployment or production data changes. Built without subagents.
 
+## Telegram milestone alerts — 2026-10-20
+
+Added three automatic event notifications: the bridge is rebuilt; both weapon/kit reserves are full and battle opens; victory with the recipient's actual credited reward. Recipients are contributors with at least one recorded action in the current journey at the moment of the milestone, including offline players. Merely opening the map does not subscribe a spectator to that milestone. There is no automatic launch announcement: the launch message will be sent manually after merge.
+
+Milestones enqueue per-user messages inside their existing gameplay/payout transactions. A durable outbox enforces a unique cycle/user/milestone key and retains pending work across restart. The minute notification worker respects the new independent Event alerts preference, paces delivery, leases pending work, records explicit Telegram acknowledgements and retries temporary failures with backoff. Telegram rate limits pause the persisted event queue; permanent rejections are retired. Old phase/cycle messages, opted-out recipients and expired results are skipped. Startup/migration never backfills previous announcements. Notifications expire after one day, and victory uses the same deadline as event results. As with any external delivery, a process crash after sending but before persisting the acknowledgement can cause a retry.
+
+Validation: 387 selected rules/transport/frontend/notification tests pass, and the production build succeeds. Coverage includes all three real milestone transitions, recipient snapshots, offline payouts, duplicate actions, transaction rollback, concurrent dispatchers, restart/lease recovery, settings migration and toggle, expired/obsolete events, temporary/permanent Telegram failures, rate limiting and transport timeouts. Tests stub Telegram delivery; no actual notifications were sent. Evidence: tmp/event-notifications-all-tests.txt, tmp/event-notifications-tests.txt, tmp/event-notification-delivery-tests.txt and tmp/event-notifications-build.txt. This change updates PR #4; production and manual launch messaging are untouched.
+
 ## Pull request preparation against current main — 2026-10-20
 
 Integrated main at 7fac701 (Sausage Quest, expedition receipt retention and family-feast fixes) before publishing this event. Resolved the API client conflict by retaining the shared AbortSignal contract and giving Frontier its own 15-second controller alongside Sausage Quest's 10-second controller. Three regression tests verify valid signals, cancellation and deadline cleanup for both features. The Vite configuration retains both Sausage Quest's HTML build entry and Frontier's shared deterministic-rule modules. No Sausage Quest files or existing main features are removed by this PR.

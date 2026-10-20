@@ -103,7 +103,7 @@ function normalizedIndexes(db, table) {
     .sort((left, right) => `${left.origin}:${left.name}`.localeCompare(`${right.origin}:${right.name}`));
 }
 
-test('existing notification settings migrate with expedition alerts enabled and toggleable', () => {
+test('existing notification settings preserve preferences and add toggleable expedition and event alerts', () => {
   const { directory, databasePath } = createTempDatabasePath();
   const legacyDb = new Database(databasePath);
   legacyDb.exec(`
@@ -146,6 +146,7 @@ test('existing notification settings migrate with expedition alerts enabled and 
       farm_notifications: 0,
       farm_animal_notifications: 1,
       expedition_notifications: 1,
+      frontier_notifications: 1,
     });
 
     const toggled = notifications.toggleNotificationSetting(42, 'expedition_notifications');
@@ -155,6 +156,13 @@ test('existing notification settings migrate with expedition alerts enabled and 
         .expedition_notifications,
       0,
     );
+    const eventColumn = columns(db, 'user_notification_settings').find(column => column.name === 'frontier_notifications');
+    assert.equal(eventColumn.notnull, 1);
+    assert.equal(eventColumn.dflt_value, '1');
+    const eventToggled = notifications.toggleNotificationSetting(42, 'frontier_notifications');
+    assert.equal(eventToggled.frontier_notifications, 0);
+    assert.equal(eventToggled.expedition_notifications, 0);
+    assert.equal(eventToggled.care_notifications, 0);
   } finally {
     db?.close();
     delete require.cache[databaseModulePath];

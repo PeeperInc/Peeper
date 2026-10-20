@@ -5,6 +5,7 @@ const config = require("./content.json").siege;
 const eventConfig = require("./content.json").event;
 const { createJourney } = require("./journey");
 const combatRules = require("./combat.cjs");
+const { queueMilestone } = require("./notifications");
 // Runs inside the engine's transaction, including death and all offline payouts.
 function createSiege(
   db,
@@ -202,6 +203,7 @@ function createSiege(
     db.prepare(
       "INSERT OR IGNORE INTO frontier_boss_cycles SELECT cycle,max_hp,reward_pool,defeated_at FROM frontier_boss WHERE id=1",
     ).run();
+    queueMilestone(db, "victory", now());
   }
   function act(uid, id, nonce, input) {
     const a = view(uid, id);
@@ -340,6 +342,7 @@ function createSiege(
         "UPDATE frontier_boss SET phase='open',opened_at=? WHERE id=1",
       ).run(now());
       event("The expedition is equipped. Everyone can now attack Mirewake.");
+      queueMilestone(db, "battle_ready", now());
     }
     return { accepted, boss: snapshot(uid) };
   }

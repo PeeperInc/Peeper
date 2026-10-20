@@ -8,6 +8,7 @@ const NOTIFICATION_SETTING_KEYS = [
   'farm_notifications',
   'farm_animal_notifications',
   'expedition_notifications',
+  'frontier_notifications',
 ];
 
 const NOTIFICATION_SETTING_META = {
@@ -39,6 +40,10 @@ const NOTIFICATION_SETTING_META = {
   expedition_notifications: {
     label: 'Expedition alerts',
     description: 'Full AP and completed expedition reward alerts',
+  },
+  frontier_notifications: {
+    label: 'Event alerts',
+    description: 'Beyond the Fog milestones and your victory reward',
   },
 };
 
@@ -73,6 +78,7 @@ function getNotificationSettings(userId) {
     farm_notifications: Number(row?.farm_notifications ?? 1),
     farm_animal_notifications: Number(row?.farm_animal_notifications ?? 0),
     expedition_notifications: Number(row?.expedition_notifications ?? 1),
+    frontier_notifications: Number(row?.frontier_notifications ?? 1),
   };
 }
 

@@ -17,6 +17,7 @@ const { isNotificationEnabled } = require('./notificationSettings');
 const { getFarmCropReadiness, getFarmAnimalReadiness } = require('./farmState');
 const { regenerateAp } = require('./expeditions/engine');
 const { MAX_AP } = require('./expeditions/catalog');
+const { createNotificationWorker } = require('./frontier/notifications');
 
 const INTERVAL_MS = 60 * 1000;
 const APP_URL     = 'https://peeper.frenzyradio.online';
@@ -43,11 +44,14 @@ function ts() { return Math.floor(Date.now() / 1000); }
 
 // ── Telegram ────────────────────────────────────────────────────────────────
 
-async function sendMessage(telegramId, text) {
-  if (!botToken) return;
+async function sendMessage(telegramId, text, token = botToken) {
+  if (!token) return { ok: false };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const resp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method:  'POST',
+      signal: controller.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id:    telegramId,
@@ -62,14 +66,25 @@ async function sendMessage(telegramId, text) {
         },
       }),
     });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      if (err.error_code !== 403) {
-        console.warn(`[notifier] TG error for ${telegramId}:`, err.description || resp.status);
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok || result.ok !== true) {
+      const code = Number(result.error_code || resp.status);
+      const retryAfter = Number(result.parameters?.retry_after);
+      if (code !== 403) {
+        console.warn('[notifier] Telegram rejected notification:', code);
       }
+      return {
+        ok: false,
+        permanent: [400, 403, 404].includes(code),
+        ...(code === 429 ? { retryAfter: Math.max(1, Number.isFinite(retryAfter) ? Math.ceil(retryAfter) : 60) } : {}),
+      };
     }
+    return { ok: true };
   } catch (e) {
-    console.warn(`[notifier] fetch error for ${telegramId}:`, e.message);
+    console.warn('[notifier] Telegram delivery interrupted');
+    return { ok: false };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -209,6 +224,24 @@ async function checkExpeditionNotifications(options = {}) {
     send,
     text: () => `${String.fromCodePoint(0x1F3C6)} <b>Your family expedition is complete.</b>\n\nThe boss is defeated. Return to Peeper and claim your rewards.`,
   });
+}
+
+const frontierWorker = createNotificationWorker(db, {
+  send: sendMessage,
+  isEnabled: isNotificationEnabled,
+});
+
+async function checkFrontierNotifications(options = {}) {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='frontier_notifications'").get()) return;
+  const worker = options.send
+    ? createNotificationWorker(db, {
+      now: options.now === undefined ? undefined : () => options.now,
+      send: options.send,
+      pause: options.pause,
+      isEnabled: isNotificationEnabled,
+    })
+    : frontierWorker;
+  await worker.dispatch({ limit: options.limit ?? 200 });
 }
 
 // ── Main check ──────────────────────────────────────────────────────────────
@@ -360,6 +393,7 @@ async function checkAll() {
   }
 
   await checkExpeditionNotifications();
+  await checkFrontierNotifications();
 }
 
 // ── Start / Stop ────────────────────────────────────────────────────────────
@@ -385,6 +419,8 @@ module.exports = {
   start,
   stop,
   checkExpeditionNotifications,
+  checkFrontierNotifications,
+  _notificationInternals: { sendMessage },
   _expeditionNotificationInternals: {
     getExpeditionApFullRows,
     getExpeditionFinishedRows,

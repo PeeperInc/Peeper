@@ -8,6 +8,7 @@ const { createCampaign } = require("./campaign");
 const { createSiege } = require("./siege");
 const { deliveryTasks } = require("./delivery");
 const { eventStatus } = require("./lifecycle");
+const { queueMilestone } = require("./notifications");
 class FrontierError extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -383,9 +384,10 @@ function createEngine(db, clock = () => Date.now()) {
           "UPDATE frontier_projects SET progress=?,completed_at=CASE WHEN completed_at IS NOT NULL THEN completed_at WHEN ?>=? THEN ? ELSE NULL END WHERE id=?",
         ).run(progress, progress, project.target, now(), project.id);
         if (m.cargo > used) stock("planks", m.cargo - used);
-        if (used && progress === project.target)
+        if (used && progress === project.target) {
           event(`${project.name} is complete. Built by all of us.`);
-        else if (used)
+          queueMilestone(db, "bridge", now());
+        } else if (used)
           event(`A caravan delivered ${used} planks to ${project.name}.`);
         else
           event(

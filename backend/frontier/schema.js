@@ -1,5 +1,6 @@
 "use strict";
 const content = require("./content.json");
+const { installNotifications } = require("./notifications");
 function install(db, now = () => Math.floor(Date.now() / 1000)) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS frontier_players (
@@ -66,6 +67,7 @@ function install(db, now = () => Math.floor(Date.now() / 1000)) {
     CREATE INDEX IF NOT EXISTS frontier_active_missions ON frontier_missions(status,ends_at);
     CREATE INDEX IF NOT EXISTS frontier_reward_history ON frontier_rewards(user_id,created_at);
   `);
+  installNotifications(db);
   const columns = new Set(
     db
       .prepare("PRAGMA table_info(frontier_players)")

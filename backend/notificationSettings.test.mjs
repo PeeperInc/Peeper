@@ -40,3 +40,19 @@ test('expedition notifications default to enabled', () => {
     /Full AP/,
   );
 });
+
+test('event alerts have an independent persistent toggle and a compact Telegram settings button', () => {
+  const id = Number(db.prepare("INSERT INTO users(telegram_id,first_name) VALUES('991772','Event player')").run().lastInsertRowid);
+  assert.equal(notifications.getNotificationSettings(id).frontier_notifications, 1);
+  let settings = notifications.toggleNotificationSetting(id, 'frontier_notifications');
+  assert.equal(settings.frontier_notifications, 0);
+  assert.equal(notifications.isNotificationEnabled(id, 'frontier_notifications'), false);
+  assert.equal(settings.expedition_notifications, 1);
+  const markup = notifications.buildNotificationSettingsMarkup(settings);
+  const button = markup.inline_keyboard.flat().find(b => b.callback_data === 'notif_toggle:frontier_notifications');
+  assert.match(button.text, /Event alerts/);
+  assert.ok(Buffer.byteLength(button.callback_data) <= 64);
+  settings = notifications.toggleNotificationSetting(id, 'frontier_notifications');
+  assert.equal(settings.frontier_notifications, 1);
+  assert.match(notifications.buildNotificationSettingsText('Player', settings), /Beyond the Fog/);
+});
