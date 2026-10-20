@@ -11,6 +11,8 @@ const { getFridgeState } = require('../fridgeState');
 const { getFarmSummary } = require('../farmState');
 const { getSupporterSummary } = require('../supportState');
 const { getNextDirtyAt } = require('../dirtyCycle');
+const { createSausageQuestService } = require('../sausageQuest/service');
+const sausageQuest = createSausageQuestService(db);
 const {
   getProfileAppearance,
   grantAdminTitleIfNeeded,
@@ -133,6 +135,7 @@ router.post('/login', validateTelegramInit, async (req, res) => {
     ownedHomeItems,
     homeSummary: getHomeSummary(user.id),
     farmSummary: getFarmSummary(user.id),
+    sausageQuest: sausageQuest.getState(user.id, nowTs),
     casinoFreeSpins: Math.max(0, Math.floor(Number(freshUser.casino_free_spins) || 0)),
     energyDrink: getEnergyDrinkState(user.id, peeper, nowTs),
     fridge: getFridgeState(peeper, nowTs),

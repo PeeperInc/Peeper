@@ -148,7 +148,7 @@ function BigFeastSheet({ bigFeast, userCoins, loading, onClose, onConfirm }) {
   const [nowTs, setNowTs] = useState(() => Math.floor(Date.now() / 1000));
   const cost = bigFeast?.cost ?? 100;
   const availableAt = bigFeast?.available_at || nowTs;
-  const cooldownSeconds = Math.max(0, availableAt - nowTs);
+  const cooldownSeconds = bigFeast?.available === true ? 0 : Math.max(0, availableAt - nowTs);
   const available = cooldownSeconds <= 0;
   const canAfford = (userCoins ?? 0) >= cost;
 
@@ -675,7 +675,7 @@ function MembersTab({
 
   const feastCost = bigFeast?.cost ?? 100;
   const feastAvailableAt = bigFeast?.available_at || nowTs;
-  const feastCooldownSeconds = Math.max(0, feastAvailableAt - nowTs);
+  const feastCooldownSeconds = bigFeast?.available === true ? 0 : Math.max(0, feastAvailableAt - nowTs);
   const feastAvailable = feastCooldownSeconds <= 0;
   const canAffordFeast = (userCoins ?? 0) >= feastCost;
 

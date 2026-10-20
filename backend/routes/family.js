@@ -140,7 +140,8 @@ function getBigFeastStatus(userId, nowTs = ts()) {
   return {
     cost: BIG_FEAST_COST,
     cooldown_seconds: cooldownSeconds,
-    available_at: cooldownSeconds > 0 ? availableAt : nowTs,
+    // A ready feast has no deadline, including on clients with a slow clock.
+    available_at: cooldownSeconds > 0 ? availableAt : 0,
     last_used_at: lastUse?.used_at || null,
     available: cooldownSeconds <= 0,
   };

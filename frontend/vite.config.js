@@ -70,6 +70,12 @@ export default defineConfig({
   },
   build: {
     commonjsOptions: { include: [/node_modules/, /frontier[\\/]core/] },
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        sausageQuest: path.resolve(__dirname, 'src/sausage-quest/index.html'),
+      },
+    },
     outDir: "dist",
     emptyOutDir: true,
     // Shared runtime sprites live permanently on the web server and should

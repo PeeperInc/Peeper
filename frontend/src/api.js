@@ -24,28 +24,23 @@ function getInitData() {
   }))}&auth_date=9999999999&hash=devhash`;
 }
 
-async function request(method, path, body, timeoutMs = 0) {
-  const controller = timeoutMs ? new AbortController() : null;
-  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  try {
-    const resp = await fetch(`${BASE}${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Telegram-Init-Data': getInitData(),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      ...(controller ? { signal: controller.signal } : {}),
-    });
+async function request(method, path, body, signal) {
+  const resp = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Telegram-Init-Data': getInitData(),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal,
+  });
+  const data = await resp.json().catch(() => ({}));
 
-    const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw { status: resp.status, message: data.error || 'Unknown error', data };
+  }
 
-    if (!resp.ok) {
-      throw { status: resp.status, message: data.error || 'Unknown error', data };
-    }
-
-    return data;
-  } finally { if (timeout) clearTimeout(timeout); }
+  return data;
 }
 
 const get = (path) => request('GET', path);
@@ -53,9 +48,18 @@ const post = (path, body) => request('POST', path, body);
 
 export const login = () => post('/auth/login');
 
-async function frontierRequest(method,path,body) {
-  try {return await request(method,`/frontier${path}`,body,15000);}
-  catch(error){if(error.name==='AbortError'||error instanceof TypeError||error.status>=500)throw {status:error.status,message:'Connection interrupted. Your progress is saved; try again.'};throw error;}
+async function frontierRequest(method, path, body) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    return await request(method, `/frontier${path}`, body, controller.signal);
+  } catch (error) {
+    if (error.name === 'AbortError' || error instanceof TypeError || error.status >= 500)
+      throw { status: error.status, message: 'Connection interrupted. Your progress is saved; try again.' };
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 export const frontierTravel = to => frontierRequest('POST','/travel',{to});
 export const frontierState = () => frontierRequest('GET','/state');
@@ -70,6 +74,21 @@ export const frontierMission = id => frontierRequest('GET',`/missions/${encodeUR
 export const frontierMissionAction = (id,action,payload={}) => frontierRequest('POST',`/missions/${encodeURIComponent(id)}/${encodeURIComponent(action)}`,payload);
 
 export const getGameState = () => get('/game/state');
+async function sausageQuestRequest(operation, payload) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const result = await request('POST', `/game/sausage-quest/${operation}`, payload, controller.signal);
+    if (!Number.isInteger(result.sausageQuest?.dayKey) || !Number.isFinite(result.coins)) {
+      throw new Error('Incomplete reward response. Please retry.');
+    }
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+export const startSausageQuestLevel = (payload) => sausageQuestRequest('start', payload);
+export const finishSausageQuestLevel = (payload) => sausageQuestRequest('finish', payload);
 export const getCasinoState = () => get('/game/casino/state');
 export const spinCasino = () => post('/game/casino/spin', {});
 export const getBlackjackLobbies = () => get('/blackjack/lobbies');

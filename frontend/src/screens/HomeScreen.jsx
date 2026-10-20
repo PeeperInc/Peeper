@@ -14,6 +14,8 @@ import FarmScreen from './FarmScreen';
 import { HOME_PRICE_COINS } from '../homeConstants';
 import { shouldPauseHomeRuntime } from '../utils/gameplayRuntime.mjs';
 import * as api from '../api';
+import { orderSausageQuestGames } from '../games/sausageQuestMenu.mjs';
+import '../games/SausageQuestGame.css';
 
 const EMPTY_HOME_SCENE = { slots: {} };
 const UPDATES_CHANNEL_URL = 'https://t.me/peeperupdates';
@@ -67,6 +69,7 @@ function formatFridgeRemaining(seconds = 0) {
 }
 
 const GAMES = [
+  { id: 'sausage', emoji: '🌭', name: 'Sausage Quest', desc: 'Reach the BBQ. Collect every sausage for a bonus!', reward: '5–10 ✦', color: '#f4b32a', energy: 0 },
   { id: 'adrian', emoji: '🧬', name: 'Adrian Fishing', desc: 'Hold the Hail Mary steady!', reward: 'Up to 10 ✦', color: '#b8ef3f', energy: 1 },
   { id: 'casino', emoji: '🎰', name: 'caSino', desc: 'Every spin wins 8–15 ✦.', reward: '8–15 ✦', color: '#f1b74d', energy: 1 },
   { id: 'arena', emoji: '⚔️', name: 'Arena', desc: 'PvP elemental battles · 25 ✦ stake.', reward: 'Win 50 ✦', color: '#e05555', energy: 0 },
@@ -80,6 +83,7 @@ const GAMES = [
 ];
 
 const GAME_LOADERS = {
+  sausage: () => import('../games/SausageQuestGame'),
   adrian: () => import('../games/AdrianFishingGame'),
   catch: () => import('../games/CatchGame'),
   reaction: () => import('../games/ReactionGame'),
@@ -93,6 +97,7 @@ const GAME_LOADERS = {
 };
 
 const GAME_COMPONENTS = {
+  sausage: lazy(GAME_LOADERS.sausage),
   adrian: lazy(GAME_LOADERS.adrian),
   catch: lazy(GAME_LOADERS.catch),
   reaction: lazy(GAME_LOADERS.reaction),
@@ -120,8 +125,6 @@ function canOpenAnyGameMenu({ isDirty, canPlayBase }) {
   return GAMES.some((game) => canLaunchGame(game, { isDirty, canPlayBase }));
 }
 
-const ENERGY_GAMES = GAMES.filter((game) => gameNeedsEnergy(game));
-const FREE_GAMES = GAMES.filter((game) => !gameNeedsEnergy(game));
 
 function preloadGame(gameId) {
   const loader = GAME_LOADERS[gameId];
@@ -551,16 +554,10 @@ function HintSheet({ onClose, showToast, refreshGameState, onAdminOpen }) {
   );
 }
 
-function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClose, casinoJackpot = 0, arenaQueueActive = false }) {
+function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClose, casinoJackpot = 0, arenaQueueActive = false, sausageQuest }) {
   const showBlockedBanner = isDirty;
-  const [activeTab, setActiveTab] = useState(energy > 0 ? 'energy' : 'free');
-  const visibleGames = activeTab === 'energy' ? ENERGY_GAMES : FREE_GAMES;
-
-  useEffect(() => {
-    if (energy === 0 && activeTab === 'energy') {
-      setActiveTab('free');
-    }
-  }, [activeTab, energy]);
+  const [activeTab, setActiveTab] = useState('energy');
+  const visibleGames = orderSausageQuestGames(GAMES, sausageQuest, activeTab);
 
   return (
     <BottomSheet
@@ -586,7 +583,7 @@ function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClo
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
         {[
-          { id: 'energy', label: `Energy (${energy})` },
+          { id: 'energy', label: `Games · ${energy} ⚡` },
           { id: 'free', label: 'Free' },
         ].map((tab) => {
           const selected = activeTab === tab.id;
@@ -649,9 +646,11 @@ function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClo
         {visibleGames.map((game) => {
           const playable = canLaunchGame(game, { isDirty, canPlayBase });
           const arenaHot = arenaQueueActive && game.id === 'arena';
+          const sausageAvailable = game.id === 'sausage' && sausageQuest?.remainingToday > 0;
           return (
           <button
             key={game.id}
+            className={sausageAvailable ? 'sausage-daily-available' : undefined}
             onClick={() => playable && onSelect(game.id)}
             disabled={!playable}
             style={{
@@ -696,6 +695,11 @@ function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClo
                   Jackpot: ✦ {new Intl.NumberFormat('en-US').format(Math.max(0, Math.floor(Number(casinoJackpot) || 0)))}
                 </div>
               )}
+              {game.id === 'sausage' && (
+                <div style={{ fontSize: 11, color: game.color, marginTop: 4, fontWeight: 800 }}>
+                  {sausageAvailable ? `No energy · ${sausageQuest.remainingToday}/5 rewards left today` : sausageQuest ? 'No energy · daily rewards complete' : 'No energy · 5 daily rewards'}
+                </div>
+              )}
             </div>
             <div
               style={{
@@ -709,7 +713,7 @@ function GameMenu({ energy, canPlayBase, isDirty, blockedReason, onSelect, onClo
                 border: `1px solid ${game.color}25`,
               }}
             >
-              {game.id === 'casino' ? `${game.reward} + JP` : game.reward}
+              {game.id === 'sausage' && sausageQuest?.remainingToday === 0 ? 'Play for fun' : game.id === 'casino' ? `${game.reward} + JP` : game.reward}
             </div>
           </button>
           );
@@ -793,6 +797,7 @@ export default function HomeScreen({
     user,
     peeper,
     casinoJackpot,
+    sausageQuest,
     energyDrink,
     fridge,
     homeSummary,
@@ -1452,6 +1457,7 @@ export default function HomeScreen({
             blockedReason={gameBlockedReason}
             casinoJackpot={casinoJackpot}
             arenaQueueActive={arenaQueueActive}
+            sausageQuest={sausageQuest}
             onSelect={handleGameSelect}
             onClose={() => setShowGameMenu(false)}
           />

@@ -1,0 +1,37 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Sausage Quest</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1d1b26;--bun:#f3e3c3;--mustard:#f4b32a;--ketchup:#d7263d;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{height:100%;margin:0;background:#120a1f;overflow:hidden;font-family:'Barlow Condensed','Arial Narrow',sans-serif;color:var(--bun);-webkit-user-select:none;user-select:none;touch-action:none}
+canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
+#hud{position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);display:flex;justify-content:space-between;align-items:flex-start;padding:10px 14px;font-size:22px;font-weight:700;pointer-events:none;text-shadow:0 2px 0 #000a}
+#hud b{font-family:'Bowlby One',Impact,sans-serif;font-weight:400;color:var(--mustard)}
+#hp{color:var(--ketchup);letter-spacing:2px;font-size:26px}#hp i{font-style:normal;opacity:.25}
+#bar{position:fixed;left:14px;right:14px;top:calc(env(safe-area-inset-top,0px) + 52px);height:6px;background:#0006;border-radius:3px;overflow:hidden}#bar div{height:100%;width:0;background:var(--mustard)}
+#ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0a051488;padding:16px}
+.card{background:var(--ink);border:4px solid var(--mustard);box-shadow:8px 8px 0 var(--ketchup);padding:22px 26px;max-width:420px;text-align:center}
+.card h1{font:400 clamp(34px,9vw,56px)/1 'Bowlby One',Impact,sans-serif;color:var(--mustard);margin:0 0 6px;text-shadow:3px 3px 0 var(--ketchup)}
+.card h2{font:400 30px/1.1 'Bowlby One',Impact,sans-serif;color:var(--mustard);margin:0 0 8px}
+.card p{font-size:21px;margin:8px 0;line-height:1.2}
+button{font:400 24px 'Bowlby One',Impact,sans-serif;background:var(--ketchup);color:var(--bun);border:3px solid var(--bun);padding:10px 24px;margin-top:10px;cursor:pointer}
+input[type=range]{touch-action:none;vertical-align:middle;width:150px;accent-color:#f4b32a}
+button:disabled{opacity:.5}
+#touch{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);display:none;justify-content:space-between;padding:0 16px}
+#touch div{display:flex;gap:12px}
+.tb{width:78px;height:78px;border-radius:50%;background:#f3e3c333;border:3px solid #f3e3c9;color:var(--bun);font:400 34px/72px 'Bowlby One',sans-serif;text-align:center}
+.tb.j{background:#d7263d99;width:92px;height:92px;line-height:86px}
+.tb:active,.tb.on{background:#f4b32aaa}
+/* Fit the unchanged game's HUD/cards inside the Peeper viewport. */
+#ov{box-sizing:border-box;z-index:2}
+.card{box-sizing:border-box;max-height:calc(100dvh - 32px);overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain}
+@media(max-width:600px){#hud{display:grid;grid-template-columns:72px minmax(0,1fr) 72px;gap:8px;align-items:center}#hud>div:nth-child(2){text-align:center}#hud b{display:block;font-size:clamp(13px,3.4vw,19px);line-height:1.3}#hud>div:last-child{font-size:16px;text-align:right;white-space:nowrap}}
+</style></head><body>
+<div id="hud"><div id="hp"></div><div><b id="ln"></b></div><div>🌭 <span id="sc">0</span></div></div><div id="bar"><div></div></div>
+<div id="ov"><div class="card" id="card"></div></div>
+<div id="touch"><div><span class="tb" id="bl">◀</span><span class="tb" id="br">▶</span></div><span class="tb j" id="bj">▲</span></div>
+
+
+
+
+<script type="module" src="./entry.js"></script></body></html>

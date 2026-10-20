@@ -40,6 +40,8 @@ const { getFarmSummary } = require('../farmState');
 const { getSupporterSummary } = require('../supportState');
 const { getNextDirtyAt } = require('../dirtyCycle');
 const { isNotificationEnabled } = require('../notificationSettings');
+const { createSausageQuestService } = require('../sausageQuest/service');
+const sausageQuest = createSausageQuestService(db);
 const APP_URL = 'https://peeper.frenzyradio.online';
 function getUser(req)      { return db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(String(req.telegramUser.id)); }
 const GAME_REWARD_LIMITS = {
@@ -92,6 +94,7 @@ function buildResponse(userId) {
   const user   = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   return {
     coins: user.coins,
+    sausageQuest: sausageQuest.getState(userId),
     supporter: getSupporterSummary(user),
     casinoFreeSpins: normalizeFreeSpins(user.casino_free_spins),
     peeper,
@@ -273,6 +276,7 @@ router.get('/state', validateTelegramInit, (req, res) => {
   const fresh = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
   res.json({
     coins: fresh.coins,
+    sausageQuest: sausageQuest.getState(user.id),
     supporter: getSupporterSummary(fresh),
     peeper,
     energyDrink: getEnergyDrinkState(user.id, peeper),
@@ -283,6 +287,21 @@ router.get('/state', validateTelegramInit, (req, res) => {
     ...getPublicAppSettings(),
   });
 });
+
+for (const operation of ['start', 'finish']) {
+  router.post(`/sausage-quest/${operation}`, validateTelegramInit, (req, res, next) => {
+    const user = getUser(req);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    try {
+      const result = sausageQuest[operation](user.id, req.body || {});
+      const fresh = db.prepare('SELECT coins FROM users WHERE id = ?').get(user.id);
+      return res.json({ ...result, coins: fresh.coins });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
+}
 
 router.get('/casino/state', validateTelegramInit, (req, res) => {
   const user = getUser(req);
@@ -450,6 +469,9 @@ router.post('/feed', validateTelegramInit, (req, res) => {
 // play() does NOT touch hp or last_fed — HP is purely time-based.
 router.post('/play', validateTelegramInit, (req, res) => {
   const { gameId = null, coinsEarned = 0, gameWon = false } = req.body;
+  if (typeof gameId === 'string' && gameId.trim().toLowerCase() === 'sausage') {
+    return res.status(400).json({ error: 'Sausage Quest rewards require a level ticket' });
+  }
 
   const user   = getUser(req);
   if (!user) return res.status(404).json({ error: 'User not found' });
