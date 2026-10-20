@@ -1,0 +1,26 @@
+{
+  "audience": {
+    "dailyPlayers": 200,
+    "participation": 0.35,
+    "minutesPerParticipant": 12,
+    "successfulOrderRate": 0.8,
+    "averagePartySize": 2
+  },
+  "boardTargets": {
+    "wood": 150,
+    "ore": 120,
+    "planks": 45,
+    "delivery": 36,
+    "work": 450,
+    "team": 12,
+    "driver": 24,
+    "guard": 24,
+    "mechanic": 24
+  },
+  "questRewardCoins": 100,
+  "questMilestones": [
+    3,
+    6,
+    9
+  ]
+}

@@ -6,6 +6,7 @@ const { getTelegramWebhookSecret } = require('./telegramWebhookAuth');
 const { startExpeditionIdempotencyRetention } = require('./expeditions/idempotencyRetention');
 
 const app = express();
+const frontier = require('./frontier').createFrontier(require('./database'));
 
 // ── Middleware ──────────────────────────────────────────────────────────────
 app.use(express.json());
@@ -38,6 +39,7 @@ app.use('/api/farm', require('./routes/farm'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/expeditions', require('./routes/expeditions'));
 app.use('/api/profile-customization', require('./routes/profileCustomization'));
+app.use('/api/frontier', frontier.router);
 
 // Items catalog (no auth needed for the list itself)
 const { CLOTHING_ITEMS, GIFT_ITEMS } = require('./items');
@@ -58,7 +60,7 @@ app.use((err, _req, res, _next) => {
 
 // ── Start ───────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`🐸 Peeper backend running on port ${PORT}`);
   console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
 
@@ -90,3 +92,4 @@ app.listen(PORT, () => {
       .catch(e => console.warn('[webhook] registration failed:', e.message));
   }
 });
+frontier.live.attach(httpServer);

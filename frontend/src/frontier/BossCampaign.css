@@ -1,0 +1,346 @@
+.boss-campaign {
+  background: #eee1bf;
+  color: #31432e;
+}
+.frontier-results {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #19332b;
+  color: #f2e6c2;
+}
+.frontier-results > header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid #c1c7a63b;
+}
+.frontier-results > header button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #c1c7a655;
+  border-radius: 8px;
+  background: #294137;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.frontier-results-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: max(
+    16px,
+    var(--tg-safe-bottom-ui, 0px),
+    env(safe-area-inset-bottom)
+  );
+}
+.frontier-results .boss-campaign {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.frontier-results .boss-campaign p {
+  color: #546346;
+  line-height: 1.55;
+  font-size: 13px;
+}
+.frontier-ended {
+  width: min(100%, 440px);
+  margin: auto;
+  padding: 24px;
+  text-align: center;
+}
+.frontier-ended h1 {
+  font:
+    700 28px Georgia,
+    serif;
+}
+.frontier-ended p {
+  line-height: 1.5;
+  color: #c7d3b7;
+}
+.dragon-portrait {
+  height: 215px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 100%, #7e8852, #213c32 75%);
+  overflow: hidden;
+}
+.dragon-portrait img {
+  height: 255px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 12px #15231dcc);
+}
+.dragon-portrait > span {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  color: #f2e6c2;
+  background: #19362ddd;
+  border: 1px solid #829367;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.boss-campaign-body {
+  padding: 22px;
+}
+.boss-campaign h2 {
+  font:
+    700 32px Georgia,
+    serif;
+  margin: 7px 0 12px;
+}
+.frontier-dialog .boss-campaign p {
+  color: #546346;
+  line-height: 1.55;
+  font-size: 13px;
+}
+.siege-reserves {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 20px 0;
+}
+.siege-reserves article {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  background: #f7eccf;
+  border: 1px solid #b4bc91;
+  border-radius: 11px;
+}
+.siege-reserves h3 {
+  margin: 0 0 7px;
+  font:
+    700 20px Georgia,
+    serif;
+}
+.siege-reserves small {
+  display: block;
+  font-size: 11px;
+  margin-top: 5px;
+}
+.siege-reserves button {
+  grid-column: 1/-1;
+  width: 100%;
+  font-size: 12px;
+}
+.siege-reserves .frontier-text-button {
+  color: #456239 !important;
+}
+.siege-reserves .frontier-meter,
+.dragon-health .frontier-meter {
+  background: #c6c99e;
+}
+.siege-personal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 16px;
+  background: #dce1b7;
+  border-radius: 10px;
+}
+.siege-personal span {
+  font-size: 11px;
+}
+.siege-personal strong {
+  display: block;
+  margin-top: 7px;
+  font-size: 23px;
+}
+.siege-reward-rule {
+  border-top: 1px solid #b8be92;
+  padding-top: 14px;
+}
+.siege-leaders > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #c5c79e;
+  padding: 10px 0;
+  font-size: 12px;
+}
+.world-dragon {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 180px;
+  height: 180px;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 5px #142b2688);
+}
+.assault-scene {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #1a2d2a;
+}
+.assault-scene > .frontier-text-button {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+.assault-scene .work-hud > span {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+}
+@media (max-width: 480px) {
+  .siege-reserves {
+    grid-template-columns: 1fr;
+  }
+  .boss-campaign-body {
+    padding: 18px;
+  }
+  .dragon-portrait {
+    height: 175px;
+  }
+  .dragon-portrait img {
+    height: 210px;
+  }
+}
+
+.world-armory {
+  position: absolute;
+  width: 190px;
+  height: 170px;
+  object-fit: contain;
+  transform: translate(-50%, -60%);
+  pointer-events: none;
+  filter: drop-shadow(0 5px 4px #10292066);
+}
+
+.assault-scene .arcade-stage {
+  min-height: 0;
+}
+.assault-scene .arcade-field {
+  min-height: 180px;
+}
+@media (max-height: 700px) {
+  .assault-scene .work-hud {
+    min-height: 42px;
+    padding: 8px 16px;
+  }
+  .assault-scene .work-hud b {
+    font-size: 12px;
+  }
+  .assault-scene .arcade-heading {
+    padding: 8px 16px;
+  }
+  .assault-scene .arcade-heading h3 {
+    font-size: 17px;
+  }
+  .assault-scene .arcade-heading p {
+    font-size: 10px;
+    margin-top: 4px;
+  }
+  .assault-scene .arcade-battle-cue {
+    margin-bottom: 4px;
+    min-height: 18px;
+    font-size: 12px;
+  }
+}
+.assault-receipt {
+  flex: 1;
+  overflow: auto;
+  background: radial-gradient(ellipse at 50% 20%, #42553b, #19312a 68%);
+  color: #f1e2b9;
+  text-align: center;
+}
+.assault-receipt-art {
+  height: 190px;
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid #c4b68433;
+  background: radial-gradient(ellipse at 50% 120%, #83935755, transparent 70%);
+}
+.assault-receipt-art img {
+  height: 230px;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 12px #081b17);
+}
+.assault-receipt-art > span {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  right: 0;
+  letter-spacing: 0.16em;
+  font-size: 9px;
+  color: #d9cf9e;
+}
+.assault-receipt-body {
+  max-width: 480px;
+  margin: auto;
+  padding: 24px;
+}
+.assault-receipt-body > span {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #c9bd83;
+}
+.assault-receipt h2 {
+  font:
+    700 32px Georgia,
+    serif;
+  margin: 10px 0 18px;
+  color: #f4e2b4;
+}
+.assault-receipt p {
+  font-size: 13px;
+  line-height: 1.65;
+  color: #c1cfb5;
+}
+.assault-receipt-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid #d7c99233;
+  border-bottom: 1px solid #d7c99233;
+  font-size: 11px;
+  color: #b9c8a8;
+}
+.assault-receipt-stats b {
+  display: block;
+  color: #e5d79d;
+  font-size: 23px;
+  margin-top: 6px;
+}
+.assault-receipt button {
+  width: 100%;
+  margin-top: 12px;
+  min-height: 46px;
+}
+@media (max-height: 700px) {
+  .assault-receipt-art {
+    height: 130px;
+  }
+  .assault-receipt-art img {
+    height: 165px;
+  }
+  .assault-receipt-body {
+    padding: 16px 24px;
+  }
+  .assault-receipt h2 {
+    font-size: 27px;
+    margin-bottom: 12px;
+  }
+}
+
+.siege-leaders > div > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.siege-leaders > div > b {
+  flex-shrink: 0;
+}

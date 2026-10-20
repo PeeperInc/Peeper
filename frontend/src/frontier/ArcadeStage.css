@@ -1,0 +1,237 @@
+.arcade-stage {
+  --arcade-ink: #213e33;
+  --arcade-paper: #f2e7c7;
+  --arcade-gold: #e4be73;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 390px;
+  background: #263e32;
+  color: var(--arcade-paper);
+}
+.arcade-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px 10px;
+  background: #223b31;
+  border-bottom: 1px solid #f1d9a52b;
+  flex-shrink: 0;
+}
+.arcade-heading h3 {
+  margin: 0;
+  font:
+    700 20px Georgia,
+    serif;
+  text-wrap: balance;
+}
+.arcade-heading p {
+  margin: 6px 0 0;
+  color: #ccd7b8;
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 400px;
+}
+.arcade-heading > span {
+  color: #f0cc82;
+  font-size: 23px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.arcade-field {
+  position: relative;
+  flex: 1;
+  min-height: 280px;
+  container-type: size;
+  overflow: hidden;
+  isolation: isolate;
+}
+.arcade-field:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(#213e3377, #263e3388),
+    var(--scene) center / cover;
+  opacity: 0.8;
+  z-index: -1;
+}
+.arcade-field canvas {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: min(100%, 80cqh);
+  height: min(100%, 125cqw);
+  touch-action: none;
+  cursor: crosshair;
+}
+.arcade-controls {
+  background: #20392f;
+  padding: 10px 16px 12px;
+  flex-shrink: 0;
+}
+.arcade-controls button {
+  border: 1px solid #9daf8266;
+  background: #496043;
+  color: #f2e7c7;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px #edf0cb22,
+    0 3px #142b25;
+  transition:
+    transform 0.1s,
+    background 0.1s;
+  cursor: pointer;
+}
+.arcade-controls button:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px #edf0cb22;
+}
+.arcade-controls button:focus-visible {
+  outline: 3px solid #f2d388;
+  outline-offset: 2px;
+}
+.arcade-controls button:disabled {
+  opacity: 0.55;
+}
+.arcade-controls .arcade-primary {
+  background: #d7b77b;
+  color: #273a2e;
+  border-color: #f2d298;
+  width: 100%;
+}
+.arcade-controls kbd {
+  font: 10px system-ui;
+  opacity: 0.65;
+  margin-left: 12px;
+  border: 1px solid;
+  border-radius: 3px;
+  padding: 2px 5px;
+}
+.arcade-lanes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.arcade-lanes.with-strike {
+  grid-template-columns: repeat(4, 1fr);
+}
+.arcade-readout {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 24px;
+  align-items: center;
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 5px;
+}
+.arcade-readout b {
+  color: #e7c781;
+  font-variant-numeric: tabular-nums;
+}
+.arcade-readout > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.arcade-readout small {
+  font-size: 10px;
+  color: #c3d2ad;
+}
+.arcade-progress {
+  height: 3px;
+  background: #132c24;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 5px;
+}
+.arcade-progress i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #c9b678;
+  transform-origin: left;
+  transition: transform 0.15s;
+}
+.arcade-good,
+.arcade-missed {
+  font-size: 10px;
+  display: block;
+  margin-top: 7px;
+}
+.arcade-good {
+  color: #c3d998;
+}
+.arcade-missed {
+  color: #e1b08a;
+}
+@media (min-width: 800px) {
+  .arcade-controls {
+    padding: 12px max(20px, calc((100% - 560px) / 2));
+  }
+}
+@media (max-height: 690px) {
+  .arcade-heading {
+    padding: 10px 16px 8px;
+  }
+  .arcade-heading h3 {
+    font-size: 18px;
+  }
+  .arcade-heading p {
+    font-size: 11px;
+  }
+  .arcade-controls {
+    padding: 8px 12px;
+  }
+  .arcade-stage {
+    min-height: 390px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arcade-progress i,
+  .arcade-controls button {
+    transition: none;
+  }
+}
+
+.arcade-weather {
+  display: block;
+  color: #eac67f;
+  font-size: 10px;
+  line-height: 1.5;
+  margin-top: 5px;
+}
+
+.arcade-battle-cue {
+  min-height: 24px;
+  text-align: center;
+  margin: 0 0 8px;
+  color: #d4dfbe;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.arcade-battle-cue.counter {
+  color: #ffe0a0;
+}
+.arcade-lanes button[aria-pressed="true"] {
+  background: #687f4e;
+  border-color: #d6d9a1;
+  box-shadow:
+    inset 0 -3px #acc582,
+    0 3px #142b25;
+}
+.arcade-controls .counter-ready {
+  background: #f2d395;
+  box-shadow:
+    0 0 18px #e6bb6266,
+    inset 0 0 0 2px #ffe8b4;
+}
+
+.arcade-duel .arcade-field:before {background:linear-gradient(#183b221a,#19312933),var(--scene) center/cover;opacity:1;}

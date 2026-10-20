@@ -246,6 +246,7 @@ db.exec(`
     farm_notifications       INTEGER NOT NULL DEFAULT 1,
     farm_animal_notifications INTEGER NOT NULL DEFAULT 0,
     expedition_notifications INTEGER NOT NULL DEFAULT 1,
+    frontier_notifications   INTEGER NOT NULL DEFAULT 1,
     updated_at               INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   );
 
@@ -372,6 +373,7 @@ addColumnIfMissing('users',   'casino_free_spins', 'INTEGER NOT NULL DEFAULT 0')
 addColumnIfMissing('user_notification_settings', 'farm_notifications', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('user_notification_settings', 'farm_animal_notifications', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('user_notification_settings', 'expedition_notifications', 'INTEGER NOT NULL DEFAULT 1');
+addColumnIfMissing('user_notification_settings', 'frontier_notifications', 'INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('peepers', 'critical_start','INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'regen_start',   'INTEGER DEFAULT NULL');
 addColumnIfMissing('peepers', 'hp_at_regen',   'REAL DEFAULT NULL');

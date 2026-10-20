@@ -34,7 +34,6 @@ async function request(method, path, body, signal) {
     body: body ? JSON.stringify(body) : undefined,
     signal,
   });
-
   const data = await resp.json().catch(() => ({}));
 
   if (!resp.ok) {
@@ -48,6 +47,31 @@ const get = (path) => request('GET', path);
 const post = (path, body) => request('POST', path, body);
 
 export const login = () => post('/auth/login');
+
+async function frontierRequest(method, path, body) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    return await request(method, `/frontier${path}`, body, controller.signal);
+  } catch (error) {
+    if (error.name === 'AbortError' || error instanceof TypeError || error.status >= 500)
+      throw { status: error.status, message: 'Connection interrupted. Your progress is saved; try again.' };
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+export const frontierTravel = to => frontierRequest('POST','/travel',{to});
+export const frontierState = () => frontierRequest('GET','/state');
+export const frontierEvent = () => frontierRequest('GET','/event');
+export const frontierTicket = () => frontierRequest('POST','/ticket', {});
+export const frontierStartJob = (kind, requestId) => frontierRequest('POST','/jobs', {kind,requestId});
+export const frontierJob = id => frontierRequest('GET',`/jobs/${encodeURIComponent(id)}`);
+export const frontierJobAction = (id, payload) => frontierRequest('POST',`/jobs/${encodeURIComponent(id)}/action`, payload);
+export const frontierCancelJob = id => frontierRequest('POST',`/jobs/${encodeURIComponent(id)}/cancel`, {});
+export const frontierCreateMission = (kind,role,requestId,load='cart') => frontierRequest('POST','/missions', {kind,role,requestId,load});
+export const frontierMission = id => frontierRequest('GET',`/missions/${encodeURIComponent(id)}`);
+export const frontierMissionAction = (id,action,payload={}) => frontierRequest('POST',`/missions/${encodeURIComponent(id)}/${encodeURIComponent(action)}`,payload);
 
 export const getGameState = () => get('/game/state');
 async function sausageQuestRequest(operation, payload) {
@@ -218,3 +242,11 @@ export const acknowledgeExpeditionEvents = (eventIds, idempotencyKey) =>
 export const expeditionLog = (expeditionId) => get(`/expeditions/${expeditionId}/log`);
 export const expeditionHistory = () => get('/expeditions/history');
 export const expeditionArtifacts = () => get('/expeditions/artifacts');
+
+export const frontierBossPrepare = (item,amount,requestId) => frontierRequest('POST','/boss/prepare',{item,amount,requestId});
+export const frontierStartAssault = requestId => frontierRequest('POST','/boss/attacks',{requestId});
+export const frontierAssault = id => frontierRequest('GET',`/boss/attacks/${encodeURIComponent(id)}`);
+export const frontierAssaultAction = (id,payload) => frontierRequest('POST',`/boss/attacks/${encodeURIComponent(id)}/action`,payload);
+export const frontierCancelAssault = id => frontierRequest('POST',`/boss/attacks/${encodeURIComponent(id)}/cancel`,{});
+export const frontierBossCombat = () => frontierRequest('GET','/boss/combat');
+export const frontierBossHit = (action,requestId,options={}) => frontierRequest('POST','/boss/combat/action',{action,requestId,...options});

@@ -48,8 +48,16 @@ function messageRows() {
     LIMIT ?
   `).all(CHAT_MESSAGE_LIMIT).reverse();
   const appearances = getProfileAppearances(rows.flatMap(row => [row.user_id, row.reply_user_id]));
+  const hasFrontier = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='frontier_recruitment'").get();
+  const recruitment = hasFrontier ? new Map(db.prepare(`
+    SELECT r.message_id, m.id, m.kind, m.status,
+      (SELECT COUNT(*) FROM frontier_members p WHERE p.mission_id=m.id) AS members
+    FROM frontier_recruitment r
+    JOIN frontier_missions m ON m.id=r.mission_id
+  `).all().map(r => [r.message_id, r])) : new Map();
   return rows.map(row => ({
     ...row,
+    frontier_mission: recruitment.get(row.id) || null,
     appearance: appearances.get(Number(row.user_id)) || null,
     replyAppearance: appearances.get(Number(row.reply_user_id)) || null,
   }));

@@ -1,0 +1,227 @@
+{
+  "event": {
+    "active": true,
+    "name": "Beyond the Fog",
+    "resultsSeconds": 86400
+  },
+  "locations": [
+    {
+      "id": "village",
+      "name": "Crooked Post",
+      "subtitle": "A little crooked. Still home.",
+      "x": 0.319,
+      "y": 0.787,
+      "kind": "craft",
+      "resource": "supplies"
+    },
+    {
+      "id": "sawmill",
+      "name": "Mosswood Mill",
+      "subtitle": "Good timber. Questionable tools.",
+      "x": 0.241,
+      "y": 0.263,
+      "kind": "wood",
+      "resource": "wood"
+    },
+    {
+      "id": "quarry",
+      "name": "Pebble Quarry",
+      "subtitle": "There is iron in there. Probably.",
+      "x": 0.51,
+      "y": 0.205,
+      "kind": "ore",
+      "resource": "ore"
+    },
+    {
+      "id": "bridge",
+      "name": "Old Reed Bridge",
+      "subtitle": "The west landing. The crossing is closed.",
+      "x": 0.589,
+      "y": 0.393,
+      "kind": "delivery"
+    },
+    {
+      "id": "mill",
+      "name": "Supply Mill",
+      "subtitle": "Pack provisions for the shared expedition.",
+      "x": 0.927,
+      "y": 0.318,
+      "kind": "craft",
+      "requires": "bridge"
+    },
+    {
+      "id": "workshop",
+      "name": "Reedbank Armory",
+      "subtitle": "Iron into blades. Timber into hafts.",
+      "x": 0.797,
+      "y": 0.515,
+      "kind": "craft",
+      "requires": "bridge"
+    },
+    {
+      "id": "pool",
+      "name": "The Dragon's Hollow",
+      "subtitle": "The marsh dragon waits beyond the crossing.",
+      "x": 0.905,
+      "y": 0.826,
+      "kind": "boss",
+      "requires": "bridge"
+    }
+  ],
+  "jobs": {
+    "wood": {
+      "name": "Split marsh timber",
+      "verb": "Hold the glowing notch. Release in gold.",
+      "location": "sawmill",
+      "output": "wood",
+      "quantity": 3,
+      "inputs": {},
+      "seconds": 180,
+      "steps": 3,
+      "coins": 1,
+      "xp": 12,
+      "mechanic": "split"
+    },
+    "ore": {
+      "name": "Break the vein",
+      "verb": "Tap the glowing crack. Time hits for a clean fracture.",
+      "location": "quarry",
+      "output": "ore",
+      "quantity": 3,
+      "inputs": {},
+      "seconds": 180,
+      "steps": 3,
+      "coins": 1,
+      "xp": 12,
+      "mechanic": "chip"
+    },
+    "planks": {
+      "name": "Make construction planks",
+      "verb": "Saw the cut, plane the grain and seat the nails",
+      "location": "village",
+      "output": "planks",
+      "quantity": 1,
+      "inputs": {
+        "wood": 3,
+        "ore": 1
+      },
+      "seconds": 180,
+      "steps": 1,
+      "coins": 1,
+      "xp": 15,
+      "mechanic": "board"
+    },
+    "supplies": {
+      "name": "Pack expedition kits",
+      "verb": "Match supplies to fill the kit order",
+      "location": "mill",
+      "output": "supplies",
+      "quantity": 1,
+      "inputs": {
+        "wood": 1,
+        "ore": 1
+      },
+      "seconds": 180,
+      "steps": 1,
+      "coins": 1,
+      "xp": 15,
+      "mechanic": "provision",
+      "requires": "bridge"
+    },
+    "weapons": {
+      "name": "Forge expedition weapons",
+      "verb": "Heat the metal and follow the highlighted section",
+      "location": "workshop",
+      "output": "weapons",
+      "quantity": 1,
+      "inputs": {
+        "wood": 1,
+        "ore": 3
+      },
+      "seconds": 180,
+      "steps": 1,
+      "coins": 1,
+      "xp": 15,
+      "mechanic": "smith",
+      "requires": "bridge"
+    }
+  },
+  "roles": {
+    "driver": {
+      "name": "Driver",
+      "verb": "Drag to steer and swipe up to hop over stumps",
+      "symbol": "compass"
+    },
+    "guard": {
+      "name": "Guard",
+      "verb": "Sweep away spore beetles. Spare the lantern bugs.",
+      "symbol": "shield"
+    },
+    "mechanic": {
+      "name": "Mechanic",
+      "verb": "Reconnect the oil pipes to the axle",
+      "symbol": "wrench"
+    }
+  },
+  "projects": [
+    {
+      "id": "bridge",
+      "name": "Old Reed Bridge",
+      "target": 800,
+      "requires": null,
+      "reward": "Opens the far shore for everyone",
+      "stages": [
+        "Secure the landing",
+        "Raise the supports",
+        "Lay the deck",
+        "Finish the crossing"
+      ]
+    }
+  ],
+  "ranks": [
+    {
+      "xp": 0,
+      "name": "New arrival"
+    },
+    {
+      "xp": 60,
+      "name": "Trail regular"
+    },
+    {
+      "xp": 200,
+      "name": "Marsh hand"
+    },
+    {
+      "xp": 600,
+      "name": "Wayfinder"
+    },
+    {
+      "xp": 1500,
+      "name": "Keeper of the reeds"
+    }
+  ],
+  "mission": {
+    "rounds": 3,
+    "roundSeconds": 15,
+    "lobbySeconds": 600,
+    "capacity": 3,
+    "coins": 1,
+    "xp": 22,
+    "deliveryPlanks": 2,
+    "deliveryYield": [0, 2, 6, 10],
+    "requiredSuccesses": 2
+  },
+  "siege": {
+    "name": "Mirewake",
+    "maxHp": 300000,
+    "rewards": {
+      "activityCoins": 3,
+      "damageCoins": 3,
+      "damageStep": 40
+    },
+    "suppliesRequired": 500,
+    "weaponsRequired": 500,
+    "maxDamage": 12,
+    "attemptExpirySeconds": 60
+  }
+}

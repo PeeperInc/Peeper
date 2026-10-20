@@ -1,0 +1,1416 @@
+.frontier-screen {
+  --fw-paper: #eae0b9;
+  --fw-ink: #252b1d;
+  --fw-muted: #aab3a0;
+  --fw-line: #384636;
+  --fw-green: #bdd28a;
+  --fw-surface: #202c24;
+  --fw-deep: #121d18;
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--fw-deep);
+  color: #eef0df;
+  padding: var(--tg-total-top, 0px) max(0px, env(safe-area-inset-right))
+    max(18px, env(safe-area-inset-bottom)) max(0px, env(safe-area-inset-left));
+  font-family: "Nunito Sans", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  isolation: isolate;
+}
+.frontier-screen * {
+  box-sizing: border-box;
+}
+.frontier-screen button {
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+}
+.frontier-screen button:disabled {
+  opacity: 0.43;
+  cursor: not-allowed;
+}
+.frontier-screen button:focus-visible {
+  outline: 3px solid #ecd484;
+  outline-offset: 3px;
+}
+.frontier-screen h1,
+.frontier-screen h2,
+.frontier-screen h3,
+.frontier-screen p {
+  margin: 0;
+}
+.frontier-screen h1,
+.frontier-screen h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  letter-spacing: -0.035em;
+}
+.frontier-screen h3 {
+  font-size: 15px;
+  font-weight: 800;
+}
+.frontier-screen p {
+  color: var(--fw-muted);
+}
+.frontier-screen .frontier-header,
+.frontier-topline,
+.frontier-world-layout,
+.frontier-departures,
+.frontier-footer {
+  max-width: 1180px;
+  margin: auto;
+}
+.frontier-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 24px 12px;
+}
+.frontier-header h1 {
+  font-size: 34px;
+  line-height: 1.15;
+  margin-top: 2px;
+}
+.frontier-eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--fw-green);
+}
+.frontier-back {
+  background: transparent;
+  border: 1px solid var(--fw-line);
+  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  font-size: 32px !important;
+  line-height: 1;
+}
+.frontier-balance {
+  margin-left: auto;
+  font:
+    600 19px "DM Mono",
+    monospace;
+  white-space: nowrap;
+}
+.frontier-balance > span {
+  color: #e7c76b;
+}
+.frontier-topline {
+  padding: 0 24px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: var(--fw-muted);
+  font-size: 12px;
+}
+.frontier-topline button {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  padding: 8px 0;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.frontier-live:before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ba8a51;
+  margin-right: 7px;
+}
+.frontier-live.connected:before {
+  background: #a9c66e;
+}
+.frontier-world-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  padding: 0 24px;
+  gap: 0;
+}
+.frontier-map-column {
+  min-width: 0;
+}
+.frontier-map-wrap {
+  position: relative;
+  border-radius: 18px 0 0 0;
+  overflow: hidden;
+  border: 1px solid #475641;
+}
+.frontier-map {
+  height: 555px;
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  background: #687444;
+}
+.frontier-map canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.frontier-map-fallback {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  object-fit: fill;
+}
+.frontier-map-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.frontier-pin {
+  position: absolute;
+  z-index: 3;
+  pointer-events: auto;
+  background: #f1e4bcef;
+  border: 1px solid #383521;
+  box-shadow: 1px 3px 0 #1e271848;
+  border-radius: 4px 8px 5px 3px;
+  min-height: 35px;
+  padding: 6px 10px 6px 9px;
+  color: #252b1d !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.frontier-pin small {
+  font-size: 9px;
+  display: block;
+  margin-top: 4px;
+  font-weight: 600;
+}
+.frontier-pin.selected {
+  background: #c5d58b;
+  outline: 2px solid #f6e8a6;
+  outline-offset: 3px;
+  z-index: 4;
+}
+.frontier-pin.locked {
+  background: #303d2eef;
+  color: #dbe1cb !important;
+}
+.frontier-pin-dot {
+  width: 5px;
+  height: 5px;
+  display: inline-block;
+  background: currentColor;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+.frontier-map-peeper {
+  position: absolute;
+  pointer-events: none;
+  transition:
+    left 1.8s ease-in-out,
+    top 1.8s ease-in-out;
+  text-align: center;
+  z-index: 2;
+  transform: translate(-20%, -35%);
+}
+.frontier-map-peeper .peeper-stage {
+  animation: frontier-bob 3.4s ease-in-out infinite;
+}
+.frontier-map-peeper > span {
+  display: inline-block;
+  background: #17251ded;
+  color: #f1e9d2;
+  border-radius: 5px;
+  padding: 2px 10px;
+  font-size: 17px;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: -20px;
+}
+.frontier-map-peeper.yours > span {
+  background: #e9dcae;
+  color: #28301b;
+}
+.frontier-bridge-open {
+  position: absolute;
+  color: #fff3bd;
+  font-size: 20px;
+  background: #44552c;
+  padding: 2px 8px;
+  transform: rotate(23deg);
+}
+.frontier-map-tools {
+  position: absolute;
+  right: 12px;
+  bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.frontier-map-tools button {
+  background: #eae0b9ed;
+  color: #27311f;
+  width: 35px;
+  height: 35px;
+  border: 1px solid #3a402a;
+  border-radius: 6px;
+  font-size: 22px;
+  line-height: 1;
+}
+.frontier-map-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #14241dde;
+  padding: 8px 13px;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e3dfc2;
+}
+.frontier-map-caption span {
+  letter-spacing: 0;
+  opacity: 0.75;
+}
+.frontier-location-strip {
+  display: flex;
+  background: #26352a;
+  border: 1px solid var(--fw-line);
+  border-top: 0;
+  border-radius: 0 0 0 15px;
+  overflow: hidden;
+}
+.frontier-location-strip button {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--fw-line);
+  padding: 12px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #c1c9b6;
+}
+.frontier-location-strip button[aria-pressed="true"] {
+  background: #c0d18c;
+  color: #25301e;
+}
+.frontier-location-panel {
+  background: var(--fw-surface);
+  padding: 25px 22px;
+  border: 1px solid var(--fw-line);
+  border-left: 0;
+  border-radius: 0 18px 15px 0;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+.frontier-location-heading {
+  margin-bottom: 22px;
+}
+.frontier-location-heading h2 {
+  font-size: 30px;
+  line-height: 1.2;
+  margin: 7px 0 8px;
+}
+.frontier-location-heading p {
+  font-size: 13px;
+  max-width: 260px;
+}
+.frontier-orders {
+  display: grid;
+  gap: 12px;
+}
+.frontier-order {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 16px 0;
+  border-top: 1px solid var(--fw-line);
+  align-items: center;
+}
+.frontier-order h3 {
+  margin-bottom: 4px;
+}
+.frontier-order p {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.frontier-order small {
+  display: block;
+  color: #d2cbad;
+  font-size: 10px;
+  margin-top: 9px;
+}
+.frontier-order-icon {
+  font-size: 24px;
+  color: #c5a374;
+}
+.frontier-order > button {
+  border: 1px solid #738451;
+  background: #30412d;
+  border-radius: 7px;
+  padding: 8px;
+  font-size: 12px;
+}
+.frontier-primary,
+.frontier-secondary {
+  width: 100%;
+  border-radius: 8px;
+  min-height: 45px;
+  padding: 11px 14px;
+  font-weight: 800 !important;
+  border: 1px solid #29321d;
+  margin: 5px 0;
+}
+.frontier-primary {
+  background: #c0d48f;
+  color: #233019 !important;
+  box-shadow: 0 3px 0 #0e180a80;
+}
+.frontier-primary:hover:not(:disabled) {
+  background: #d1e3a3;
+}
+.frontier-secondary {
+  background: transparent;
+  border: 1px solid #627150;
+  color: #dfe6c7 !important;
+}
+.frontier-text-button {
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 10px 0;
+  color: #b8c3aa !important;
+  font-size: 12px !important;
+}
+.frontier-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  margin: 10px 0;
+}
+.frontier-between b {
+  font-family: "DM Mono", monospace;
+}
+.frontier-meter {
+  height: 7px;
+  background: #131e16;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.frontier-meter > span {
+  display: block;
+  height: 100%;
+  background: #b6cd7e;
+  border-radius: 5px;
+  transition: width 0.35s;
+}
+.frontier-build-status {
+  margin-bottom: 16px;
+}
+.frontier-build-status p {
+  font-size: 12px;
+  margin-top: 12px;
+}
+.frontier-role-picker {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 12px;
+}
+.frontier-role-picker button {
+  flex: 1;
+  border: 1px solid #536148;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 11px;
+  padding: 9px 3px;
+}
+.frontier-role-picker button[aria-pressed="true"] {
+  background: #526643;
+  border-color: #c1d588;
+}
+.frontier-fine {
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 11px 0 !important;
+  color: #aab3a0;
+}
+.frontier-stock-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 25px;
+  margin-top: auto;
+  align-items: baseline;
+}
+.frontier-stock-heading h3 {
+  font-size: 12px;
+}
+.frontier-stock-heading > span {
+  font-size: 10px;
+  color: var(--fw-muted);
+}
+.frontier-resources {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.frontier-resources > span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--fw-line);
+  border-radius: 7px;
+  padding: 10px 3px;
+}
+.frontier-resources i {
+  font-style: normal;
+  font-size: 19px;
+  color: #cda377;
+  line-height: 1.3;
+}
+.frontier-resources i.resource-ore {
+  color: #adbdbf;
+}
+.frontier-resources i.resource-supplies {
+  color: #c1ce8e;
+}
+.frontier-resources b {
+  font-family: "DM Mono", monospace;
+  font-size: 14px;
+}
+.frontier-resources small {
+  font-size: 9px;
+  color: #b4bea8;
+}
+.frontier-locked {
+  border-top: 1px solid var(--fw-line);
+  padding: 14px 0;
+}
+.frontier-locked > span {
+  font-size: 38px;
+  color: #9eb782;
+}
+.frontier-locked p {
+  font-size: 12px;
+  margin: 10px 0 14px;
+}
+.frontier-resume {
+  padding: 11px 13px;
+  border: 1px solid #becc86;
+  border-radius: 6px;
+  background: #384a2d;
+  text-align: left;
+  margin-bottom: 16px;
+  font-size: 12px !important;
+}
+.frontier-departures {
+  padding: 32px 24px 24px;
+}
+.frontier-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 16px;
+}
+.frontier-section-heading h2 {
+  font-size: 27px;
+  margin-top: 4px;
+}
+.frontier-section-heading > button {
+  border: 0;
+  border-bottom: 1px solid #889873;
+  background: none;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #d3dbbb;
+}
+.frontier-party-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.frontier-party-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 13px;
+  border: 1px solid var(--fw-line);
+  background: #202c24;
+  border-radius: 10px;
+}
+.frontier-party-card > span {
+  margin-left: auto;
+  font-size: 24px;
+  color: #c6d98b;
+}
+.frontier-party-card b {
+  display: block;
+  font-size: 13px;
+}
+.frontier-party-card span,
+.frontier-party-card small {
+  display: block;
+  font-size: 11px;
+  color: #aab89d;
+}
+.frontier-party-avatars {
+  display: flex;
+  max-width: 110px;
+  overflow: hidden;
+}
+.frontier-party-avatars .peeper-stage {
+  flex-shrink: 0;
+  margin-right: -35px;
+}
+.frontier-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 18px 20px;
+  border: 1px dashed #46583e;
+  border-radius: 9px;
+}
+.frontier-empty > span {
+  font-size: 14px;
+  color: #d7dec1;
+}
+.frontier-empty p {
+  font-size: 12px;
+  max-width: 370px;
+}
+.frontier-empty > button {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: #c4d990;
+  font-size: 12px;
+  padding: 7px;
+}
+.frontier-footer {
+  padding: 0 24px 28px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.frontier-footer > button {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 16px;
+  background: #1c2920;
+  border: 1px solid var(--fw-line);
+  border-radius: 9px;
+  text-align: left;
+}
+.frontier-footer > button > span {
+  font-size: 30px;
+  color: #b7c38c;
+}
+.frontier-footer b {
+  display: block;
+  font-size: 13px;
+}
+.frontier-footer small {
+  font-size: 11px;
+  color: #aab89d;
+}
+.frontier-warning {
+  background: #554524;
+  color: #fff0c5;
+  border: 1px solid #8c7442;
+  font-size: 12px;
+  padding: 12px;
+  border-radius: 6px;
+  margin: 8px 0;
+}
+.frontier-loading {
+  max-width: 1100px;
+  margin: auto;
+  min-height: 500px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+}
+.frontier-loading > img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.35;
+}
+.frontier-loading > div {
+  z-index: 1;
+  text-align: center;
+  padding: 30px;
+  max-width: 400px;
+}
+.frontier-loading h2 {
+  font-size: 32px;
+  margin-bottom: 15px;
+}
+.frontier-shade {
+  position: fixed;
+  inset: 0;
+  background: #08120fc7;
+  backdrop-filter: blur(7px);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(18px, var(--tg-total-top, 0px)) 18px
+    max(18px, env(safe-area-inset-bottom));
+}
+.frontier-dialog {
+  background: #202c24;
+  border: 1px solid #596548;
+  border-radius: 17px;
+  width: min(100%, 550px);
+  max-height: 100%;
+  overflow: auto;
+  box-shadow: 0 20px 80px #0008;
+  outline: 0;
+}
+.frontier-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #202c24;
+  padding: 15px 18px;
+  border-bottom: 1px solid #42513c;
+}
+.frontier-dialog > header h2 {
+  font-size: 25px;
+}
+.frontier-dialog > header button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #516048;
+  background: none;
+  border-radius: 50%;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+.frontier-panel-body {
+  padding: 20px;
+}
+.frontier-panel-body > p {
+  margin: 10px 0;
+}
+.frontier-guide .frontier-lead {
+  font:
+    24px/1.3 Georgia,
+    serif;
+  color: #e6e5c9;
+}
+.frontier-guide ol {
+  padding-left: 22px;
+}
+.frontier-guide li {
+  margin: 15px 0;
+  color: #bec8b2;
+}
+.frontier-guide li b {
+  color: #e7edcd;
+}
+.frontier-confirm {
+  max-width: 390px;
+}
+.frontier-role-list {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.frontier-role-list > button {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 3px;
+  background: #30412e;
+  border: 1px solid #5b7049;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: left;
+}
+.frontier-role-list small {
+  font-size: 11px;
+  color: #b9c6a5;
+}
+.frontier-role-note {
+  font-size: 12px;
+  background: #314129;
+  padding: 12px;
+  border-radius: 7px;
+}
+.frontier-instruction {
+  font-size: 12px;
+  margin: 10px 0 15px !important;
+}
+.frontier-result {
+  text-align: center;
+  padding: 18px 0 2px;
+}
+.frontier-result h3 {
+  font:
+    29px Georgia,
+    serif;
+}
+.frontier-result p {
+  margin: 12px 0 18px;
+  font-size: 13px;
+}
+.frontier-journal-stats {
+  display: flex;
+  margin: 20px 0;
+  gap: 12px;
+}
+.frontier-journal-stats span {
+  flex: 1;
+  font-size: 11px;
+  color: #b4c3a3;
+}
+.frontier-journal-stats b {
+  display: block;
+  font:
+    26px Georgia,
+    serif;
+  color: #dfdfb9;
+}
+.frontier-journal-entry {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--fw-line);
+  font-size: 12px;
+}
+.frontier-journal-entry b {
+  color: #dac783;
+}
+.frontier-panel-body > h3 {
+  margin-top: 16px;
+}
+.frontier-event {
+  padding-left: 12px;
+  border-left: 2px solid #637d48;
+  font-size: 12px;
+  margin-top: 15px !important;
+}
+.frontier-keepsake {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+  border-top: 1px solid #435239;
+  padding: 20px 0;
+}
+.frontier-keepsake > span {
+  font-size: 48px;
+  min-width: 55px;
+  text-align: center;
+}
+.frontier-keepsake > div {
+  flex: 1;
+}
+.frontier-keepsake p {
+  font-size: 12px;
+  margin: 6px 0 9px;
+}
+.frontier-chat-dialog {
+  height: 80dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.frontier-chat-dialog > .global-chat-screen {
+  flex: 1;
+  min-height: 0;
+  padding-top: 0;
+}
+.frontier-chat-dialog .global-chat-header {
+  display: none;
+}
+.frontier-boss-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.frontier-boss-card img {
+  width: 95px;
+  height: 130px;
+  object-fit: contain;
+}
+.frontier-boss-card > div {
+  flex: 1;
+}
+.frontier-boss-card span {
+  font-size: 12px;
+  color: #c3caaa;
+  display: block;
+  margin: 8px 0;
+}
+.frontier-work-scene {
+  height: 270px;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #526544;
+}
+.frontier-work-scene:before,
+.frontier-mission-scene:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--work-map);
+  background-size: 180%;
+  background-position: 10% 23%;
+  filter: brightness(0.66);
+  z-index: -1;
+}
+.frontier-work-scene.work-ore:before {
+  background-position: 49% 0;
+}
+.frontier-work-scene.work-supplies:before,
+.frontier-work-scene.work-planks:before {
+  background-position: 3% 82%;
+}
+.frontier-work-sign {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 16px;
+  padding: 11px 15px;
+  background: #e8ddb6;
+  border: 2px solid #383423;
+  box-shadow: 2px 4px 0 #14201270;
+  border-radius: 3px 7px 4px 6px;
+  transform: rotate(-1deg);
+  color: #2d341f;
+  text-align: center;
+  z-index: 2;
+}
+.frontier-work-sign span {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.frontier-work-sign strong {
+  font-size: 20px;
+  display: block;
+  margin-top: 3px;
+}
+.frontier-work-slip {
+  position: absolute;
+  left: 50%;
+  top: 53%;
+  width: 175px;
+  padding: 13px 12px;
+  background: #eadfb9;
+  color: #3b3622;
+  box-shadow: 3px 5px 3px #14201265;
+  transform: translate(-50%, -10%) rotate(6deg);
+  border: 1px solid #76633f;
+  text-align: left;
+  animation: frontier-slip 0.4s ease-out;
+}
+.frontier-work-slip small {
+  display: block;
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  border-bottom: 1px dashed #9d906d;
+  padding-bottom: 5px;
+}
+.frontier-work-slip b {
+  display: block;
+  font:
+    18px Georgia,
+    serif;
+  margin-top: 5px;
+}
+.frontier-work-slip span {
+  font-size: 10px;
+  display: block;
+  margin: 5px 0;
+}
+.frontier-work-slip i {
+  font-size: 8px;
+  font-style: normal;
+  letter-spacing: 0.15em;
+  border: 1px solid #587344;
+  color: #456232;
+  padding: 2px 4px;
+  display: inline-block;
+  transform: rotate(-5deg);
+}
+@keyframes frontier-slip {
+  from {
+    opacity: 0;
+    transform: translate(-40%, 10%) rotate(12deg);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -10%) rotate(6deg);
+  }
+}
+.frontier-work-time {
+  position: absolute;
+  bottom: 10px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #f4eccf;
+  font-size: 11px;
+  background: #18261dbd;
+  padding: 5px 9px;
+  border-radius: 4px;
+}
+.frontier-work-choices {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 18px 0;
+}
+.frontier-material {
+  min-height: 74px;
+  background: #384832;
+  border: 1px solid #7b8d5e;
+  border-radius: 6px;
+  font-size: 10px !important;
+  letter-spacing: 0.06em;
+  padding: 8px 2px;
+}
+.frontier-material > span {
+  display: block;
+  font-size: 25px;
+  line-height: 1.3;
+  margin-bottom: 5px;
+  color: #cfaf7a;
+}
+.frontier-material.material-1 > span {
+  color: #c0c49d;
+}
+.frontier-material.material-2 > span {
+  color: #9bac92;
+}
+.frontier-material.material-3 > span {
+  color: #b78f70;
+}
+.frontier-mission-scene {
+  height: 310px;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: #4e6344;
+}
+.frontier-mission-scene:before {
+  background-position: 25% 70%;
+  background-size: 180%;
+  animation: frontier-travel 35s linear infinite alternate;
+}
+.frontier-mission-scene.boss:before {
+  background-position: 100% 95%;
+  animation: none;
+  filter: brightness(0.5);
+}
+.frontier-cart-scene {
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  top: 50px;
+  height: 180px;
+  z-index: 1;
+}
+.frontier-cart-art {
+  width: 100%;
+  height: 100%;
+  background-image: url("../assets/frontier/cart.webp");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  animation: frontier-bob 1.2s ease-in-out infinite;
+}
+.frontier-party-sprites {
+  position: absolute;
+  bottom: 18px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-evenly;
+  z-index: 2;
+}
+.frontier-party-sprites > div {
+  text-align: center;
+  width: 100px;
+  position: relative;
+}
+.frontier-party-sprites .peeper-stage {
+  margin-left: -10px;
+  animation: frontier-bob 1.8s ease-in-out infinite;
+}
+.frontier-party-sprites span {
+  display: block;
+  margin-top: -24px;
+  position: relative;
+  font-size: 11px;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 3px #000;
+}
+.frontier-party-sprites small {
+  font-size: 9px;
+  background: #263a22e6;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+.frontier-scene-label {
+  position: absolute;
+  top: 13px;
+  left: 14px;
+  background: #ecdfb9;
+  color: #2e361e;
+  padding: 5px 10px;
+  border-radius: 3px;
+  transform: rotate(-1deg);
+  font-size: 11px;
+  border: 1px solid #394028;
+}
+.frontier-boss-art {
+  position: absolute;
+  left: 35%;
+  height: 245px;
+  top: 17px;
+  object-fit: contain;
+  animation: frontier-bob 4s ease-in-out infinite;
+}
+.frontier-task-prompt {
+  text-align: center;
+  margin: 17px 0;
+}
+.frontier-task-prompt small {
+  display: block;
+  color: #bdcba9;
+  font-size: 12px;
+}
+.frontier-task-prompt strong {
+  display: block;
+  font:
+    28px Georgia,
+    serif;
+  color: #e4dfb4;
+  margin: 7px 0;
+}
+.frontier-task-prompt > span {
+  font-size: 11px;
+  color: #acbda0;
+}
+.frontier-action-lanes {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+.frontier-action-lanes button {
+  flex: 1;
+  min-height: 50px;
+  background: #b9cd87;
+  color: #26301c;
+  border: 1px solid #26311f;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 3px 0 #111d0dc2;
+}
+@keyframes frontier-bob {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -4px;
+  }
+}
+@keyframes frontier-work-piece {
+  0% {
+    translate: -30px 0;
+  }
+  20%,
+  85% {
+    translate: 0 0;
+  }
+  100% {
+    translate: 40px 0;
+  }
+}
+@keyframes frontier-travel {
+  from {
+    background-position: 25% 60%;
+  }
+  to {
+    background-position: 40% 75%;
+  }
+}
+@media (max-width: 760px) {
+  .frontier-header {
+    padding: 15px 16px 8px;
+    gap: 11px;
+  }
+  .frontier-header h1 {
+    font-size: 28px;
+  }
+  .frontier-eyebrow {
+    font-size: 9px;
+  }
+  .frontier-back {
+    width: 35px;
+    height: 35px;
+  }
+  .frontier-balance {
+    font-size: 15px;
+  }
+  .frontier-topline {
+    padding: 0 16px 10px;
+    font-size: 10px;
+    gap: 12px;
+  }
+  .frontier-world-layout {
+    display: block;
+    padding: 0 12px;
+  }
+  .frontier-map-wrap {
+    border-radius: 14px 14px 0 0;
+  }
+  .frontier-map {
+    height: 430px;
+  }
+  .frontier-location-strip {
+    border-radius: 0;
+  }
+  .frontier-location-strip button {
+    padding: 13px 1px;
+    font-size: 10px;
+  }
+  .frontier-location-panel {
+    border-left: 1px solid var(--fw-line);
+    border-top: 0;
+    border-radius: 0 0 14px 14px;
+    padding: 20px 17px;
+  }
+  .frontier-location-heading {
+    margin-bottom: 12px;
+  }
+  .frontier-location-heading h2 {
+    font-size: 28px;
+  }
+  .frontier-location-heading p {
+    max-width: none;
+  }
+  .frontier-order {
+    padding: 13px 0;
+  }
+  .frontier-stock-heading {
+    padding-top: 18px;
+  }
+  .frontier-resources > span {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 3px 7px;
+    padding: 8px 3px;
+  }
+  .frontier-resources small {
+    width: 100%;
+    text-align: center;
+  }
+  .frontier-departures {
+    padding: 25px 16px 20px;
+  }
+  .frontier-section-heading h2 {
+    font-size: 25px;
+  }
+  .frontier-section-heading > button {
+    font-size: 10px;
+    max-width: 115px;
+  }
+  .frontier-party-list {
+    grid-template-columns: 1fr;
+  }
+  .frontier-empty {
+    padding: 15px;
+    gap: 7px;
+  }
+  .frontier-empty > button {
+    margin-left: 0;
+    padding: 6px 0;
+  }
+  .frontier-footer {
+    padding: 0 16px 18px;
+    gap: 8px;
+  }
+  .frontier-footer > button {
+    padding: 12px;
+    gap: 8px;
+  }
+  .frontier-footer b {
+    font-size: 11px;
+  }
+  .frontier-footer small {
+    font-size: 9px;
+  }
+  .frontier-footer > button > span {
+    font-size: 23px;
+  }
+  .frontier-shade {
+    padding: max(10px, var(--tg-total-top, 0px)) 8px
+      max(10px, env(safe-area-inset-bottom));
+  }
+  .frontier-dialog > header {
+    padding: 12px 15px;
+  }
+  .frontier-dialog > header h2 {
+    font-size: 23px;
+  }
+  .frontier-panel-body {
+    padding: 17px;
+  }
+  .frontier-work-sign strong {
+    font-size: 18px;
+  }
+  .frontier-work-choices {
+    gap: 6px;
+  }
+  .frontier-material {
+    font-size: 9px !important;
+  }
+  .frontier-mission-scene {
+    height: 290px;
+  }
+  .frontier-chat-dialog {
+    height: 90dvh;
+  }
+  .frontier-guide .frontier-lead {
+    font-size: 22px;
+  }
+}
+@media (max-width: 370px) {
+  .frontier-map {
+    height: 380px;
+  }
+  .frontier-header h1 {
+    font-size: 25px;
+  }
+  .frontier-pin {
+    font-size: 10px !important;
+    padding: 6px;
+  }
+  .frontier-map-caption {
+    font-size: 8px;
+  }
+  .frontier-balance {
+    font-size: 13px;
+  }
+  .frontier-resources {
+    gap: 5px;
+  }
+  .frontier-order {
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    gap: 7px;
+  }
+  .frontier-footer {
+    grid-template-columns: 1fr;
+  }
+  .frontier-action-lanes button {
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .frontier-screen *,
+  .frontier-screen *:before {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.frontier-work-scene:before,
+.frontier-work-scene.work-ore:before,
+.frontier-work-scene.work-planks:before,
+.frontier-work-scene.work-supplies:before {
+  background-size: cover;
+  background-position: center 47%;
+  filter: brightness(1.08);
+}
+.frontier-equipped {
+  position: absolute;
+  right: 8px;
+  top: 60px;
+  font-size: 45px;
+  line-height: 1;
+  font-style: normal;
+  text-shadow:
+    1px 2px #202919,
+    -1px -1px #202919;
+  transform: rotate(-9deg);
+}
+.frontier-equipped.crown {
+  top: 15px;
+  right: 65px;
+  font-size: 36px;
+}
+.frontier-equipped.lantern {
+  filter: drop-shadow(0 0 8px #ffc965);
+  top: 95px;
+}
+.frontier-pin {
+  min-height: 44px;
+}
+.frontier-map-tools button {
+  width: 44px;
+  height: 44px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .frontier-work-slip {
+    animation: none;
+  }
+}
+
+.frontier-party-chat {
+  display: block;
+  margin: 0 0 14px auto;
+  min-height: 36px;
+  border: 0;
+  border-bottom: 1px dashed #849b66;
+  background: transparent;
+  color: #c5d895;
+  font-size: 11px;
+  padding: 4px 0;
+}

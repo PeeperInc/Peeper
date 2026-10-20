@@ -1,0 +1,421 @@
+.touch-stage {
+  --field-brass: #ebca7f;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  color: #f5e8c8;
+  background: #203a30;
+  font-family: system-ui, sans-serif;
+}
+.field-round-track {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+  color: #f9e9bc;
+  font-size: 10px;
+  text-shadow: 0 1px 3px #20392f;
+}
+.field-round-track > div {
+  display: flex;
+  gap: 5px;
+}
+.field-round-track i {
+  width: 17px;
+  height: 5px;
+  border: 1px solid #d7ce9b77;
+  border-radius: 3px;
+  background: #29493999;
+}
+.field-round-track i.current {
+  background: #d4b56c;
+  box-shadow: 0 0 8px #e6c57666;
+}
+.field-round-track i.complete {
+  background: #bbe5ae;
+}
+.touch-hit .timing-dial {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  overflow: visible;
+  pointer-events: none;
+}
+.timing-dial circle {
+  fill: none;
+  stroke: #f7ce71;
+  stroke-width: 7;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+.timing-dial path {
+  stroke: #f6efda;
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform-origin: 50% 50%;
+}
+.field-impact {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 32%;
+  text-align: center;
+  pointer-events: none;
+  font: 600 24px Georgia;
+  color: #ffe7a6;
+  text-shadow: 0 2px 4px #284638;
+  animation: field-impact 0.6s ease-out both;
+  z-index: 2;
+}
+.field-impact.miss {
+  color: #edbc99;
+}
+@keyframes field-impact {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
+.touch-scene:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 65px #19362e40;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-impact {
+    animation: none;
+  }
+}
+.touch-stage > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+.touch-stage h3 {
+  font:
+    600 21px Georgia,
+    serif;
+  margin: 0;
+}
+.touch-stage > header > b {
+  font: 600 12px system-ui;
+  white-space: nowrap;
+  color: #e7ce94;
+}
+.touch-scene {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  overflow: hidden;
+  background: #809b88;
+  touch-action: none;
+  isolation: isolate;
+}
+.touch-scene > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.touch-targets {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.touch-hit {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 94px;
+  height: 94px;
+  border: 0;
+  border-radius: 50%;
+  color: #fff4cf;
+  background: #203c3255;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: pointer;
+}
+.touch-hit:disabled {
+  visibility: hidden;
+}
+.touch-hit.active:disabled {
+  visibility: visible;
+  opacity: 0.5;
+}
+.fracture-pips {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -14px;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+.fracture-pips b {
+  height: 5px;
+  width: 12px;
+  border-radius: 2px;
+  background: #c4dfcb;
+  box-shadow: 0 1px 3px #263c32;
+}
+.fracture-pips b.broken {
+  background: #67857755;
+  box-shadow: none;
+}
+.touch-hit i {
+  position: absolute;
+  inset: 5px;
+  border: 4px solid #d4eee0;
+  border-radius: 50%;
+  transform: scale(var(--ring));
+  pointer-events: none;
+}
+.touch-hit:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px dashed #e5f2dacc;
+  border-radius: 50%;
+}
+.touch-hit span {
+  display: block;
+  font: 30px system-ui;
+  text-shadow: 0 2px #243e31;
+}
+.touch-hit small {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 650 11px system-ui;
+  white-space: nowrap;
+  padding: 5px 8px;
+  background: #253e32db;
+  border-radius: 4px;
+  color: #fff3d2;
+  pointer-events: none;
+}
+.touch-hit.gold {
+  background: #c5a75f8c;
+}
+.touch-hit.gold i {
+  border-color: #ffe69c;
+  box-shadow: 0 0 15px #ffe29a66;
+}
+.touch-hit:focus-visible {
+  outline: 3px solid #fff0b5;
+}
+.touch-targets.flat {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+}
+.touch-targets.flat .touch-hit {
+  position: relative;
+  left: auto !important;
+  top: auto !important;
+  transform: none;
+}
+.touch-targets.flat .touch-hit:disabled {
+  display: none;
+}
+.touch-stage > footer {
+  flex-shrink: 0;
+  padding: 12px 18px 15px;
+  text-align: center;
+  border-top: 1px solid #d7d5b426;
+}
+.touch-stage > footer > b {
+  font-size: 15px;
+  color: #f6df9f;
+}
+.touch-stage > footer p {
+  font-size: 11px;
+  color: #bccdb3;
+  line-height: 1.5;
+  margin: 7px 0 0;
+}
+.touch-intro {
+  position: absolute;
+  inset: 0;
+  background: #20392fd4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 25px;
+  text-align: center;
+  z-index: 3;
+}
+.touch-intro h4 {
+  font:
+    500 29px Georgia,
+    serif;
+  margin: 0;
+}
+.touch-intro p {
+  font-size: 14px;
+  line-height: 1.65;
+  max-width: 290px;
+  margin: 0;
+}
+.touch-intro button,
+.touch-stage footer button {
+  min-height: 50px;
+  padding: 10px 30px;
+  border: 1px solid #f2d69c;
+  background: #dfc28a;
+  color: #2b3d2b;
+  border-radius: 7px;
+  font-size: 15px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.touch-result {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 10px;
+  min-width: 210px;
+  padding: 22px;
+  background: #203b31ed;
+  border: 1px solid #d7c18b;
+  border-radius: 8px;
+  text-align: center;
+  z-index: 4;
+}
+.touch-result b {
+  font:
+    26px Georgia,
+    serif;
+}
+.touch-result span {
+  color: #ddc38c;
+}
+.touch-condition {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  color: #f3d498;
+  font: 19px system-ui;
+  letter-spacing: 4px;
+}
+.touch-drag-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  font-size: 36px;
+  color: #fff0c1;
+  text-shadow: 0 2px 4px #253b31;
+  pointer-events: none;
+  text-align: center;
+}
+.touch-drag-hint span {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+}
+@media (max-height: 680px) {
+  .touch-stage > header {
+    padding: 9px 12px;
+  }
+  .touch-stage h3 {
+    font-size: 19px;
+  }
+  .touch-stage > footer {
+    padding: 9px 12px;
+  }
+  .touch-stage > footer p {
+    font-size: 10px;
+  }
+  .touch-hit {
+    width: 78px;
+    height: 78px;
+  }
+  .touch-scene {
+    min-height: 190px;
+  }
+  .touch-intro {
+    gap: 12px;
+  }
+  .touch-intro p {
+    font-size: 13px;
+  }
+}
+.flat-trail {
+  position: absolute;
+  inset: 0 4%;
+  background: linear-gradient(90deg, #6c865e 0 7%, #b7a477 7% 93%, #6c865e 93%);
+  pointer-events: none;
+}
+.flat-trail:after {
+  content: "";
+  position: absolute;
+  inset: 0 33%;
+  border-left: 2px dashed #d2c08d77;
+  border-right: 2px dashed #d2c08d77;
+}
+.flat-trail > span {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+.flat-stump {
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  background: #77553b;
+  color: #d5b57c;
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+}
+.flat-crate {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: #dbb76b;
+  border: 3px solid #7e6943;
+  color: #fff3be;
+  font-size: 25px;
+}
+.flat-cart {
+  bottom: 10%;
+  width: 54px;
+  height: 65px;
+  background: #92643c;
+  border: 5px solid #d7b476;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  font-size: 36px;
+  color: #dfd3a6;
+}
