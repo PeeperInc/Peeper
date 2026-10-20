@@ -1,6 +1,6 @@
 "use strict";
 const content = require("./content.json");
-function install(db) {
+function install(db, now = () => Math.floor(Date.now() / 1000)) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS frontier_players (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -117,9 +117,29 @@ function install(db) {
       ["required_successes", "INTEGER NOT NULL DEFAULT 4"],
       ["cargo", "INTEGER NOT NULL DEFAULT 2"],
       ["min_crew", "INTEGER NOT NULL DEFAULT 1"],
+      ["delivery_version", "INTEGER NOT NULL DEFAULT 0"],
+      ["input_cargo", "INTEGER"],
+      ["load_kind", "TEXT"],
+      ["round_started_at", "INTEGER"],
     ])
       if (!missionColumns.has(name))
         db.exec(`ALTER TABLE frontier_missions ADD COLUMN ${name} ${type}`);
+    const jobColumns = db.prepare("PRAGMA table_info(frontier_jobs)").all();
+    if (!jobColumns.some((c) => c.name === "continuous"))
+      db.exec(
+        "ALTER TABLE frontier_jobs ADD COLUMN continuous INTEGER NOT NULL DEFAULT 0",
+      );
+    if (!jobColumns.some((c) => c.name === "recipe_inputs")) {
+      db.exec("ALTER TABLE frontier_jobs ADD COLUMN recipe_inputs TEXT");
+      // Existing plank batches reserved the old recipe. Preserve that exact refund.
+      for (const j of db.prepare("SELECT id,kind FROM frontier_jobs").all())
+        db.prepare("UPDATE frontier_jobs SET recipe_inputs=? WHERE id=?").run(
+          JSON.stringify(
+            j.kind === "planks" ? { wood: 3 } : content.jobs[j.kind].inputs,
+          ),
+          j.id,
+        );
+    }
     for (const item of ["wood", "ore", "planks", "supplies", "weapons"])
       db.prepare("INSERT OR IGNORE INTO frontier_stock(item) VALUES (?)").run(
         item,
@@ -149,7 +169,7 @@ function install(db) {
         hasHonors ? 1 : 0,
         cfg.maxHp,
         cfg.maxHp,
-        cfg.rewardPool,
+        0,
         cfg.suppliesRequired,
         cfg.weaponsRequired,
       );
@@ -195,6 +215,51 @@ function install(db) {
         );
         db.prepare("DELETE FROM frontier_commitments WHERE ref=?").run(m.id);
       }
+    }
+    db.exec(
+      "CREATE TABLE IF NOT EXISTS frontier_balance_migrations(id TEXT PRIMARY KEY,applied_at INTEGER NOT NULL)",
+    );
+    const revision = "2026-10-19-shorter-journey";
+    if (
+      !db
+        .prepare("SELECT 1 FROM frontier_balance_migrations WHERE id=?")
+        .get(revision)
+    ) {
+      const target = content.projects.find((p) => p.id === "bridge").target;
+      db.prepare(
+        "UPDATE frontier_projects SET completed_at=CASE WHEN completed_at IS NULL AND progress>=? THEN ? ELSE completed_at END,progress=MIN(progress,?) WHERE id='bridge'",
+      ).run(target, now(), target);
+      const boss = db.prepare("SELECT * FROM frontier_boss WHERE id=1").get(),
+        cfg = content.siege;
+      // Keep damage already dealt. A live boss still requires a final real hit;
+      // a balance update must not settle the journey or mint offline payouts.
+      if (boss.phase !== "defeated") {
+        if (boss.max_hp === 600000)
+          db.prepare(
+            "UPDATE frontier_boss SET max_hp=?,hp=MAX(1,?-MAX(0,max_hp-hp)) WHERE id=1",
+          ).run(cfg.maxHp, cfg.maxHp);
+        for (const [item, required] of [
+          ["supplies", cfg.suppliesRequired],
+          ["weapons", cfg.weaponsRequired],
+        ]) {
+          if (boss[item + "_required"] !== 900) continue;
+          const excess = Math.max(0, boss[item + "_filled"] - required);
+          if (excess)
+            db.prepare(
+              "UPDATE frontier_stock SET quantity=quantity+? WHERE item=?",
+            ).run(excess, item);
+          db.prepare(
+            `UPDATE frontier_boss SET ${item}_required=?,${item}_filled=MIN(${item}_filled,?) WHERE id=1`,
+          ).run(required, required);
+        }
+        db.prepare(
+          "UPDATE frontier_boss SET phase='open',opened_at=COALESCE(opened_at,?) WHERE id=1 AND phase='preparing' AND supplies_filled>=supplies_required AND weapons_filled>=weapons_required",
+        ).run(now());
+      }
+      db.prepare("INSERT INTO frontier_balance_migrations VALUES(?,?)").run(
+        revision,
+        now(),
+      );
     }
   })();
 }

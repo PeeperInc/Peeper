@@ -9,6 +9,10 @@ const frontierCore = path.resolve(
   __dirname,
   "../backend/frontier/core/index.cjs",
 );
+const frontierCombat = path.resolve(
+  __dirname,
+  "../backend/frontier/combat.cjs",
+);
 
 export default defineConfig({
   plugins: [
@@ -18,8 +22,11 @@ export default defineConfig({
       enforce: "pre",
       transform(code, id) {
         if (
-          id.split("?")[0].replaceAll("\\", "/") !==
-          frontierCore.replaceAll("\\", "/")
+          ![frontierCore, frontierCombat].some(
+            (file) =>
+              id.split("?")[0].replaceAll("\\", "/") ===
+              file.replaceAll("\\", "/"),
+          )
         )
           return;
         // This pure module has one static export and no require() calls. Keep it
@@ -33,8 +40,15 @@ export default defineConfig({
       },
     },
   ],
-  resolve: { alias: { "@peeper/frontier-core": frontierCore } },
-  optimizeDeps: { exclude: ["@peeper/frontier-core"] },
+  resolve: {
+    alias: {
+      "@peeper/frontier-core": frontierCore,
+      "@peeper/frontier-combat": frontierCombat,
+    },
+  },
+  optimizeDeps: {
+    exclude: ["@peeper/frontier-core", "@peeper/frontier-combat"],
+  },
   // In local dev we reuse the same html/ asset layout as production exports.
   // If the shared folder is absent, fall back to the regular frontend/public folder.
   publicDir: fs.existsSync(sharedHtmlDir) ? sharedHtmlDir : legacyPublicDir,

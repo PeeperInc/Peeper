@@ -1,0 +1,218 @@
+.frontier-event-card {
+  --event-ink: var(--text-primary, #f2ffe8);
+  --event-accent: var(--accent, #b7ff4f);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 76px;
+  padding: 12px;
+  border: 1px solid var(--border, #b8ff8129);
+  border-left-color: #b7ff4f88;
+  border-radius: var(--radius-lg, 7px);
+  background: linear-gradient(110deg, #173b27 0%, #0c241b 40%, #061610 100%);
+  color: var(--event-ink);
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  font-family: var(--font-sans, inherit);
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: inset 0 1px #e2ffae0d;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+.home-screen-shell:has(.frontier-event-card) .home-screen-spacer {
+  min-height: 0;
+}
+.home-screen-shell:has(.frontier-event-card) .home-screen-peeper-stage {
+  top: var(--home-event-hero-center, 50%);
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+.home-screen-shell:has(.frontier-event-card) .home-screen-peeper-only {
+  transform: scale(var(--home-event-hero-scale, 1));
+}
+.home-screen-shell:has(.frontier-event-card) .home-screen-house-stage {
+  top: var(--home-event-room-top, 0px);
+  bottom: auto;
+}
+.home-screen-shell:has(.frontier-event-card)
+  .home-screen-house-stage
+  .home-peeper-wrap {
+  transform: translate(-50%, -50%) scale(var(--home-event-hero-scale, 1));
+}
+.frontier-event-art {
+  display: grid;
+  place-items: center;
+  flex: 0 0 48px;
+  height: 48px;
+  border: 1px solid #b7ff4f24;
+  border-radius: var(--radius-md, 5px);
+  background: linear-gradient(145deg, #1d4b2e, #0b231a);
+}
+.frontier-event-bridge {
+  width: 44px;
+  height: 44px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.frontier-event-bridge .event-water {
+  fill: #2c765e;
+}
+.frontier-event-bridge .event-bank {
+  fill: #476e3c;
+}
+.frontier-event-bridge .event-deck {
+  fill: #b1cc77;
+  stroke: #0c241b;
+}
+.frontier-event-bridge .event-planks {
+  stroke: #52743c;
+}
+.frontier-event-bridge .event-rail {
+  stroke: #d5eea3;
+  stroke-width: 2;
+}
+.frontier-event-bridge .event-ripple {
+  stroke: #93d1a7;
+  stroke-width: 1.5;
+}
+.frontier-event-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+.frontier-event-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.frontier-event-heading small {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  color: var(--event-accent);
+  background: #b7ff4f12;
+  border: 1px solid #b7ff4f29;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm, 3px);
+  flex-shrink: 0;
+  line-height: 1;
+}
+.frontier-event-heading b {
+  font-family: var(--font-display, inherit);
+  font-size: 15px;
+  line-height: 1.2;
+  color: var(--event-ink);
+}
+.frontier-event-detail {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--text-secondary, #b8d6bd);
+}
+.frontier-event-detail strong {
+  flex-shrink: 0;
+  color: var(--event-ink);
+  font-size: inherit;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.frontier-event-track {
+  height: 3px;
+  border-radius: 3px;
+  background: #b7ff4f17;
+  overflow: hidden;
+}
+.frontier-event-track i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #5fc13b, var(--event-accent));
+  border-radius: 3px;
+}
+.frontier-event-arrow {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  height: 28px;
+  border: 1px solid #b7ff4f29;
+  border-radius: var(--radius-sm, 3px);
+  background: #b7ff4f0d;
+  color: var(--event-accent);
+}
+.frontier-event-arrow svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.frontier-event-card:focus-visible {
+  outline: 2px solid var(--event-accent);
+  outline-offset: 2px;
+}
+.frontier-event-card:active {
+  border-color: var(--event-accent);
+  background: #123321;
+}
+@media (hover: hover) {
+  .frontier-event-card:hover {
+    border-color: #b7ff4f80;
+  }
+}
+@media (max-width: 360px), (max-height: 650px) {
+  .frontier-event-card {
+    min-height: 64px;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .frontier-event-art {
+    flex-basis: 40px;
+    height: 40px;
+  }
+  .frontier-event-bridge {
+    width: 36px;
+    height: 36px;
+  }
+  .frontier-event-art .world-icon {
+    width: 29px;
+    height: 29px;
+  }
+  .frontier-event-heading b {
+    font-size: 13px;
+  }
+  .frontier-event-arrow {
+    flex-basis: 20px;
+    height: 24px;
+  }
+}
+@media (max-width: 380px) {
+  .frontier-event-card {
+    gap: 8px;
+  }
+  .frontier-event-art {
+    flex-basis: 40px;
+    height: 40px;
+  }
+  .frontier-event-heading b {
+    font-size: 13px;
+  }
+  .frontier-event-heading small {
+    font-size: 7px;
+  }
+  .frontier-event-arrow {
+    flex-basis: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .frontier-event-card {
+    transition: none;
+  }
+}

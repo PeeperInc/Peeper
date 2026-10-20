@@ -7,6 +7,7 @@ import HomePurchaseSheet from '../components/HomePurchaseSheet';
 import HomeScene from '../components/HomeScene';
 import BottomSheet from '../components/BottomSheet';
 import StatusBars from '../components/StatusBars';
+import FrontierEventCard from '../frontier/FrontierEventCard';
 import { ProfileAvatar, ProfileName } from '../components/ProfileCustomization';
 import PersonalHomeScreen from './PersonalHomeScreen';
 import FarmScreen from './FarmScreen';
@@ -786,6 +787,7 @@ export default function HomeScreen({
   topGifts = [],
   hasNewGifts = false,
   onAdminOpen = null,
+  onOpenFrontier = null,
 }) {
   const {
     user,
@@ -1088,6 +1090,16 @@ export default function HomeScreen({
       const contentRect = content.getBoundingClientRect();
       const topRect = top.getBoundingClientRect();
       const bottomRect = bottom.getBoundingClientRect();
+      const shell = content.parentElement;
+      const shellRect = shell.getBoundingClientRect();
+      const gapTop = topRect.bottom - shellRect.top + 8;
+      const gapBottom = bottomRect.top - shellRect.top - 8;
+      const center = (gapTop + gapBottom) / 2;
+      const baseSize = Math.min(300, Math.max(248, window.innerWidth - 92));
+      shell.style.setProperty('--home-event-hero-center', `${center}px`);
+      shell.style.setProperty('--home-event-hero-scale', Math.min(1, Math.max(0.3, (gapBottom - gapTop) / baseSize)));
+      const room = shell.querySelector('.home-screen-house-stage');
+      if (room) shell.style.setProperty('--home-event-room-top', `${center - room.getBoundingClientRect().height * 0.7}px`);
       setCleanupDockBounds({
         top: Math.max(0, topRect.bottom - contentRect.top + 8),
         bottom: Math.max(0, contentRect.bottom - bottomRect.top + 10),
@@ -1279,6 +1291,9 @@ export default function HomeScreen({
                   : <div className="home-screen-empty-stats">All stats depleted</div>
                 }
               </div>
+              {onOpenFrontier && (
+                <FrontierEventCard active={isActive && !overlayOpen} onOpen={onOpenFrontier} />
+              )}
             </div>
 
             <div className="home-screen-spacer" />

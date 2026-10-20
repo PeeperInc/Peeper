@@ -1,0 +1,728 @@
+.boss-combat {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  color: #f3e6c5;
+  background: #233c31;
+  font-family: system-ui, sans-serif;
+}
+.boss-combat > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+.boss-combat header small {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: #bfceb3;
+}
+.boss-combat h3 {
+  font:
+    600 25px Georgia,
+    serif;
+  margin: 4px 0;
+}
+.boss-combat header > b {
+  font-size: 14px;
+  color: #e4cc93;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.boss-shared-health {
+  height: 7px;
+  background: #142b23;
+  border-radius: 4px;
+  width: 100%;
+  overflow: hidden;
+}
+.boss-shared-health i {
+  height: 100%;
+  background: #cfad67;
+  display: block;
+  transition: width 0.25s;
+}
+.boss-combat-scene {
+  position: relative;
+  min-height: 240px;
+  flex: 1;
+  background: #809a87;
+  overflow: hidden;
+}
+.boss-combat-scene > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.boss-combat-scene .scene-peeper {
+  width: clamp(54px, 18vw, 78px);
+  height: clamp(54px, 18vw, 78px);
+}
+.boss-combat-scene.danger {
+  box-shadow: inset 0 0 60px #df7d4d55;
+}
+.boss-hit-target {
+  position: absolute;
+  inset: 5% 5% 16%;
+  border: 0;
+  background: none;
+  color: #fff0c5;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.boss-hit-target > span {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 6px 10px;
+  background: #233c32bb;
+  border-radius: 5px;
+  font-size: 11px;
+  pointer-events: none;
+}
+.boss-hit-target:focus-visible {
+  outline: 3px solid #f7d994;
+  outline-offset: -8px;
+}
+.boss-combat > footer {
+  padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+  flex-shrink: 0;
+}
+.boss-combat-cue {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #d3dcc0;
+  padding-bottom: 10px;
+}
+.boss-combat-cue.danger {
+  color: #ffc895;
+}
+.boss-personal-health {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 7px 12px;
+  margin-bottom: 12px;
+  font-size: 11px;
+}
+.boss-personal-health > div {
+  height: 5px;
+  background: #142d25;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.boss-personal-health i {
+  display: block;
+  height: 100%;
+  background: #8cb88a;
+}
+.boss-personal-health small {
+  grid-column: 1/-1;
+  font-size: 10px;
+  color: #bbcbb0;
+}
+.boss-abilities {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.boss-abilities button {
+  min-height: 64px;
+  background: #3c5840;
+  border: 1px solid #9daf7e88;
+  border-radius: 8px;
+  color: #f2e4c2;
+  touch-action: manipulation;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 3px;
+}
+.boss-abilities button:first-child {
+  background: #d9bd83;
+  color: #263b2c;
+  border-color: #f0d79e;
+}
+.boss-abilities b {
+  font-size: 14px;
+}
+.boss-abilities span {
+  font-size: 9px;
+  opacity: 0.8;
+}
+.boss-abilities button:disabled {
+  opacity: 0.45;
+}
+.boss-abilities .urgent {
+  background: #dfac72;
+  color: #2e3a2a;
+  border: 2px solid #ffdb9c;
+  box-shadow: 0 0 18px #e9b57166;
+}
+.boss-combat-card {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 35%;
+  padding: 22px;
+  background: #213d31f2;
+  border: 1px solid #ceb780;
+  border-radius: 8px;
+  text-align: center;
+}
+.boss-combat-card h4 {
+  font:
+    26px Georgia,
+    serif;
+  margin: 0 0 10px;
+}
+.boss-combat-card p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.boss-combat-card button {
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 1px solid #e2c58d;
+  border-radius: 6px;
+  background: #d4b77f;
+  color: #253a2b;
+}
+.boss-impact {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  font: 800 38px system-ui;
+  color: #ffebaa;
+  text-shadow: 0 3px #304d3d;
+  pointer-events: none;
+  animation: boss-damage-rise 0.9s ease-out both;
+}
+.boss-impact.bad {
+  top: 68%;
+  color: #ffc2a3;
+  font-size: 20px;
+  width: 100%;
+  left: 0;
+  text-align: center;
+}
+.boss-journey-score {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  color: #cbd5b5;
+  margin: 0 0 12px;
+}
+.boss-journey-score b {
+  color: #efd29b;
+}
+.boss-combat .scene-peeper.guarded {
+  filter: drop-shadow(0 0 14px #c0ffe7);
+}
+.boss-combat-error {
+  font-size: 11px;
+  color: #efd099;
+  text-align: center;
+  margin: 9px 0 0;
+}
+@keyframes boss-damage-rise {
+  to {
+    transform: translateY(-45px);
+    opacity: 0;
+  }
+}
+@media (max-height: 680px) {
+  .boss-combat > header {
+    padding: 9px 12px;
+  }
+  .boss-combat h3 {
+    font-size: 22px;
+  }
+  .boss-combat-scene {
+    min-height: 210px;
+  }
+  .boss-combat > footer {
+    padding-top: 9px;
+  }
+  .boss-abilities button {
+    min-height: 60px;
+  }
+  .boss-combat-cue {
+    font-size: 12px;
+    padding-bottom: 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boss-impact {
+    animation: none;
+  }
+  .boss-shared-health i {
+    transition: none;
+  }
+}
+.boss-fallback-art {
+  position: absolute;
+  inset: 5% 5% 10%;
+  width: 90%;
+  height: 85%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.action-battle .boss-combat-scene {
+  touch-action: none;
+  background: #233f41;
+}
+.action-battle .boss-hit-target {
+  inset: 0;
+  touch-action: none;
+  z-index: 4;
+  user-select: none;
+}
+.action-battle .boss-hit-target > span {
+  bottom: 8px;
+  font-size: 10px;
+}
+.action-battle .scene-peeper {
+  z-index: 2;
+}
+.action-battle[data-lane="1"] .scene-peeper {
+  transform: translate(-50%, -88%) scaleX(-1);
+}
+.action-battle .scene-peeper > .peeper-stage {
+  transform-origin: 50% 86%;
+  transform: rotate(calc(var(--attack-lean, 0deg) + var(--hurt-tilt, 0deg)))
+    scaleY(var(--attack-squash, 1));
+}
+.action-battle .scene-peeper.attacking {
+  filter: drop-shadow(0 0 6px #f6d38c99);
+}
+.action-battle .scene-peeper.stunned > .peeper-stage {
+  transform: rotate(-12deg) scale(1.05, 0.84);
+  filter: saturate(0.65);
+}
+.boss-stun-stars {
+  position: absolute;
+  inset: 0;
+}
+.boss-stun-stars i {
+  position: absolute;
+  top: 3%;
+  left: 15%;
+  color: #ffe19b;
+  text-shadow: 0 0 8px #ffbb59;
+  font-style: normal;
+  font-size: 18px;
+  animation: boss-dizzy 1.4s ease-in-out infinite;
+}
+.boss-stun-stars i:nth-child(2) {
+  left: 49%;
+  top: -5%;
+  animation-delay: -0.45s;
+  font-size: 15px;
+}
+.boss-stun-stars i:nth-child(3) {
+  left: 80%;
+  top: 7%;
+  animation-delay: -0.9s;
+}
+.peeper-strike-arc {
+  position: absolute;
+  inset: -8% -20% 0;
+  width: 135%;
+  height: 110%;
+  overflow: visible;
+  transform-origin: 50% 75%;
+  animation: peeper-swing 0.34s ease-out both;
+}
+.peeper-strike-arc path {
+  fill: #fff0be;
+  stroke: #ffe6a0;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 3px #ffcf78);
+}
+.peeper-strike-arc path + path {
+  fill: none;
+  stroke-width: 3;
+}
+.peeper-strike-arc.counter {
+  width: 160%;
+  filter: drop-shadow(0 0 6px #a9f4da);
+}
+.boss-attack-banner.stunned {
+  color: #ffe6b8;
+  border-color: #d9996d;
+  background: #623f36ed;
+  overflow: hidden;
+  min-width: 135px;
+  padding-bottom: 11px;
+}
+.boss-stun-progress {
+  position: absolute;
+  height: 3px;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  transform-origin: left;
+  background: #ffcf8d;
+}
+.action-battle .boss-combat-scene.stunned {
+  box-shadow: inset 0 0 35px #bb795333;
+}
+.action-battle .boss-hit-target:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.boss-combat-scene.flat {
+  background:
+    radial-gradient(ellipse at 28% 82%, #92a58b 0 13%, transparent 14%),
+    radial-gradient(ellipse at 72% 82%, #92a58b 0 13%, transparent 14%),
+    radial-gradient(ellipse at 50% 64%, #5b7b76 0 39%, transparent 40%),
+    linear-gradient(#183b43, #276371);
+}
+.boss-combat-scene.flat:before {
+  content: "";
+  position: absolute;
+  top: 13%;
+  left: 13%;
+  right: 13%;
+  height: 43%;
+  border: 16px solid #738f83;
+  border-bottom: 0;
+  box-shadow:
+    inset 0 7px #acb493,
+    0 -5px #526b52;
+  opacity: 0.7;
+}
+@keyframes boss-dizzy {
+  50% {
+    transform: translateY(-5px) rotate(30deg);
+    opacity: 0.5;
+  }
+}
+@keyframes peeper-swing {
+  0% {
+    opacity: 0;
+    transform: rotate(-35deg) scale(0.6);
+  }
+  35% {
+    opacity: 1;
+    transform: rotate(5deg) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(55deg) scale(1.25);
+  }
+}
+.action-battle .scene-peeper.dodging {
+  filter: drop-shadow(0 0 9px #c8ffe9);
+}
+.action-battle .dodging .peeper-stage {
+  animation: boss-roll 0.32s ease-out both;
+}
+.action-battle .scene-peeper.hurt {
+  filter: sepia(0.35) drop-shadow(0 0 8px #f89972);
+}
+.boss-combat-scene.hurt:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 55px #cf694a88;
+  pointer-events: none;
+  z-index: 3;
+}
+.boss-attack-banner {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 94%;
+  padding: 8px 12px;
+  border: 1px solid #b5c19c55;
+  border-radius: 18px;
+  background: #1c3534e8;
+  color: #ebedce;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: center;
+  z-index: 5;
+  pointer-events: none;
+}
+.boss-attack-banner.warning {
+  color: #ffe1ba;
+  background: #633b2eea;
+  border-color: #e6aa75;
+}
+.boss-attack-banner.counter {
+  color: #fdf5c6;
+  background: #386257ee;
+  border-color: #f2da92;
+}
+.boss-danger-mark {
+  position: absolute;
+  left: var(--danger-x, 28%);
+  top: 78%;
+  width: clamp(88px, 27vw, 142px);
+  height: 70px;
+  border: 2px solid #ffb585;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #d4674933;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.boss-danger-mark.visible {
+  opacity: 1;
+  animation: boss-zone 0.55s ease-in-out infinite alternate;
+}
+.boss-danger-mark.breath {
+  border-radius: 18px 18px 50% 50%;
+  background: linear-gradient(0deg, #f7a44a66, #c55b4533);
+  height: 95px;
+}
+.boss-danger-mark span {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #fff1c9;
+  font: bold 30px system-ui;
+  text-shadow: 0 2px #793f2d;
+}
+.boss-weak-anchor {
+  position: absolute;
+  left: 43%;
+  top: 42%;
+  pointer-events: none;
+  z-index: 5;
+}
+.boss-weak-spot {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  border: 3px solid #ffe5a2;
+  border-radius: 50%;
+  box-shadow:
+    0 0 22px #ffeea477,
+    inset 0 0 20px #ffeea444;
+  display: grid;
+  place-items: center;
+  animation: boss-weak 0.5s ease-in-out infinite alternate;
+}
+.boss-weak-spot span {
+  font: bold 13px system-ui;
+  color: #fff2bc;
+  text-shadow: 0 2px 3px #20473c;
+}
+.boss-slash {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 160px;
+  height: 160px;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+  animation: boss-slash 0.28s ease-out both;
+}
+.boss-slash path {
+  fill: none;
+  stroke: #fff2c8;
+  stroke-width: 5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px #ffe1a3);
+}
+.boss-slash.finisher path,
+.boss-slash.counter path {
+  stroke-width: 10;
+  stroke: #fff8dd;
+}
+.boss-impact {
+  z-index: 6;
+}
+.boss-impact.counter,
+.boss-impact.finisher {
+  font-size: 25px;
+  width: 100%;
+  left: 0;
+  text-align: center;
+  color: #fff2b3;
+}
+.boss-combat-card {
+  z-index: 8;
+}
+.boss-action-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: #d6dfbe;
+}
+.boss-combo {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.boss-combo i {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  border: 1px solid #b4c08d66;
+  color: #b4c79f;
+  font-style: normal;
+  font-size: 11px;
+}
+.boss-combo i.filled {
+  color: #263f34;
+  background: #e0c889;
+  border-color: #f5dfa0;
+  box-shadow: 0 0 9px #ddca7e44;
+}
+.boss-combo > span {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  margin-left: 4px;
+}
+.boss-enraged {
+  color: #ffc190;
+}
+.action-battle .boss-journey-score {
+  margin: 9px 0;
+}
+.boss-gesture-help {
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #b8c8ad;
+}
+.boss-gesture-help span {
+  display: block;
+  font-size: 10px;
+  color: #9eb69d;
+}
+.boss-combat-error button {
+  color: #2a4435;
+  background: #e3c68a;
+  border: 1px solid #f2dca0;
+  border-radius: 5px;
+  padding: 8px 15px;
+  min-height: 40px;
+}
+.boss-combat-scene.flat .scene-peeper {
+  left: var(--lane-x) !important;
+  top: 83% !important;
+  transition: left 0.18s ease-out;
+}
+.boss-combat-scene.flat .boss-danger-mark {
+  left: var(--danger-x) !important;
+  top: 80% !important;
+}
+@keyframes boss-roll {
+  45% {
+    transform: rotate(calc(var(--roll-direction, 1) * 32deg)) scale(0.9, 0.85);
+  }
+  100% {
+    transform: rotate(0) scale(1);
+  }
+}
+@keyframes boss-zone {
+  from {
+    box-shadow: 0 0 0 2px #f19b6044;
+  }
+  to {
+    box-shadow: 0 0 0 8px #f19b6011;
+  }
+}
+@keyframes boss-weak {
+  from {
+    box-shadow: 0 0 12px #fff0b566;
+  }
+  to {
+    box-shadow: 0 0 25px #fff0b5bb;
+  }
+}
+@keyframes boss-slash {
+  0% {
+    opacity: 1;
+    stroke-dasharray: 160;
+    stroke-dashoffset: 160;
+  }
+  50% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    opacity: 0;
+    stroke-dashoffset: 0;
+  }
+}
+@media (hover: none) {
+  .boss-gesture-help span {
+    display: none;
+  }
+}
+@media (max-height: 500px) and (min-width: 600px) {
+  .frontier-activity-dialog:has(.action-battle) > header {
+    padding: 2px 12px;
+  }
+  .action-battle > header {
+    padding: 5px 12px;
+    gap: 3px 8px;
+  }
+  .action-battle header small {
+    display: none;
+  }
+  .action-battle h3 {
+    font-size: 18px;
+    margin: 0;
+  }
+  .action-battle .boss-shared-health {
+    height: 4px;
+  }
+  .action-battle .boss-combat-scene {
+    min-height: 0;
+  }
+  .action-battle > footer {
+    padding: 5px 12px;
+  }
+  .action-battle .boss-journey-score {
+    margin: 5px 0 0;
+  }
+  .action-battle .boss-gesture-help {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-battle .dodging .peeper-stage,
+  .boss-danger-mark.visible,
+  .boss-weak-spot {
+    animation: none;
+  }
+  .boss-stun-stars i,
+  .peeper-strike-arc {
+    animation: none;
+  }
+  .boss-slash {
+    animation-duration: 0.12s;
+  }
+}

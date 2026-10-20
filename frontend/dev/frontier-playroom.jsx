@@ -1,24 +1,37 @@
+import { ScenePeeperContext } from "../src/frontier/ScenePeeper";
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import core from "@peeper/frontier-core";
+import BossCombat from "../src/frontier/BossCombat";
+import { practiceBattle } from "./practiceBattle.mjs";
 import ArcadeStage from "../src/frontier/ArcadeStage";
 import WorldIcon from "../src/frontier/WorldIcon";
 import "./frontier-playroom.css";
 const games = {
-  forge: [
+  split: [
+    "Timber",
+    "wood",
+    "Hold the glowing notch directly on the timber. Release when its ring turns gold.",
+  ],
+  chip: [
+    "Quarry",
+    "ore",
+    "Tap the glowing crack. A gold ring makes a clean fracture and breaks more iron.",
+  ],
+  smith: [
     "Forge",
     "weapons",
-    "Hold the bellows to heat the blank. Release, then hammer each section twice while it is in the gold band. Reheat when needed. Quench the shaped blade in the blue band.",
+    "Heat the metal, hammer the highlighted section, then quench in water. Hatchets, spearheads and short blades need different strikes.",
   ],
-  plane: [
+  board: [
     "Planks",
     "planks",
-    "Stop five moving boards over the stack. Missed edges are cut away, leaving less room for the next board.",
+    "Saw back and forth along the guide, plane the surface both ways, then drive four nails. Watch the progress bar as you work.",
   ],
-  steer: [
+  drive: [
     "Caravan",
     "cart",
-    "Steer between three lanes. Recover at least three crates and avoid stumps. Three collisions wreck the cargo.",
+    "Drag to steer. Swipe up to hop over stumps. Collect three crates.",
   ],
   guard: [
     "Guard",
@@ -30,33 +43,37 @@ const games = {
     "tools",
     "Tap pipe tiles to rotate them. Connect the oil tank on the left to the axle on the right before your turns run out.",
   ],
-  dodge: [
+  battle: [
     "Boss",
     "boss",
-    "Watch the charge warning. Move into the clear lane, then hit Strike while Mirewake recovers. Dodge twice and counter at least once.",
+    "Tap Mirewake to strike. Use heavy hits and guard against charges. No short rounds.",
   ],
-  rune: [
+  brew: [
     "Remedy",
     "leaf",
-    "Drag through matching herbs sharing an edge. Release a chain of three or more to brew it. Collect nine ingredients in four brews.",
+    "Swap neighbouring ingredients to match three. Collect eight of each recipe ingredient in eight moves.",
   ],
 };
 function Playroom() {
-  const [kind, setKind] = useState("plane"),
-    [weather, setWeather] = useState("clear"),
+  const [kind, setKind] = useState("split"),
     [round, setRound] = useState(null),
-    [result, setResult] = useState(null);
+    [result, setResult] = useState(null),
+    [battle, setBattle] = useState(() => practiceBattle());
   function start() {
     const seed = crypto.getRandomValues(new Uint32Array(1))[0];
     setResult(null);
+    if (kind === "battle") {
+      setBattle(practiceBattle());
+      setRound({ kind: "battle" });
+      return;
+    }
     setRound({
       version: 3,
       kind,
       seed,
       nonce: crypto.randomUUID(),
-      arcade: core.make(kind, seed, weather),
+      arcade: core.make(kind, seed),
       issued_at: Date.now() / 1000,
-      weather,
     });
   }
   return (
@@ -65,7 +82,7 @@ function Playroom() {
         <b>
           Reedbank <span>PLAYROOM · LOCAL ONLY</span>
         </b>
-        <a href="/?devUser=999999&devName=Mira">Open the world →</a>
+        <a href="/dev/frontier-world.html">Open the world →</a>
       </header>
       <nav aria-label="Choose a mini-game">
         {Object.entries(games).map(([id, [name, icon]]) => (
@@ -88,18 +105,6 @@ function Playroom() {
           <WorldIcon name={games[kind][1]} size={90} />
           <h1>{games[kind][0]}</h1>
           <p>{games[kind][2]}</p>
-          <label>
-            Conditions{" "}
-            <select
-              value={weather}
-              onChange={(e) => setWeather(e.target.value)}
-            >
-              <option value="clear">Clear trails</option>
-              <option value="rain">Rain · slower steering</option>
-              <option value="wind">Wind · drifting beetles</option>
-              <option value="harvest">Harvest · eight herbs</option>
-            </select>
-          </label>
           <button className="playroom-start" onClick={start}>
             Play a round
           </button>
@@ -108,6 +113,12 @@ function Playroom() {
             coins.
           </small>
         </section>
+      ) : round.kind === "battle" ? (
+        <BossCombat
+          load={battle.load}
+          hit={battle.hit}
+          onExit={() => setRound(null)}
+        />
       ) : (
         <ArcadeStage
           challenge={round}
@@ -142,5 +153,15 @@ if (import.meta.env.DEV) {
   const root =
     import.meta.hot?.data.root || createRoot(document.getElementById("root"));
   if (import.meta.hot) import.meta.hot.data.root = root;
-  root.render(<Playroom />);
+  root.render(
+    <ScenePeeperContext.Provider
+      value={{
+        alive: 1,
+        slot_head: "head_knight_helmet",
+        slot_body: "body_knight_armor",
+      }}
+    >
+      <Playroom />
+    </ScenePeeperContext.Provider>,
+  );
 }

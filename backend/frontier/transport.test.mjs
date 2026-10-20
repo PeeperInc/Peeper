@@ -102,6 +102,11 @@ test(
     }
     try {
       assert.equal((await request("/state", 0)).status, 401);
+      assert.equal((await request("/event", 0)).status, 401);
+      const eventCard = await request("/event", 1);
+      assert.equal(eventCard.status, 200);
+      assert.equal(eventCard.data.phase, "bridge");
+      assert.equal(eventCard.data.target, 800);
       const forged = await fetch(origin + "/state", {
         headers: {
           "x-telegram-init-data":
@@ -130,7 +135,7 @@ test(
         ).status,
         429,
       );
-      time += 3000;
+      time += 11000;
       const performed = await request(`/jobs/${job.id}/action`, 1, {
         step: 0,
         nonce: job.challenge.nonce,
@@ -206,14 +211,15 @@ test(
         authoritative.players.find((p) => p.id === 2).location,
         "village",
       );
-      const outfit = packet(ws, (p) =>
-        p.players?.some((x) => x.id === 1 && x.equipped === "blue-pennant"),
-      );
+      const beforeAccessory = (await request("/state", 1)).data.player.coins;
       assert.equal(
         (await request("/cosmetics/buy", 1, { item: "blue-pennant" })).status,
-        200,
+        410,
       );
-      await outfit;
+      assert.equal(
+        (await request("/state", 1)).data.player.coins,
+        beforeAccessory,
+      );
       await request(`/missions/${lobby.id}/depart`, 1, {});
       time += 181000;
       assert.equal(
@@ -226,7 +232,7 @@ test(
         "UPDATE frontier_projects SET completed_at=1 WHERE id='bridge'",
       ).run();
       db.prepare(
-        "UPDATE frontier_stock SET quantity=900 WHERE item IN ('supplies','weapons')",
+        "UPDATE frontier_stock SET quantity=500 WHERE item IN ('supplies','weapons')",
       ).run();
       assert.equal(
         (await request("/boss/attacks", 1, { requestId: randomUUID() })).status,
@@ -237,7 +243,7 @@ test(
           (
             await request("/boss/prepare", 1, {
               item,
-              amount: 900,
+              amount: 500,
               requestId: randomUUID(),
             })
           ).status,
@@ -287,7 +293,7 @@ test(
             "SELECT SUM(coins) n FROM frontier_rewards WHERE ref LIKE 'dragon:%'",
           )
           .get().n,
-        101,
+        3,
       );
       const replayHit = await request(
         `/boss/attacks/${attacks[0].data.id}/action`,
@@ -301,13 +307,99 @@ test(
             "SELECT SUM(coins) n FROM frontier_rewards WHERE ref LIKE 'dragon:%'",
           )
           .get().n,
-        101,
+        3,
       );
       assert.equal((await request("/boss", 1)).data.phase, "defeated");
+      // Continuous combat uses authenticated actions, not client recordings.
+      db.prepare(
+        "UPDATE frontier_boss SET cycle=cycle+1,phase='open',hp=9,max_hp=9,reward_pool=37,defeated_at=NULL",
+      ).run();
+      assert.equal((await request("/boss/combat", 0)).status, 401);
+      assert.equal((await request("/boss/combat", 3)).data.fighter.hp, 100);
+      const liveKey = randomUUID(),
+        liveHit = await request("/boss/combat/action", 3, {
+          action: "strike",
+          requestId: liveKey,
+          damage: 999999,
+        });
+      assert.equal(liveHit.status, 200);
+      assert.equal(liveHit.data.damage, 2);
+      assert.equal(liveHit.data.boss.hp, 7);
+      assert.equal(
+        (
+          await request("/boss/combat/action", 3, {
+            action: "strike",
+            requestId: liveKey,
+          })
+        ).data.duplicate,
+        true,
+      );
+      assert.equal(
+        (
+          await request("/boss/combat/action", 3, {
+            action: "strike",
+            requestId: randomUUID(),
+          })
+        ).status,
+        429,
+      );
+      time += 450;
+      assert.equal(
+        (
+          await request("/boss/combat/action", 3, {
+            action: "strike",
+            requestId: randomUUID(),
+          })
+        ).data.boss.hp,
+        5,
+      );
+      time += 450;
+      const finalLive = await request("/boss/combat/action", 4, {
+        action: "strike",
+        requestId: randomUUID(),
+      });
+      assert.equal(finalLive.data.damage, 2);
+      time += 450;
+      const finalDone = await request("/boss/combat/action", 3, {
+        action: "strike",
+        requestId: randomUUID(),
+      });
+      assert.equal(finalDone.data.damage, 3);
+      assert.equal(finalDone.data.boss.phase, "defeated");
+      assert.equal(
+        db
+          .prepare(
+            "SELECT SUM(coins) n FROM frontier_rewards WHERE ref LIKE 'dragon:%'",
+          )
+          .get().n,
+        3,
+      );
       const burst = await Promise.all(
         Array.from({ length: 55 }, () => request("/ticket", 4, {})),
       );
       assert.ok(burst.some((r) => r.status === 429 && Number(r.retry) > 0));
+      const defeatedAt = db.prepare("SELECT defeated_at FROM frontier_boss").get().defeated_at;
+      const endedCycle = db.prepare("SELECT cycle FROM frontier_boss").get().cycle;
+      const paid = db.prepare("SELECT coins FROM users WHERE id=1").get().coins;
+      time = (defeatedAt + 86400) * 1000 - 1;
+      assert.equal((await request("/event")).data.phase, "results");
+      assert.equal((await request("/boss")).status, 200);
+      time += 1;
+      assert.deepEqual((await request("/event")).data, { active: false });
+      assert.deepEqual((await request("/state")).data.event, { active: false });
+      for (const [path, body] of [
+        ["/boss", undefined],
+        ["/missions/old-invitation", undefined],
+        ["/ticket", {}],
+        ["/travel", {to:"sawmill"}],
+        ["/jobs", {kind:"wood",requestId:randomUUID()}],
+        ["/boss/combat/action", {action:"strike",requestId:randomUUID()}],
+      ]) assert.equal((await request(path, 1, body)).status, 410, path);
+      time += 30 * 86400000;
+      engine.tick();
+      assert.deepEqual((await request("/event")).data, { active: false });
+      assert.equal(db.prepare("SELECT cycle FROM frontier_boss").get().cycle, endedCycle);
+      assert.equal(db.prepare("SELECT coins FROM users WHERE id=1").get().coins, paid);
       assert.equal(db.prepare("PRAGMA foreign_key_check").all().length, 0);
     } finally {
       for (const ws of sockets) ws.terminate();

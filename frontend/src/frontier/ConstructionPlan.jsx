@@ -1,6 +1,7 @@
 import React from "react";
 import content from "../../../backend/frontier/content.json";
 import WorldIcon from "./WorldIcon";
+import { DeliveryBonus } from "./DeliverySetup";
 import { Meter, resourceNames } from "./components";
 
 export function nextContribution(state) {
@@ -50,19 +51,30 @@ export function nextContribution(state) {
       detail: "2 planks ready in the shared stores",
       kind: "delivery",
     };
-  if (state.stock.wood >= 3)
+  if (
+    state.stock.wood >= content.jobs.planks.inputs.wood &&
+    state.stock.ore >= content.jobs.planks.inputs.ore
+  )
     return {
       location: "village",
       title: "Make construction planks",
       step: 1,
-      detail: "Use 3 shared timber to make 2 planks",
+      detail: "3 timber + 1 iron → 1 plank",
       kind: "planks",
+    };
+  if (state.stock.wood >= content.jobs.planks.inputs.wood)
+    return {
+      location: "quarry",
+      title: "Mine iron for the nails",
+      step: 0,
+      detail: "1 iron per plank",
+      kind: "ore",
     };
   return {
     location: "sawmill",
     title: "Gather timber",
     step: 0,
-    detail: "One short batch supplies the next workbench",
+    detail: "3 timber and 1 iron per plank",
     kind: "wood",
   };
 }
@@ -79,10 +91,8 @@ export default function ConstructionPlan({ state, onGo }) {
       <h2>{project ? project.name : "Equip the expedition"}</h2>
       <p>
         {project?.id === "bridge"
-          ? "Rebuild the crossing to open the far shore for every player. Gather timber, make planks and deliver them to the landing."
-          : project?.id === "mill"
-            ? "The crossing is open. Rebuild the workshop to make patrol supplies and reach the deep pool."
-            : "Fill both expedition reserves, then attack the dragon as often as you like. Every hit counts toward your share of the victory fund."}
+          ? "Rebuild the crossing to open the far shore for every player. Gather timber and iron, make planks, then deliver them."
+          : "Fill both reserves to unlock the shared battle."}
       </p>
       {project && (
         <>
@@ -99,39 +109,22 @@ export default function ConstructionPlan({ state, onGo }) {
           </div>
         </>
       )}
-      {project?.stages && (
-        <div className="plan-stages">
-          {project.stages.map((name, i) => (
-            <span
-              key={name}
-              className={
-                progress >= (project.target / 4) * (i + 1)
-                  ? "done"
-                  : Math.floor(progress / (project.target / 4)) === i
-                    ? "current"
-                    : ""
-              }
-            >
-              {i + 1}. {name}
-            </span>
-          ))}
-        </div>
-      )}
       <ol className="construction-chain">
         {(project
           ? [
               {
                 icon: "wood",
-                title: "Gather timber",
-                detail: "3 good rounds → 3 timber in the shared stores",
-                where: "Mosswood Mill",
-                location: "sawmill",
+                title: "Gather timber and iron",
+                detail:
+                  "Timber at Mosswood Mill. Iron at Pebble Quarry. Both go to shared stores.",
+                where: "Mosswood Mill + Pebble Quarry",
+                location: next.kind === "ore" ? "quarry" : "sawmill",
                 amount: state.stock.wood,
               },
               {
                 icon: "planks",
                 title: "Craft the planks",
-                detail: "3 timber → 2 planks at the workbench",
+                detail: "1 game → 1 plank. Cost: 3 timber + 1 iron.",
                 where: "Crooked Post",
                 location: "village",
                 amount: state.stock.planks,
@@ -140,7 +133,7 @@ export default function ConstructionPlan({ state, onGo }) {
                 icon: "cart",
                 title: "Deliver together",
                 detail:
-                  "Take 2 planks solo, or load a 6-plank wagon for at least two active players. Three encounters advance the construction.",
+                  "Solo: 2 → 2 planks. Two players: 4 → 6. Three: 6 → 10. Three tasks shared across the crew.",
                 where: "Crooked Post → construction site",
                 location: "village",
                 amount: null,
@@ -151,7 +144,7 @@ export default function ConstructionPlan({ state, onGo }) {
                 icon: "ore",
                 title: "Supply the workshop",
                 detail:
-                  "Kits: 1 timber + 1 iron → 3 kits. Weapons: 1 timber + 3 iron → 3 weapons. Materials come from shared stores.",
+                  "1 kit: 1 timber + 1 iron. 1 weapon: 1 timber + 3 iron. One game makes one item from shared materials.",
                 where: "Mosswood Mill + Pebble Quarry",
                 location: next.step === 0 ? next.location : "quarry",
                 amount: null,
@@ -160,7 +153,7 @@ export default function ConstructionPlan({ state, onGo }) {
                 icon: "supplies",
                 title: "Kits and weapons",
                 detail:
-                  "Pack kits at the Supply Mill and forge weapons at the Armory. Both reserves must be filled to open the battle.",
+                  "Match supplies at Supply Mill for kits. Forge weapons at the Armory. Fill both reserves to open the battle.",
                 where: "Supply Mill + Armory",
                 location: "mill",
                 amount: state.stock.supplies,
@@ -169,7 +162,7 @@ export default function ConstructionPlan({ state, onGo }) {
                 icon: "boss",
                 title: "Fight Mirewake",
                 detail:
-                  "Once equipped, attack freely. No kits or energy per attempt. On death, the fixed coin fund is split by accumulated damage.",
+                  "Every hit reduces the shared health bar. The battle stays open until Mirewake falls.",
                 where: "The Dragon's Hollow",
                 location: "pool",
                 amount: null,
@@ -189,7 +182,7 @@ export default function ConstructionPlan({ state, onGo }) {
                 <b>{step.amount} available to everyone</b>
               )}
               <button onClick={() => onGo(step.location)}>
-                {next.step === i ? "Needed now — go" : "Show this workshop"} →
+                {next.step === i ? "Go here" : "Go here"} →
               </button>
             </div>
           </li>
@@ -210,29 +203,10 @@ export default function ConstructionPlan({ state, onGo }) {
             ))}
         </div>
       )}
-      {project ? (
-        <div className="plan-note">
-          <WorldIcon name="ore" size={28} />
-          <p>
-            <b>What about iron?</b> Iron stays in the shared stores for future
-            expedition kits and weapons. It does not build the bridge. Nothing
-            needs to be carried by hand.
-          </p>
-        </div>
-      ) : (
-        <div className="plan-note">
-          <WorldIcon name="cart" size={28} />
-          <p>
-            <b>Keep building together.</b> Plank deliveries at Crooked Post now
-            maintain the trails. They still earn experience and count toward the
-            weekly board.
-          </p>
-        </div>
-      )}
+      {project && <DeliveryBonus />}
       <p className="plan-footnote">
-        Materials are shared; coins and experience are yours. Successful work
-        and journeys pay at most one coin every 3 minutes. You can keep
-        producing and delivering between payments.
+        Materials come from shared stores. Unfinished recipes and failed
+        deliveries return their reservations.
       </p>
     </div>
   );

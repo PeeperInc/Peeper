@@ -1,5 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import ForgeStage from "./ForgeStage";
+import FieldStage from "./FieldStage";
+import TouchStage from "./TouchStage";
+import WorkshopTouchStage from "./WorkshopTouchStage";
+import CarpentryStage from "./CarpentryStage";
 import core from "@peeper/frontier-core";
 import marsh from "../assets/frontier/marsh-world.webp";
 import workshop from "../assets/frontier/workshop.webp";
@@ -41,6 +45,18 @@ const ink = "#25362a",
 const clamp = (n, a = 0, b = 1) => Math.max(a, Math.min(b, n));
 
 export default function ArcadeStage(props) {
+  if (["chopping", "quarrying", "trail"].includes(props.challenge.arcade.mode))
+    return <TouchStage {...props} />;
+  if (props.challenge.arcade.mode === "carpentry")
+    return <CarpentryStage {...props} />;
+  if (props.challenge.arcade.mode === "match3")
+    return <WorkshopTouchStage {...props} />;
+  if (
+    ["logging", "mining", "convoy", "duel"].includes(
+      props.challenge.arcade.mode,
+    )
+  )
+    return <FieldStage {...props} />;
   return props.challenge.arcade.mode === "forge" ? (
     <ForgeStage {...props} />
   ) : (
@@ -810,35 +826,6 @@ function ArcadeGame({ challenge, disabled, onComplete, feedback }) {
         );
         text(`${challenge.arcade.moves - s.moves} brews left`, 200, 472, 14);
       }
-      if (challenge.weather === "rain" && mode === "convoy") {
-        for (let i = 0; i < 25; i++) {
-          const x = ((i * 83 + t * 0.06) % 440) - 20,
-            y = ((i * 61 + t * 0.4) % 540) - 20;
-          line(
-            [
-              [x, y],
-              [x - 6, y + 18],
-            ],
-            "#d5eaf35e",
-            1.3,
-          );
-        }
-      }
-      if (challenge.weather === "wind" && mode === "slice") {
-        for (let i = 0; i < 4; i++) {
-          const x = ((i * 137 + t * 0.12) % 500) - 80,
-            y = 140 + i * 81;
-          line(
-            [
-              [x, y],
-              [x + 24, y - 5],
-              [x + 49, y - 3],
-            ],
-            "#d8e1bb35",
-            1.5,
-          );
-        }
-      }
       if (s.flash && t - s.flash.t < 280) {
         ctx.globalAlpha = (1 - (t - s.flash.t) / 280) * 0.17;
         ctx.fillStyle = s.flash.bad ? "#df764e" : "#ffe9a4";
@@ -999,21 +986,6 @@ function ArcadeGame({ challenge, disabled, onComplete, feedback }) {
         <div>
           <h3>{title}</h3>
           <p>{hint}</p>
-          {mode === "convoy" && challenge.weather === "rain" && (
-            <small className="arcade-weather">
-              Rain · muddy wheels steer 30% slower. Turn before the stump.
-            </small>
-          )}
-          {mode === "slice" && challenge.weather === "wind" && (
-            <small className="arcade-weather">
-              Gusts · insects drift sideways. Use short, deliberate swipes.
-            </small>
-          )}
-          {mode === "herbs" && challenge.weather === "harvest" && (
-            <small className="arcade-weather">
-              Bloom · only 8 herbs needed instead of 9.
-            </small>
-          )}
         </div>
         <span aria-label="Round time">{hud.time}s</span>
       </header>

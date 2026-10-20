@@ -6,6 +6,7 @@ export function useFrontier() {
     [connected, setConnected] = useState(false),
     [players, setPlayers] = useState([]);
   const active = useRef(true),
+    playable = useRef(true),
     loading = useRef(null),
     socket = useRef(null),
     location = useRef("village");
@@ -15,6 +16,9 @@ export function useFrontier() {
       .frontierState()
       .then((data) => {
         if (active.current) {
+          playable.current =
+            data.event?.active !== false && data.event?.phase !== "results";
+          if (!playable.current) socket.current?.close();
           setState(data);
           setError(null);
         }
@@ -40,6 +44,7 @@ export function useFrontier() {
     async function connect() {
       if (
         closed ||
+        !playable.current ||
         document.hidden ||
         connecting ||
         socket.current?.readyState < 2
@@ -80,12 +85,13 @@ export function useFrontier() {
         ws.onclose = () => {
           if (closed || socket.current !== ws) return;
           setConnected(false);
-          if (!document.hidden) retry = setTimeout(connect, delay);
+          if (!document.hidden && playable.current)
+            retry = setTimeout(connect, delay);
           delay = Math.min(15000, delay * 2);
         };
         ws.onerror = () => ws.close();
       } catch {
-        if (!closed) {
+        if (!closed && playable.current) {
           setConnected(false);
           retry = setTimeout(connect, delay);
           delay = Math.min(15000, delay * 2);

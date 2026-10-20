@@ -2,6 +2,9 @@
 const { randomUUID } = require("node:crypto");
 const { makeChallenge, inspect } = require("./gestures");
 const config = require("./content.json").siege;
+const eventConfig = require("./content.json").event;
+const { createJourney } = require("./journey");
+const combatRules = require("./combat.cjs");
 // Runs inside the engine's transaction, including death and all offline payouts.
 function createSiege(
   db,
@@ -15,9 +18,59 @@ function createSiege(
     reward,
     event,
     weather,
+    combatNow = now,
     onDamage = () => {},
+    onDefeat = () => {},
   },
 ) {
+  db.exec(`CREATE TABLE IF NOT EXISTS frontier_boss_fighters(user_id INTEGER PRIMARY KEY REFERENCES users(id),cycle INTEGER NOT NULL,hp INTEGER NOT NULL DEFAULT 100,last_seen REAL NOT NULL,next_attack REAL NOT NULL,strike_ready REAL NOT NULL DEFAULT 0,heavy_ready REAL NOT NULL DEFAULT 0,guard_ready REAL NOT NULL DEFAULT 0,guard_until REAL NOT NULL DEFAULT 0,revive_at REAL NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS frontier_boss_hits(user_id INTEGER NOT NULL REFERENCES users(id),request_key TEXT NOT NULL,kind TEXT NOT NULL,damage INTEGER NOT NULL,cycle INTEGER NOT NULL,created_at REAL NOT NULL,PRIMARY KEY(user_id,request_key));CREATE INDEX IF NOT EXISTS frontier_boss_hits_time ON frontier_boss_hits(created_at);`);
+  if (
+    !db
+      .prepare("PRAGMA table_info(frontier_boss_fighters)")
+      .all()
+      .some((c) => c.name === "stagger_until")
+  )
+    db.exec(
+      "ALTER TABLE frontier_boss_fighters ADD COLUMN stagger_until REAL NOT NULL DEFAULT 0",
+    );
+  const journey = createJourney(db, now);
+  const fighterColumns = new Set(
+    db
+      .prepare("PRAGMA table_info(frontier_boss_fighters)")
+      .all()
+      .map((c) => c.name),
+  );
+  const actionColumns = {
+    combat_version: "INTEGER NOT NULL DEFAULT 0",
+    lane: "INTEGER NOT NULL DEFAULT 0",
+    attack_index: "INTEGER NOT NULL DEFAULT 0",
+    attack_target: "INTEGER NOT NULL DEFAULT 0",
+    combo: "INTEGER NOT NULL DEFAULT 0",
+    combo_until: "REAL NOT NULL DEFAULT 0",
+    counter_until: "REAL NOT NULL DEFAULT 0",
+    perfect_index: "INTEGER NOT NULL DEFAULT -1",
+    dodge_ready: "REAL NOT NULL DEFAULT 0",
+    dodge_until: "REAL NOT NULL DEFAULT 0",
+    last_dodge: "REAL NOT NULL DEFAULT 0",
+    last_hurt: "REAL NOT NULL DEFAULT 0",
+    last_evade: "REAL NOT NULL DEFAULT 0",
+    input_at: "REAL NOT NULL DEFAULT 0",
+  };
+  db.transaction(() => {
+    for (const [name, type] of Object.entries(actionColumns))
+      if (!fighterColumns.has(name))
+        db.exec(
+          `ALTER TABLE frontier_boss_fighters ADD COLUMN ${name} ${type}`,
+        );
+    if (
+      !db
+        .prepare("PRAGMA table_info(frontier_boss_hits)")
+        .all()
+        .some((c) => c.name === "outcome")
+    )
+      db.exec("ALTER TABLE frontier_boss_hits ADD COLUMN outcome TEXT");
+  })();
   const current = () =>
     db.prepare("SELECT * FROM frontier_boss WHERE id=1").get();
   const visible = () =>
@@ -26,35 +79,53 @@ function createSiege(
         .prepare("SELECT completed_at FROM frontier_projects WHERE id='bridge'")
         .get()?.completed_at,
     );
+  function progress(uid) {
+    const b = current(),
+      row = journey.member(b.cycle, uid);
+    const paid = db
+      .prepare(
+        "SELECT coins,xp FROM frontier_rewards WHERE ref=? AND user_id=?",
+      )
+      .get(`dragon:${b.cycle}:${uid}`, uid);
+    return {
+      cycle: b.cycle,
+      actions: row.actions,
+      activityActions: row.activityActions,
+      damage: row.damage,
+      earnedCoins: paid?.coins ?? row.earnedCoins,
+      payout: paid?.coins ?? null,
+      payoutXp: paid?.xp ?? null,
+      damageProgress: row.damage % config.rewards.damageStep,
+      rewardRules: config.rewards,
+    };
+  }
   function snapshot(uid) {
     if (!visible()) return null;
     const b = current();
+    const participants = journey.rows(b.cycle),
+      actions = participants.find((p) => p.user_id === uid)?.actions || 0,
+      totalActions = participants.reduce((n, p) => n + p.actions, 0);
     const contribution =
       db
         .prepare(
           "SELECT contribution FROM frontier_boss_honors WHERE cycle=? AND user_id=?",
         )
         .get(b.cycle, uid)?.contribution || 0;
-    const payout = db
-      .prepare("SELECT coins FROM frontier_rewards WHERE ref=? AND user_id=?")
-      .get(`dragon:${b.cycle}:${uid}`, uid)?.coins;
+    const personal = progress(uid);
+    const { reward_pool: legacyPool, ...boss } = b;
     return {
-      ...b,
+      ...boss,
+      ...personal,
       name: config.name,
       contribution,
-      payout: payout ?? null,
-      estimatedCoins:
-        Math.floor((b.reward_pool * contribution * 100) / b.max_hp) / 100,
-      contributors: db
-        .prepare(
-          "SELECT COUNT(*) n FROM frontier_boss_honors WHERE cycle=? AND contribution>0",
-        )
-        .get(b.cycle).n,
-      leaders: db
-        .prepare(
-          "SELECT h.user_id,u.first_name AS name,h.contribution FROM frontier_boss_honors h JOIN users u ON u.id=h.user_id WHERE cycle=? ORDER BY contribution DESC,h.user_id LIMIT 10",
-        )
-        .all(b.cycle),
+      actions,
+      totalActions,
+      results_until: b.defeated_at
+        ? b.defeated_at + eventConfig.resultsSeconds
+        : null,
+      estimatedCoins: personal.earnedCoins,
+      contributors: participants.length,
+      leaders: participants.slice(0, 10),
       previousPayouts: db
         .prepare(
           "SELECT coins,created_at,ref FROM frontier_rewards WHERE user_id=? AND ref LIKE 'dragon:%' ORDER BY created_at DESC LIMIT 5",
@@ -119,30 +190,18 @@ function createSiege(
     return view(uid, id);
   }
   function pay(b) {
-    const rows = db
-      .prepare(
-        "SELECT user_id,contribution FROM frontier_boss_honors WHERE cycle=? AND contribution>0 ORDER BY user_id",
-      )
-      .all(b.cycle);
-    const total = rows.reduce((n, r) => n + r.contribution, 0);
-    if (!total) return;
-    let remainder = b.reward_pool;
-    for (const r of rows) {
-      const share = BigInt(b.reward_pool) * BigInt(r.contribution);
-      r.coins = Number(share / BigInt(total));
-      r.fraction = Number(share % BigInt(total));
-      remainder -= r.coins;
-    }
-    rows.sort((a, b) => b.fraction - a.fraction || a.user_id - b.user_id);
-    for (let i = 0; i < remainder; i++) rows[i].coins++;
+    const rows = journey.rows(b.cycle);
     for (const r of rows)
       reward(
         r.user_id,
         `dragon:${b.cycle}:${r.user_id}`,
-        r.coins,
-        0,
-        `${config.name} defeated · damage share`,
+        r.earnedCoins,
+        Math.min(100, r.actions),
+        `${config.name} defeated · personal journey reward`,
       );
+    db.prepare(
+      "INSERT OR IGNORE INTO frontier_boss_cycles SELECT cycle,max_hp,reward_pool,defeated_at FROM frontier_boss WHERE id=1",
+    ).run();
   }
   function act(uid, id, nonce, input) {
     const a = view(uid, id);
@@ -173,6 +232,7 @@ function createSiege(
       ).run(damage, uid);
       reward(uid, `attack:${id}`, 0, 3, "Dragon assault");
       onDamage(uid);
+      journey.record(uid, `assault:${id}`, "battle");
     }
     const killed = damage > 0 && damage === b.hp;
     if (killed) {
@@ -180,8 +240,9 @@ function createSiege(
         "UPDATE frontier_boss SET hp=0,phase='defeated',defeated_at=? WHERE id=1",
       ).run(now());
       pay(b);
+      onDefeat();
       event(
-        `${config.name} has fallen. Every damage contributor received their share.`,
+        `${config.name} has fallen. Journey rewards are paid. Results remain available for 24 hours.`,
       );
     }
     const result = {
@@ -269,6 +330,7 @@ function createSiege(
     db.prepare(
       "INSERT INTO frontier_preparation_receipts VALUES(?,?,?,?,?,?,?)",
     ).run(uid, key, b.cycle, item, amount, accepted, now());
+    journey.record(uid, `prepare:${item}`, "preparation");
     const after = current();
     if (
       after.supplies_filled >= after.supplies_required &&
@@ -298,25 +360,151 @@ function createSiege(
       );
       release(a.id);
     }
-    const b = current();
-    if (b.phase === "defeated" && now() >= b.defeated_at + config.restSeconds) {
-      db.prepare(
-        "INSERT OR IGNORE INTO frontier_boss_cycles SELECT cycle,max_hp,reward_pool,defeated_at FROM frontier_boss WHERE id=1",
-      ).run();
-      db.prepare(
-        "UPDATE frontier_boss SET cycle=cycle+1,hp=?,max_hp=?,reward_pool=?,phase='preparing',supplies_filled=0,weapons_filled=0,supplies_required=?,weapons_required=?,opened_at=NULL,defeated_at=NULL WHERE id=1",
-      ).run(
-        config.maxHp,
-        config.maxHp,
-        config.rewardPool,
-        config.suppliesRequired,
-        config.weaponsRequired,
-      );
-      event(
-        "Mirewake stirs again. Prepare a new expedition; past damage rewards are preserved.",
-      );
-    }
   }
-  return { snapshot, start, view, act, cancel, contribute, tick };
+  function fighter(uid) {
+    ensure(uid);
+    free(uid);
+    fail(visible(), "Restore the bridge first", 409);
+    const p = db
+      .prepare("SELECT location,travel FROM frontier_players WHERE user_id=?")
+      .get(uid);
+    fail(
+      p.location === "pool" && !p.travel,
+      "Follow the trail to the dragon first",
+      409,
+    );
+    const b = current(),
+      t = combatNow();
+    fail(
+      b.phase !== "preparing",
+      "The expedition must be equipped before attacking",
+      409,
+    );
+    let f = db
+      .prepare("SELECT * FROM frontier_boss_fighters WHERE user_id=?")
+      .get(uid);
+    if (!f || f.cycle !== b.cycle) {
+      db.prepare(
+        "INSERT OR REPLACE INTO frontier_boss_fighters(user_id,cycle,hp,last_seen,next_attack) VALUES(?,?,100,?,?)",
+      ).run(uid, b.cycle, t, t + 4.2);
+      f = db
+        .prepare("SELECT * FROM frontier_boss_fighters WHERE user_id=?")
+        .get(uid);
+    }
+    const outcome = combatRules.advance(f, b, t);
+    saveFighter(f);
+    return {
+      ...f,
+      ...outcome,
+      attack: combatRules.attack(f, b, t),
+      combatVersion: combatRules.VERSION,
+    };
+  }
+  function saveFighter(f) {
+    const fields = [
+      ...Object.keys(actionColumns),
+      "last_seen",
+      "next_attack",
+      "strike_ready",
+      "stagger_until",
+      "hp",
+      "revive_at",
+    ];
+    db.prepare(
+      `UPDATE frontier_boss_fighters SET ${fields.map((name) => `${name}=?`).join(",")} WHERE user_id=?`,
+    ).run(...fields.map((name) => f[name]), f.user_id);
+  }
+  function combat(uid) {
+    return {
+      fighter: fighter(uid),
+      boss: snapshot(uid),
+      serverTime: combatNow(),
+    };
+  }
+  function strike(uid, kind, key, options = {}) {
+    fail(
+      ["strike", "dodge", "heavy", "guard"].includes(kind),
+      "Unknown combat action",
+    );
+    if (kind === "dodge")
+      fail(
+        ["left", "right"].includes(options.direction),
+        "Swipe left or right",
+      );
+    const identity = kind === "dodge" ? `dodge:${options.direction}` : kind;
+    fail(
+      typeof key === "string" && /^[a-zA-Z0-9-]{16,80}$/.test(key),
+      "Invalid request identity",
+    );
+    const old = db
+      .prepare(
+        "SELECT * FROM frontier_boss_hits WHERE user_id=? AND request_key=?",
+      )
+      .get(uid, key);
+    if (old) {
+      fail(
+        old.kind === identity,
+        "This request belongs to another action",
+        409,
+      );
+      return {
+        ...combat(uid),
+        ...JSON.parse(old.outcome || "{}"),
+        damage: old.damage,
+        duplicate: true,
+      };
+    }
+    const f = fighter(uid),
+      b = current(),
+      t = combatNow();
+    fail(b.phase === "open" && b.hp > 0, "The dragon is already defeated", 409);
+    fail(
+      options.at === undefined || Number.isFinite(options.at),
+      "Invalid input time",
+    );
+    const at = Math.max(t - combatRules.GRACE, Math.min(t, options.at ?? t));
+    const outcome = combatRules.input(f, b, kind, at, options.direction);
+    fail(!outcome.error, outcome.error, outcome.status);
+    saveFighter(f);
+    const damage = outcome.damage;
+    if (damage) {
+      db.prepare("UPDATE frontier_boss SET hp=hp-? WHERE id=1").run(damage);
+      db.prepare(
+        "INSERT INTO frontier_boss_honors(cycle,user_id,contribution) VALUES(?,?,?) ON CONFLICT(cycle,user_id) DO UPDATE SET contribution=contribution+excluded.contribution",
+      ).run(b.cycle, uid, damage);
+      db.prepare(
+        "UPDATE frontier_players SET boss_contribution=boss_contribution+? WHERE user_id=?",
+      ).run(damage, uid);
+      onDamage(uid);
+      journey.record(uid, `hit:${key}`, "battle");
+      if (damage === b.hp) {
+        db.prepare(
+          "UPDATE frontier_boss SET hp=0,phase='defeated',defeated_at=? WHERE id=1",
+        ).run(now());
+        pay(b);
+        onDefeat();
+        event(
+          `${config.name} has fallen. Journey rewards are paid. Results remain available for 24 hours.`,
+        );
+      }
+    }
+    db.prepare(
+      "INSERT INTO frontier_boss_hits(user_id,request_key,kind,damage,cycle,created_at,outcome) VALUES(?,?,?,?,?,?,?)",
+    ).run(uid, key, identity, damage, b.cycle, t, JSON.stringify(outcome));
+    return { ...combat(uid), ...outcome, damage, action: kind };
+  }
+  return {
+    snapshot,
+    start,
+    view,
+    act,
+    cancel,
+    contribute,
+    tick,
+    combat,
+    strike,
+    record: journey.record,
+    progress,
+  };
 }
 module.exports = { createSiege };

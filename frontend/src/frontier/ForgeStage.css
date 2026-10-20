@@ -1,10 +1,46 @@
 .forge-stage {
+  --forge-brass: #ddbd7b;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   color: #f0e1bb;
   background: #29382e;
+}
+.forge-scene {
+  background:
+    radial-gradient(ellipse at 25% 60%, #8a613d88, transparent 60%),
+    linear-gradient(135deg, #465240, #273e32) !important;
+}
+.forge-heat-batch {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: #d8c99e;
+  margin: 7px 0 10px;
+}
+.forge-hammer {
+  pointer-events: none;
+}
+.forge-hammer.striking {
+  animation: forge-hammer-strike 0.32s ease-out;
+}
+@keyframes forge-hammer-strike {
+  0% {
+    opacity: 0.7;
+  }
+  40% {
+    translate: 0 45px;
+  }
+  100% {
+    translate: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .forge-hammer.striking {
+    animation: none;
+  }
 }
 .forge-heading {
   display: flex;
@@ -282,4 +318,14 @@
 .forge-ready button:focus-visible {
   outline: 3px solid #fff0bd;
   outline-offset: 3px;
+}
+.forge-sections .forge-next {
+  outline: 2px solid #f3d899;
+  outline-offset: 2px;
+  box-shadow: 0 0 12px #f0d08c44;
+}
+@media (max-width: 600px) {
+  .forge-tools button:first-child > span {
+    display: none;
+  }
 }

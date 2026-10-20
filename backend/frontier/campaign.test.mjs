@@ -9,15 +9,18 @@ function fixture() {
   const db = new Database(":memory:");
   db.pragma("foreign_keys=ON");
   db.exec(
-    "CREATE TABLE users(id INTEGER PRIMARY KEY); INSERT INTO users VALUES(1),(2); CREATE TABLE grants(uid INTEGER,ref TEXT PRIMARY KEY,coins INTEGER,xp INTEGER);",
+    "CREATE TABLE users(id INTEGER PRIMARY KEY); INSERT INTO users VALUES(1),(2); CREATE TABLE frontier_boss(id INTEGER PRIMARY KEY,cycle INTEGER,phase TEXT); INSERT INTO frontier_boss VALUES(1,1,'preparing'); CREATE TABLE grants(uid INTEGER,ref TEXT PRIMARY KEY,coins INTEGER,xp INTEGER);",
   );
   let time = 1700000000;
-  const now = () => time,
-    grant = (uid, ref, coins, xp) =>
-      db
-        .prepare("INSERT OR IGNORE INTO grants VALUES(?,?,?,?)")
-        .run(uid, ref, coins, xp);
-  const make = () => createCampaign(db, now, grant);
+  const make = () =>
+    createCampaign(
+      db,
+      () => time,
+      (uid, ref, coins, xp) =>
+        db
+          .prepare("INSERT OR IGNORE INTO grants VALUES(?,?,?,?)")
+          .run(uid, ref, coins, xp),
+    );
   return {
     db,
     c: make(),
@@ -26,111 +29,146 @@ function fixture() {
     close: () => db.close(),
   };
 }
-test("viewing does not start the first week; first contribution fixes its deadline", () => {
+test("personal quests survive calendar changes and restarts, then reset with the journey", () => {
   const f = fixture();
   try {
-    assert.equal(f.c.view(1, []).ends_at, null);
-    f.advance(1000);
-    f.c.record(1, { job: "wood" }, []);
-    const initial = f.c.view(1, []);
-    assert.equal(initial.ends_at - initial.started_at, balance.weekSeconds);
-    assert.equal(initial.points, 1);
-    assert.equal(initial.tiles.find((t) => t.kind === "wood").progress, 1);
-    assert.equal(initial.tiles.find((t) => t.kind === "work").progress, 1);
-    f.advance(300);
-    assert.equal(f.c.view(2, []).ends_at, initial.ends_at);
-  } finally {
-    f.close();
-  }
-});
-test("weekly layouts are frozen, unlock-aware next week, and survive engine restart", () => {
-  const f = fixture();
-  try {
-    f.c.record(1, { job: "wood" }, []);
-    const first = f.c.view(1, []);
-    assert.deepEqual(f.c.view(1, ["bridge", "mill"]).tiles, first.tiles);
+    assert.equal(f.c.view(1).started_at, null);
+    f.c.record(1, { job: "wood" });
+    const first = f.c.view(1);
+    assert.equal(first.personal, true);
+    assert.equal(first.ends_at, null);
+    f.advance(604800 * 6);
     f.c = f.make();
-    assert.deepEqual(f.c.view(1, []).tiles, first.tiles);
-    f.advance(balance.weekSeconds);
-    const second = f.c.view(1, ["bridge", "mill"]);
-    assert.equal(second.week, 2);
-    assert.equal(second.points, 0);
-    assert.ok(second.tiles.some((t) => t.kind === "boss"));
-    assert.ok(second.tiles.some((t) => t.kind === "supplies"));
-    assert.ok(second.tiles.every((t) => t.progress === 0));
-    f.advance(balance.weekSeconds * 3);
-    assert.equal(f.c.view(1, []).season, 2);
+    assert.deepEqual(f.c.view(1), first);
+    f.db.prepare("UPDATE frontier_boss SET phase='defeated'").run();
+    f.c.record(1, { job: "wood" });
+    assert.equal(f.c.view(1).points, 1);
+    f.db.prepare("UPDATE frontier_boss SET cycle=2,phase='preparing'").run();
+    assert.equal(f.c.view(1).points, 0);
+    assert.ok(f.c.view(1).tiles.every((t) => t.progress === 0));
   } finally {
     f.close();
   }
 });
-test("team orders require two eligible contributors and count each person's completed activity", () => {
+test("players advance only their own quests and only roles they cleared", () => {
   const f = fixture();
   try {
-    f.c.record(1, { mission: "delivery", role: "guard", partySize: 1 }, []);
-    let v = f.c.view(1, []);
-    assert.equal(v.tiles.find((t) => t.kind === "team").progress, 0);
-    f.c.record(2, { mission: "delivery", role: "mechanic", partySize: 2 }, []);
-    v = f.c.view(2, []);
-    assert.equal(v.tiles.find((t) => t.kind === "team").progress, 1);
-    assert.equal(v.tiles.find((t) => t.kind === "delivery").progress, 2);
-    assert.equal(v.tiles.find((t) => t.kind === "guard").progress, 1);
-    assert.equal(v.contributors, 2);
+    f.c.record(1, { job: "wood" });
+    f.c.record(1, {
+      mission: "delivery",
+      roles: ["driver", "mechanic"],
+      partySize: 2,
+    });
+    const get = (b, k) => b.tiles.find((t) => t.kind === k).progress;
+    assert.equal(get(f.c.view(1), "team"), 1);
+    assert.equal(get(f.c.view(1), "mechanic"), 1);
+    assert.ok(f.c.view(2).tiles.every((t) => t.progress === 0));
+    f.c.record(2, { mission: "delivery", roles: ["guard"], partySize: 2 });
+    assert.equal(get(f.c.view(1), "guard"), 0);
+    assert.equal(get(f.c.view(2), "guard"), 1);
   } finally {
     f.close();
   }
 });
-test("three contributions qualify; offline seals settle once, cap at three, and mint no coins", () => {
+test("any three, six and nine completed cards pay exactly 100 each, independent of rows or order", () => {
   const f = fixture();
   try {
-    for (let i = 0; i < 3; i++) f.c.record(1, { job: "wood" }, []);
-    for (let i = 0; i < 2; i++) f.c.record(2, { job: "ore" }, []);
-    f.db.prepare("UPDATE frontier_weeks SET completed_lines=8").run();
-    assert.equal(f.c.view(2, []).seals, 0);
-    f.advance(balance.weekSeconds);
-    assert.equal(f.c.view(1, []).totalSeals, 3);
-    f.c = f.make();
-    f.c.view(1, []);
-    f.c.view(1, []);
+    const work = (kind, n) => {
+      for (let i = 0; i < n; i++) f.c.record(1, { job: kind });
+    };
+    const deliver = (role, n, partySize = 1) => {
+      for (let i = 0; i < n; i++)
+        f.c.record(1, { mission: "delivery", roles: [role], partySize });
+    };
+    work("wood", 150);
+    work("ore", 120);
+    assert.equal(f.c.view(1).completed, 2);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM grants").get().n, 0);
+    deliver("mechanic", 24);
+    assert.equal(f.c.view(1).completed, 3);
+    assert.equal(f.c.view(1).paidStages, 1);
+    work("planks", 45);
+    deliver("driver", 24);
+    assert.equal(f.c.view(1).completed, 6);
+    assert.equal(f.c.view(1).paidStages, 2);
+    deliver("guard", 24);
+    deliver("driver", 12, 2);
+    work("wood", 135);
+    const q = f.c.view(1);
+    assert.equal(q.completed, 9);
+    assert.equal(q.paidStages, 3);
+    assert.equal(q.maxCoins, 300);
     assert.deepEqual(
       f.db
         .prepare("SELECT COUNT(*) n,SUM(coins) coins,SUM(xp) xp FROM grants")
         .get(),
-      { n: 3, coins: 0, xp: 30 },
+      { n: 3, coins: 300, xp: 0 },
     );
-    assert.equal(f.c.view(1, []).seals, 0);
+    f.c = f.make();
+    f.c.view(1);
+    work("wood", 20);
+    f.c.view(1);
+    assert.equal(f.db.prepare("SELECT SUM(coins) n FROM grants").get().n, 300);
+    assert.equal(f.c.view(2).paidStages, 0);
   } finally {
     f.close();
   }
 });
-test("completed rows are derived from actual tile progress and daily weather rotates independently of views", () => {
+test("previous bingo keeps earned progress, raises targets and counts past rewards toward the new cap", () => {
   const f = fixture();
   try {
-    for (const job of ["wood", "ore", "planks"])
-      for (let i = 0; i < balance.weeklyTargets[job]; i++)
-        f.c.record(1, { job }, []);
-    const v = f.c.view(1, []);
-    assert.equal(v.lines, 1);
-    assert.equal(v.seals, 1);
-    assert.equal(f.c.weather().id, "clear");
-    f.advance(86400);
-    assert.equal(f.c.weather().id, "rain");
-    f.advance(86400);
-    assert.equal(f.c.weather().id, "wind");
-    f.advance(86400);
-    assert.equal(f.c.weather().id, "harvest");
+    f.db.exec(
+      "CREATE TABLE frontier_personal_boards(cycle INTEGER,user_id INTEGER,started_at INTEGER,layout TEXT,points INTEGER,paid_lines INTEGER,PRIMARY KEY(cycle,user_id))",
+    );
+    const layout = f.c
+      .view(1)
+      .tiles.map((t) => ({ kind: t.kind, progress: 6, target: 6 }));
+    f.db
+      .prepare(
+        "INSERT INTO frontier_personal_boards VALUES(1,1,1700000000,?,20,5)",
+      )
+      .run(JSON.stringify(layout));
+    f.c = f.make();
+    let q = f.c.view(1);
+    assert.equal(q.tiles.find((t) => t.kind === "wood").progress, 6);
+    assert.equal(q.tiles.find((t) => t.kind === "wood").target, 150);
+    assert.equal(q.paidStages, 3);
+    assert.equal(q.legacyCredit, 500);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM grants").get().n, 0);
+    for (const tile of q.tiles)
+      for (let i = tile.progress; i < tile.target; i++) {
+        if (["wood", "ore", "planks", "work"].includes(tile.kind))
+          f.c.record(1, { job: tile.kind === "work" ? "wood" : tile.kind });
+        else
+          f.c.record(1, {
+            mission: "delivery",
+            roles: [tile.kind],
+            partySize: tile.kind === "team" ? 2 : 1,
+          });
+      }
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM grants").get().n, 0);
+    f.db.prepare("UPDATE frontier_boss SET cycle=2").run();
+    q = f.c.view(1);
+    assert.equal(q.paidStages, 0);
+    assert.equal(q.legacyCredit, 0);
   } finally {
     f.close();
   }
 });
-test("each eligible player receives their own seal reward", () => {
+test("quest goals fit sustained play and do not reveal hidden stages", () => {
   const f = fixture();
   try {
-    for (const uid of [1, 2])
-      for (let i = 0; i < 3; i++) f.c.record(uid, { job: "wood" }, []);
-    f.db.prepare("UPDATE frontier_weeks SET completed_lines=3").run();
-    for (const uid of [1, 2]) assert.equal(f.c.view(uid, []).seals, 3);
-    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM grants").get().n, 6);
+    const q = f.c.view(1);
+    assert.equal(q.tiles.length, 9);
+    assert.ok(q.tiles.every((t) => t.target >= 12));
+    assert.doesNotMatch(
+      JSON.stringify(q),
+      /dragon|Mirewake|striker|healer|defender|season|bingo/i,
+    );
+    assert.deepEqual(
+      q.milestones.map((m) => m.at),
+      [3, 6, 9],
+    );
   } finally {
     f.close();
   }

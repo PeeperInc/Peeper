@@ -353,7 +353,7 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
                       <span>BEYOND THE FOG · PUBLIC PARTY</span>
                       <strong>{message.frontier_mission.kind === 'boss' ? 'Leech King patrol' : 'Caravan delivery'}</strong>
                       <small>{message.frontier_mission.status === 'lobby'
-                        ? `${message.frontier_mission.members}/3 players · Choose your role`
+                        ? `${message.frontier_mission.members}/3 players · 2 planks each · Deliver up to 10`
                         : message.frontier_mission.status === 'cancelled' ? 'Departure cancelled' : 'This party has departed'}</small>
                     </button>
                   ) : message.message_type === 'family_invite' && message.family_id ? (

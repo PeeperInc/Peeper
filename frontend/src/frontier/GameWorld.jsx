@@ -1,27 +1,24 @@
-import React, { useEffect, useRef } from "react";
-import { Application, Assets, Container, Sprite, Texture } from "pixi.js";
+import React, { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
 import PeeperSprite from "../components/PeeperSprite";
-import WorldIcon from "./WorldIcon";
-import Boardwalk from "./Boardwalk";
-import { frameCamera } from "./camera.mjs";
 import content from "../../../backend/frontier/content.json";
-import original from "../assets/frontier/marsh-world.webp";
-import armory from "../assets/frontier/armory.png";
-import dragon from "../assets/frontier/marsh-dragon.png";
-import restored from "../assets/frontier/marsh-restored.webp";
-const SIZE = 1254;
-function position(id) {
-  const p = content.locations.find((l) => l.id === id) || content.locations[0];
-  return [p.x, p.y];
-}
+import { createWorldScene, worldPoint } from "./worldScene.mjs";
+import { ribbon } from "./lowPolyWorld.mjs";
+import "./World3D.css";
+
+const position = (id) => {
+  const l = content.locations.find((l) => l.id === id) || content.locations[0];
+  return [l.x, l.y];
+};
 export function travelPosition(location, travel, now) {
-  if (!travel) return position(location);
+  if (!travel?.path?.length) return position(location);
   const path = travel.path,
     ratio = Math.max(
       0,
       Math.min(
         1,
-        (now - travel.started_at) / (travel.arrives_at - travel.started_at),
+        (now - travel.started_at) /
+          Math.max(0.001, travel.arrives_at - travel.started_at),
       ),
     );
   const lengths = path
@@ -40,460 +37,477 @@ export function travelPosition(location, travel, now) {
   }
   return path.at(-1);
 }
+
 export default function GameWorld({
   selected,
   onSelect,
-  players,
+  players = [],
   user,
   peeper,
-  projects,
-  equipped,
+  projects = [],
   location = "village",
   travel,
   serverTime,
+  paused = false,
 }) {
   const host = useRef(null),
     overlay = useRef(null),
-    avatar = useRef(null),
-    world = useRef(null),
-    props = useRef(null),
-    drag = useRef(null),
-    clock = useRef({ server: serverTime, local: performance.now() }),
-    camera = useRef({ x: 0, y: 0, scale: 0.8, follow: true });
-  // Updating the HUD every 250ms must not reset the animation's clock.
-  if (clock.current.sample !== serverTime) {
-    const t = performance.now();
-    const predicted = clock.current.server + (t - clock.current.local) / 1000;
-    clock.current = {
-      sample: serverTime,
-      server: Math.max(predicted, serverTime),
-      local: t,
-    };
-  }
-  props.current = { location, travel, players, user };
-  const bridge = Boolean(projects.find((p) => p.id === "bridge")?.completed_at),
-    art = bridge ? restored : original;
-  const accessible = (l) =>
-    !l.requires || projects.find((p) => p.id === l.requires)?.completed_at;
-  function apply() {
-    const v = camera.current;
-    if (world.current) {
-      world.current.position.set(v.x, v.y);
-      world.current.scale.set(v.scale);
-    }
-    if (overlay.current) {
-      overlay.current.style.transform = `translate(${v.x}px,${v.y}px) scale(${v.scale})`;
-      overlay.current.style.setProperty("--pin-scale", 1 / v.scale);
-    }
-  }
-  function zoom(factor) {
-    const el = host.current,
-      v = camera.current,
-      w = el.clientWidth,
-      h = el.clientHeight,
-      scale = Math.max(0.35, Math.min(1.7, v.scale * factor)),
-      r = scale / v.scale;
-    v.x = w / 2 - (w / 2 - v.x) * r;
-    v.y = h * 0.43 - (h * 0.43 - v.y) * r;
-    v.scale = scale;
-    v.follow = false;
-    apply();
-  }
+    live = useRef(null),
+    controls = useRef(null),
+    drag = useRef(null);
+  const [failed, setFailed] = useState(false);
+  const bridge = Boolean(projects.find((p) => p.id === "bridge")?.completed_at);
+  const accessible = content.locations.filter(
+    (l) =>
+      !l.requires || projects.find((p) => p.id === l.requires)?.completed_at,
+  );
+  live.current = {
+    paused,
+    selected,
+    location,
+    travel,
+    serverTime,
+    players,
+    user,
+    onSelect,
+  };
   useEffect(() => {
     const mount = host.current;
-    if (!mount) return;
-    let disposed = false,
-      initialized = false,
-      destroyed = false,
-      app,
+    let renderer,
+      world,
+      frame,
       observer,
-      fogTexture,
-      frame;
-    function destroyApp() {
-      if (initialized && !destroyed) {
-        destroyed = true;
-        app.destroy(true, { children: true });
-      }
-    }
-    mount.classList.remove("map-failed");
-    (async () => {
-      try {
-        app = new Application();
-        await app.init({
-          resizeTo: mount,
-          background: 0x243b32,
-          antialias: true,
-          resolution: Math.min(devicePixelRatio || 1, 1.5),
-          autoDensity: true,
-          preference: "webgl",
-        });
-        initialized = true;
-        if (disposed) {
-          destroyApp();
-          return;
-        }
-        mount.prepend(app.canvas);
-        app.canvas.setAttribute("aria-hidden", "true");
-        const layer = new Container();
-        world.current = layer;
-        app.stage.addChild(layer);
-        const texture = await Assets.load(art);
-        if (disposed) return;
-        const sprite = new Sprite(texture);
-        sprite.width = SIZE;
-        sprite.height = SIZE;
-        layer.addChild(sprite);
-        app.ticker.maxFPS = 60;
-        if (!bridge) {
-          const points = bridge
-            ? [
-                [0.71, 0.56],
-                [1, 0.5],
-                [1, 1],
-                [0.5, 1],
-                [0.6, 0.78],
-              ]
-            : [
-                [0.8, 0],
-                [1, 0],
-                [1, 1],
-                [0.48, 1],
-                [0.58, 0.68],
-                [0.72, 0.46],
-                [0.72, 0.28],
-                [0.78, 0.15],
-              ];
-          const surface = document.createElement("canvas");
-          surface.width = SIZE;
-          surface.height = SIZE;
-          const ink = surface.getContext("2d");
-          ink.shadowColor = "#233c35";
-          ink.shadowBlur = 50;
-          ink.fillStyle = "#233c35";
-          ink.beginPath();
-          points.forEach(([x, y], i) =>
-            i ? ink.lineTo(x * SIZE, y * SIZE) : ink.moveTo(x * SIZE, y * SIZE),
-          );
-          ink.closePath();
-          ink.fill();
-          ink.shadowBlur = 0;
-          ink.globalCompositeOperation = "source-atop";
-          for (let i = 0; i < 18; i++) {
-            const x = (0.67 + ((i * 137) % 310) / 1000) * SIZE,
-              y = (i * 193) % 1254,
-              glow = ink.createRadialGradient(x, y, 5, x, y, 200);
-            glow.addColorStop(0, "#91ab8e20");
-            glow.addColorStop(1, "#91ab8e00");
-            ink.fillStyle = glow;
-            ink.fillRect(x - 200, y - 200, 400, 400);
-          }
-          fogTexture = Texture.from(surface);
-          const fog = new Sprite(fogTexture);
-          layer.addChild(fog);
-        }
-      } catch {
-        if (!disposed) {
-          mount.classList.add("map-failed");
-          world.current = null;
-        }
-      }
-    })();
-    function resize() {
-      // DOM refs can clear before React runs passive effect cleanup.
-      if (disposed || host.current !== mount || !mount.isConnected) return;
-      const el = mount,
-        root = el.parentElement,
-        bounds = el.getBoundingClientRect();
-      const objective = root
-        .querySelector(".world-objective")
-        ?.getBoundingClientRect();
-      const panel = root
-        .querySelector(".hud-location")
-        ?.getBoundingClientRect();
-      const mobile = el.clientWidth <= 700;
-      camera.current.area = {
-        left: mobile
-          ? 12
-          : Math.min(
-              (panel?.right || bounds.left + 350) - bounds.left + 24,
-              el.clientWidth * 0.45,
-            ),
-        right: el.clientWidth - (mobile ? 60 : 80),
-        top: mobile
-          ? (objective?.bottom || bounds.top + 220) - bounds.top + 12
-          : 120,
-        bottom: mobile
-          ? (panel?.top || bounds.bottom - 220) - bounds.top - 12
-          : el.clientHeight - 50,
-      };
-      el.style.setProperty("--playfield-top", `${camera.current.area.top}px`);
-      camera.current.scale =
-        mount.clientWidth < 600
-          ? 0.96
-          : Math.max(
-              0.96,
-              (mount.clientWidth / SIZE) * 1.15,
-              (mount.clientHeight / SIZE) * 1.3,
-            );
-      camera.current.follow = true;
-    }
-    resize();
-    observer = new ResizeObserver(resize);
-    observer.observe(mount);
-    mount.parentElement
-      .querySelectorAll(".hud-location,.world-objective")
-      .forEach((el) => observer.observe(el));
-    let previousFrame = performance.now();
-    function animate() {
-      if (disposed || host.current !== mount || !mount.isConnected) return;
-      const p = props.current,
-        now =
-          clock.current.server +
-          (performance.now() - clock.current.local) / 1000,
-        pos = travelPosition(p.location, p.travel, now),
-        focus =
-          camera.current.focus && !p.travel
-            ? position(camera.current.focus)
-            : pos,
-        v = camera.current,
-        w = mount.clientWidth,
-        h = mount.clientHeight;
-      if (v.follow) {
-        const target = frameCamera(focus, v.scale, v.area);
-        const blend =
-          1 - Math.exp(-Math.min(64, performance.now() - previousFrame) / 130);
-        v.x += (target.x - v.x) * blend;
-        v.y += (target.y - v.y) * blend;
-      }
-      previousFrame = performance.now();
-      // Manual panning may use the whole screen; following uses HUD-aware bounds.
-      if (!v.follow || w > 700) {
-        v.x =
-          SIZE * v.scale < w
-            ? (w - SIZE * v.scale) / 2
-            : Math.min(0, Math.max(w - SIZE * v.scale, v.x));
-        v.y =
-          SIZE * v.scale < h
-            ? (h - SIZE * v.scale) / 2
-            : Math.min(0, Math.max(h - SIZE * v.scale, v.y));
-      }
-      apply();
-      if (avatar.current) {
-        avatar.current.style.transform = `translate3d(${pos[0] * SIZE - 85}px,${pos[1] * SIZE - 128}px,0)`;
-        avatar.current.classList.toggle(
-          "walking",
-          Boolean(p.travel && now < p.travel.arrives_at),
-        );
-      }
-      overlay.current?.querySelectorAll("[data-player]").forEach((el) => {
-        const other = p.players.find(
-          (player) => String(player.id) === el.dataset.player,
-        );
-        if (!other) return;
-        const point = travelPosition(other.location, other.travel, now);
-        el.style.transform = `translate3d(${point[0] * SIZE - 60}px,${point[1] * SIZE - 90}px,0)`;
+      dead = false,
+      route,
+      routeKey;
+    setFailed(false);
+    try {
+      // Development-only fixture for devices without a WebGL context.
+      if (
+        import.meta.env.DEV &&
+        new URLSearchParams(window.location.search).has("no3d")
+      )
+        throw new Error("Local fallback check");
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: "low-power",
       });
-      frame = requestAnimationFrame(animate);
-    }
-    frame = requestAnimationFrame(animate);
-    function visibility() {
-      if (document.hidden) app?.ticker?.stop();
-      else app?.ticker?.start();
-    }
-    document.addEventListener("visibilitychange", visibility);
-    return () => {
-      disposed = true;
-      cancelAnimationFrame(frame);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.12;
+      renderer.domElement.setAttribute("aria-hidden", "true");
+      mount.prepend(renderer.domElement);
+      world = createWorldScene(bridge);
+      const camera = new THREE.OrthographicCamera(-18, 18, 18, -18, 0.1, 160),
+        focus = new THREE.Vector3(),
+        target = new THREE.Vector3();
+      const start = worldPoint(position(live.current.selected));
+      focus.set(start[0], 0, start[1]);
+      const state = {
+        zoom: 1,
+        follow: true,
+        dx: 0,
+        dz: 0,
+        width: 1,
+        height: 1,
+        camera,
+        dirty: true,
+      };
+      controls.current = state;
+      const raycaster = new THREE.Raycaster(),
+        pointer = new THREE.Vector2();
+      const pickGeometry = new THREE.BoxGeometry(4, 3.5, 4),
+        pickMaterial = new THREE.MeshBasicMaterial();
+      const pickTargets = content.locations
+        .filter((l) => !l.requires || bridge)
+        .map((l) => {
+          const m = new THREE.Mesh(pickGeometry, pickMaterial),
+            [x, z] = worldPoint([l.x, l.y]);
+          m.position.set(x, 1.5, z);
+          m.userData.location = l.id;
+          m.updateMatrixWorld();
+          return m;
+        });
+      state.pick = (x, y) => {
+        const bounds = mount.getBoundingClientRect();
+        pointer.set(
+          ((x - bounds.left) / bounds.width) * 2 - 1,
+          (-(y - bounds.top) / bounds.height) * 2 + 1,
+        );
+        raycaster.setFromCamera(pointer, camera);
+        const hit = raycaster.intersectObjects(pickTargets, false)[0];
+        if (hit) live.current.onSelect(hit.object.userData.location);
+      };
+      const vector = new THREE.Vector3(),
+        reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const mark = new THREE.Mesh(
+        new THREE.RingGeometry(1.35, 1.44, 40),
+        new THREE.MeshBasicMaterial({
+          color: "#f8d890",
+          side: THREE.DoubleSide,
+        }),
+      );
+      mark.rotation.x = -Math.PI / 2;
+      mark.position.y = 0.13;
+      world.scene.add(mark);
+      let clock = {
+          sample: serverTime,
+          server: serverTime,
+          local: performance.now(),
+        },
+        previous = performance.now(),
+        lastRender = 0,
+        lastPlayers = null,
+        lastSelected = null;
+      const cameraOffset = new THREE.Vector3(8, 30, 24);
+      let layout = { cx: 0, cy: 0 },
+        projectionKey = "";
+      function resize() {
+        if (dead) return;
+        const width = mount.clientWidth,
+          height = mount.clientHeight;
+        if (state.width !== width || state.height !== height) {
+          state.width = width;
+          state.height = height;
+          renderer.setSize(width, height);
+        }
+        const root = mount.parentElement,
+          bounds = mount.getBoundingClientRect(),
+          dock = root.querySelector(".world-dock")?.getBoundingClientRect(),
+          stocks = root
+            .querySelector(".commons-stock")
+            ?.getBoundingClientRect(),
+          mobile = width < 700;
+        const top = mobile
+            ? (stocks?.bottom ?? bounds.top + 118) - bounds.top + 32
+            : 125,
+          bottom = mobile
+            ? (dock?.top ?? bounds.bottom - 230) - bounds.top
+            : height - 80;
+        layout = {
+          cx: mobile ? width * 0.48 : (width + Math.min(360, width * 0.3)) / 2,
+          cy: (top + Math.max(top + 80, bottom)) / 2,
+        };
+        const lens = mount.querySelector(".world-lens");
+        if (lens) lens.style.top = mobile ? `${bottom - 52}px` : "";
+        state.dirty = true;
+      }
+      observer = new ResizeObserver(resize);
+      observer.observe(mount);
+      mount.parentElement
+        .querySelectorAll(".world-dock,.commons-stock")
+        .forEach((el) => observer.observe(el, { box: "border-box" }));
+      resize();
+      function project(node, p, height, scale = 1) {
+        const [x, z] = worldPoint(p);
+        vector.set(x, height, z).project(camera);
+        node.style.transform = `translate3d(${((vector.x + 1) * state.width) / 2}px,${((1 - vector.y) * state.height) / 2}px,0) scale(${scale})`;
+        node.style.visibility = vector.z > 1 || vector.z < -1 ? "hidden" : "";
+      }
+      function draw(now) {
+        if (dead) return;
+        frame = requestAnimationFrame(draw);
+        if (document.hidden || live.current.paused) return;
+        const p = live.current,
+          dt = Math.min(0.08, (now - previous) / 1000);
+        previous = now;
+        if (clock.sample !== p.serverTime) {
+          clock = {
+            sample: p.serverTime,
+            server: Math.max(
+              clock.server + (now - clock.local) / 1000,
+              p.serverTime,
+            ),
+            local: now,
+          };
+        }
+        const time = clock.server + (now - clock.local) / 1000,
+          point = travelPosition(p.location, p.travel, time);
+        const current = worldPoint(
+          p.travel
+            ? point
+            : state.playerFocus
+              ? position(p.location)
+              : position(p.selected),
+        );
+        if (state.follow) target.set(current[0], 0, current[1]);
+        else target.set(state.dx, 0, state.dz);
+        const moving =
+          focus.distanceToSquared(target) > 0.00001 ||
+          p.travel ||
+          p.players.some((player) => player.travel);
+        if (
+          !state.dirty &&
+          !moving &&
+          lastSelected === p.selected &&
+          lastPlayers === p.players
+        )
+          return;
+        const renderStart = performance.now();
+        if (now - lastRender < 100)
+          mount.dataset.renderIntervalMs = (now - lastRender).toFixed(1);
+        lastSelected = p.selected;
+        lastPlayers = p.players;
+        state.dirty = false;
+        lastRender = now;
+        focus.lerp(target, reduced.matches ? 1 : 1 - Math.exp(-dt * 5));
+        const aspect = state.width / Math.max(1, state.height),
+          view = (state.width < 700 ? 21 : 32) / state.zoom;
+        const nextProjection = [
+          state.width,
+          state.height,
+          state.zoom,
+          layout.cx,
+          layout.cy,
+        ].join(":");
+        if (projectionKey !== nextProjection) {
+          projectionKey = nextProjection;
+          camera.clearViewOffset();
+          camera.left = (-view * aspect) / 2;
+          camera.right = (view * aspect) / 2;
+          camera.top = view / 2;
+          camera.bottom = -view / 2;
+          camera.updateProjectionMatrix();
+          camera.setViewOffset(
+            state.width,
+            state.height,
+            state.width / 2 - layout.cx,
+            state.height / 2 - layout.cy,
+            state.width,
+            state.height,
+          );
+        }
+        camera.position.copy(focus).add(cameraOffset);
+        camera.lookAt(focus);
+        camera.updateMatrixWorld();
+        const [mx, mz] = worldPoint(position(p.selected));
+        mark.position.set(mx, 0.13, mz);
+        const key = JSON.stringify(p.travel?.path || null);
+        if (key !== routeKey) {
+          if (route) {
+            world.scene.remove(route);
+            route.geometry.dispose();
+          }
+          routeKey = key;
+          route = p.travel
+            ? ribbon(
+                p.travel.path.map(worldPoint),
+                0.13,
+                "#ffe3a1",
+                world.kit,
+                0.24,
+              )
+            : null;
+          if (route) world.scene.add(route);
+        }
+        overlay.current
+          ?.querySelectorAll("[data-location]")
+          .forEach((el) => project(el, position(el.dataset.location), 2.8));
+        overlay.current?.querySelectorAll("[data-person]").forEach((el) => {
+          const self = el.dataset.person === "self",
+            other = self
+              ? p
+              : p.players.find(
+                  (player) => String(player.id) === el.dataset.person,
+                );
+          if (!other) return;
+          project(
+            el,
+            self ? point : travelPosition(other.location, other.travel, time),
+            0.1,
+            state.height / view / (667 / 21),
+          );
+          el.classList.toggle(
+            "walking",
+            Boolean(other.travel && time < other.travel.arrives_at),
+          );
+        });
+        if (overlay.current) {
+          const cloud = overlay.current.querySelector(".world-unknown");
+          if (cloud) project(cloud, [0.85, 0.4], 0.5);
+        }
+        world.update(0, true);
+        renderer.render(world.scene, camera);
+        mount.dataset.drawCalls = String(renderer.info.render.calls);
+        mount.dataset.triangles = String(renderer.info.render.triangles);
+        mount.dataset.renderCpuMs = (performance.now() - renderStart).toFixed(
+          2,
+        );
+        mount.dataset.renderFrames = String(
+          Number(mount.dataset.renderFrames || 0) + 1,
+        );
+      }
+      controls.current.pan = (dx, dy) => {
+        state.dirty = true;
+        if (state.follow) {
+          state.dx = focus.x;
+          state.dz = focus.z;
+          state.follow = false;
+        }
+        const units = (state.width < 700 ? 21 : 32) / state.zoom / state.height;
+        state.dx = Math.max(
+          -22,
+          Math.min(22, state.dx - dx * units * 0.967 - dy * units * 0.42),
+        );
+        state.dz = Math.max(
+          -22,
+          Math.min(22, state.dz + dx * units * 0.26 - dy * units * 1.2),
+        );
+      };
+      const lost = (e) => {
+        e.preventDefault();
+        setFailed(true);
+      };
+      renderer.domElement.addEventListener("webglcontextlost", lost);
+      frame = requestAnimationFrame(draw);
+      return () => {
+        dead = true;
+        cancelAnimationFrame(frame);
+        observer.disconnect();
+        controls.current = null;
+        renderer.domElement.removeEventListener("webglcontextlost", lost);
+        world.dispose();
+        pickGeometry.dispose();
+        pickMaterial.dispose();
+        renderer.dispose();
+        renderer.domElement.remove();
+      };
+    } catch (error) {
+      console.warn("Reedbank 3D map unavailable", error);
+      setFailed(true);
+      controls.current = null;
       observer?.disconnect();
-      document.removeEventListener("visibilitychange", visibility);
-      world.current = null;
-      destroyApp();
-      fogTexture?.destroy(true);
-    };
-  }, [art, bridge]);
-  useEffect(() => {
-    if (travel) {
-      camera.current.follow = true;
-      camera.current.focus = null;
+      world?.dispose();
+      renderer?.dispose();
+      renderer?.domElement.remove();
     }
-  }, [travel?.started_at]);
+    return () => {
+      dead = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [bridge]);
   useEffect(() => {
-    camera.current.focus = selected;
-    camera.current.follow = true;
-  }, [selected]);
+    if (!paused && controls.current) controls.current.dirty = true;
+  }, [paused]);
+  useEffect(() => {
+    if (controls.current) {
+      controls.current.follow = true;
+      controls.current.playerFocus = false;
+      controls.current.dirty = true;
+    }
+  }, [selected, travel?.started_at]);
+  const zoom = (factor) => {
+    if (controls.current) {
+      controls.current.dirty = true;
+      controls.current.zoom = Math.max(
+        0.55,
+        Math.min(2.1, controls.current.zoom * factor),
+      );
+    }
+  };
   return (
     <div
-      className="game-world"
+      className={`game-world world-three ${failed ? "world-three-failed" : ""}`}
       ref={host}
-      style={{ "--world-art": `url(${art})` }}
+      onWheel={(e) => {
+        if (!e.target.closest("button")) zoom(e.deltaY < 0 ? 1.06 : 0.94);
+      }}
       onPointerDown={(e) => {
         if (e.target.closest("button")) return;
+        drag.current = { x: e.clientX, y: e.clientY, distance: 0 };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        if (!drag.current) return;
+        controls.current?.pan(
+          e.clientX - drag.current.x,
+          e.clientY - drag.current.y,
+        );
         drag.current = {
           x: e.clientX,
           y: e.clientY,
-          cx: camera.current.x,
-          cy: camera.current.y,
+          distance:
+            drag.current.distance +
+            Math.hypot(e.clientX - drag.current.x, e.clientY - drag.current.y),
         };
-        e.currentTarget.setPointerCapture(e.pointerId);
-        camera.current.follow = false;
       }}
-      onPointerMove={(e) => {
-        if (drag.current) {
-          camera.current.x = drag.current.cx + e.clientX - drag.current.x;
-          camera.current.y = drag.current.cy + e.clientY - drag.current.y;
-          apply();
-        }
-      }}
-      onPointerUp={() => {
+      onPointerUp={(e) => {
+        if (drag.current && drag.current.distance < 6)
+          controls.current?.pick(e.clientX, e.clientY);
         drag.current = null;
       }}
       onPointerCancel={() => {
         drag.current = null;
       }}
     >
-      <div ref={overlay} className="game-map-overlay">
-        <div
-          className="fallback-world-art"
-          style={{ backgroundImage: `url(${art})` }}
-        >
-          {!bridge && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "#263e37",
-                clipPath: bridge
-                  ? "polygon(71% 56%,100% 50%,100% 100%,50% 100%,60% 78%)"
-                  : "polygon(80% 0,100% 0,100% 100%,48% 100%,58% 68%,72% 46%,72% 28%,78% 15%)",
-              }}
-            />
-          )}
-        </div>
-        {bridge && (
-          <>
-            <Boardwalk />
-            <img
-              className="world-armory"
-              src={armory}
-              alt=""
-              style={{ left: SIZE * 0.84, top: SIZE * 0.52 }}
-            />
-            <img
-              className="world-dragon"
-              src={dragon}
-              alt=""
-              style={{ left: SIZE * 0.84, top: SIZE * 0.77 }}
-            />
-          </>
-        )}
-        {travel && (
-          <svg
-            className="world-route"
-            viewBox={`0 0 ${SIZE} ${SIZE}`}
-            aria-hidden="true"
-          >
-            <polyline
-              points={travel.path
-                .map((p) => `${p[0] * SIZE},${p[1] * SIZE}`)
-                .join(" ")}
-              fill="none"
-              stroke="#29372dcc"
-              strokeWidth="8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <polyline
-              points={travel.path
-                .map((p) => `${p[0] * SIZE},${p[1] * SIZE}`)
-                .join(" ")}
-              fill="none"
-              stroke="#f4d982"
-              strokeWidth="3"
-              strokeDasharray="3 10"
-              strokeLinecap="round"
-            />
-          </svg>
-        )}
+      <div className="world-three-overlay" ref={overlay}>
+        {accessible.map((l) => (
+          <div className="world-pin-anchor" data-location={l.id} key={l.id}>
+            <button
+              className={`world-three-pin ${selected === l.id ? "selected" : ""}`}
+              onClick={() => onSelect(l.id)}
+              aria-label={l.name}
+              aria-pressed={selected === l.id}
+            >
+              <span>{l.name}</span>
+              {selected === l.id && (
+                <small>
+                  {l.id === "bridge" && !bridge
+                    ? "CROSSING CLOSED"
+                    : "SELECTED"}
+                </small>
+              )}
+            </button>
+          </div>
+        ))}
         {!bridge && (
-          <div
-            className="uncharted-label"
-            style={{ left: SIZE * 0.82, top: SIZE * (bridge ? 0.75 : 0.37) }}
-          >
-            UNCHARTED MARSH
+          <div className="world-unknown">
+            THE UNCHARTED MARSH<span>Restore the crossing to explore</span>
           </div>
         )}
-        {content.locations.filter(accessible).map((l) => (
-          <button
-            className={`game-location ${selected === l.id ? "selected" : ""}`}
-            key={l.id}
-            style={{ left: l.x * SIZE, top: l.y * SIZE - 75 }}
-            onClick={() => onSelect(l.id)}
-            aria-label={l.name}
-          >
-            <i>
-              <WorldIcon
-                name={
-                  {
-                    village: "camp",
-                    sawmill: "wood",
-                    quarry: "ore",
-                    bridge: "planks",
-                    mill: "supplies",
-                    workshop: "weapons",
-                    pool: "boss",
-                  }[l.id]
-                }
-                size={28}
-              />
-            </i>
-            <span>{l.name}</span>
-            {l.id === "bridge" && !bridge && <small>Crossing closed</small>}
-          </button>
-        ))}
         {players
           .filter((p) => p.id !== user.id)
           .slice(0, 20)
-          .map((p) => {
-            const pos = travelPosition(p.location, p.travel, serverTime);
-            return (
-              <div
-                className="game-avatar other"
-                key={p.id}
-                data-player={p.id}
-                style={{
-                  transform: `translate3d(${pos[0] * SIZE - 60}px,${pos[1] * SIZE - 90}px,0)`,
-                }}
-              >
-                <PeeperSprite peeper={p} size={120} showDead={false} />
-                <span>{p.name}</span>
-              </div>
-            );
-          })}
-        <div ref={avatar} className="game-avatar">
-          <PeeperSprite peeper={peeper} size={170} showDead={false} />
-          {equipped && (
-            <i className="game-keepsake">
-              {equipped === "blue-pennant"
-                ? "⚑"
-                : equipped === "amber-lantern"
-                  ? "✧"
-                  : "♛"}
-            </i>
-          )}
+          .map((p) => (
+            <div className="world-person other" data-person={p.id} key={p.id}>
+              <PeeperSprite peeper={p} size={65} showDead={false} />
+              <span>{p.name}</span>
+            </div>
+          ))}
+        <div className="world-person" data-person="self">
+          <PeeperSprite peeper={peeper} size={84} showDead={false} />
           <span>{user.first_name}</span>
         </div>
       </div>
+      {failed && (
+        <div className="world-three-fallback">
+          <b>Trail map</b>
+          <p>
+            3D is unavailable on this device. Choose a destination to keep
+            exploring.
+          </p>
+          {accessible.map((l) => (
+            <button key={l.id} onClick={() => onSelect(l.id)}>
+              {l.name}
+              {selected === l.id ? " · selected" : ""}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="world-lens">
-        <button onClick={() => zoom(1.25)} aria-label="Zoom in">
+        <button onClick={() => zoom(1.2)} aria-label="Zoom in">
           ＋
         </button>
-        <button onClick={() => zoom(0.8)} aria-label="Zoom out">
+        <button onClick={() => zoom(1 / 1.2)} aria-label="Zoom out">
           −
         </button>
         <button
           onClick={() => {
-            camera.current.follow = true;
-            camera.current.focus = null;
+            if (controls.current) {
+              controls.current.follow = true;
+              controls.current.playerFocus = true;
+            }
           }}
           aria-label="Find my Peeper"
         >

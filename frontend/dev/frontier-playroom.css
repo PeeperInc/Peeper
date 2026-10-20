@@ -40,7 +40,7 @@ body {
 }
 .playroom nav {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(9, 1fr);
   padding: 6px 8px 10px;
   gap: 4px;
   flex-shrink: 0;
@@ -157,5 +157,32 @@ body {
     gap: 7px;
     padding: 7px;
     font-size: 11px;
+  }
+}
+@media (max-width: 480px) {
+  .playroom nav {
+    grid-template-columns: repeat(9, minmax(48px, 1fr));
+    overflow-x: auto;
+    gap: 3px;
+  }
+  .playroom nav button {
+    font-size: 9px;
+    min-height: 49px;
+  }
+  .playroom nav svg {
+    width: 20px;
+    height: 20px;
+  }
+  .playroom > header {
+    padding: 9px 12px;
+  }
+  .playroom-result {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 7px;
+  }
+  .playroom-result b {
+    width: 100%;
+    text-align: center;
   }
 }

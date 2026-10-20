@@ -6,7 +6,150 @@ const core = require("./core");
 export function arcadeGesture(c) {
   const a = c.arcade,
     events = [];
-  if (a.mode === "forge") {
+  if (a.mode === "chopping")
+    for (let i = 0; i < 6; i++)
+      events.push(
+        [400 + i * 1300, 6, a.notches[i], 0],
+        [450 + i * 1300, 0, 0, 0],
+        [
+          450 +
+            i * 1300 +
+            (a.windows ? (a.windows[i][0] + a.windows[i][1]) / 2 : 650),
+          2,
+          0,
+          0,
+        ],
+      );
+  if (a.mode === "quarrying") {
+    const s = core.create(c);
+    for (let t = 400; t < 14000 && !s.done; t += 30) {
+      if (
+        t - s.lastStrike < 390 ||
+        (a.precision && core.toolPulse(s, t) <= 0.88)
+      )
+        continue;
+      const e = [t, 6, a.order[s.oreFound], 0];
+      events.push(e);
+      core.act(s, e);
+    }
+  }
+  if (a.mode === "carpentry") {
+    if (a.workbench)
+      events.push(
+        [300, 0, a.cutX, 0.2],
+        [700, 1, a.cutX, 0.75],
+        [1100, 1, a.cutX, 0.2],
+        [1500, 1, a.cutX, 0.75],
+        [1900, 2, a.cutX, 0.2],
+        [2200, 0, 0.16, 0.5],
+        [2700, 1, 0.84, 0.5],
+        [3200, 2, 0.16, 0.5],
+      );
+    else
+      events.push(
+        [300, 0, a.cutX, 0.2],
+        [650, 1, a.cutX, 0.5],
+        [1000, 2, a.cutX, 0.8],
+        [1400, 0, 0.16, 0.5],
+        [1800, 1, 0.5, 0.5],
+        [2200, 2, 0.84, 0.5],
+      );
+    const s = core.create(c);
+    events.forEach((e) => core.act(s, e));
+    for (let t = a.workbench ? 3700 : 2600; t < 14000 && !s.done; t += 450) {
+      const e = [t, 6, s.nailHP.findIndex((n) => n > 0), 0];
+      events.push(e);
+      core.act(s, e);
+    }
+  }
+  if (a.mode === "match3") {
+    let beam = [{ s: core.create(c), path: [] }],
+      won;
+    const score = (s) =>
+      a.orders.reduce((n, v, i) => n + Math.min(v, s.collected[i]) * 10, 0) +
+      s.harvested * 0.03;
+    for (let depth = 0; depth < a.moves && !won; depth++) {
+      const next = [];
+      for (const entry of beam)
+        for (const move of core.match3Moves(entry.s.board)) {
+          const s = structuredClone(entry.s);
+          core.swapMatch3(s, ...move);
+          const node = { s, path: [...entry.path, move] };
+          if (core.grade(s).passed) {
+            won = node;
+            break;
+          }
+          if (!s.done) next.push(node);
+        }
+      next.sort((x, y) => score(y.s) - score(x.s));
+      beam = next.slice(0, 18);
+      if (!beam.length) break;
+    }
+    const path = won?.path || beam[0]?.path || [];
+    path.forEach(([from, to], i) =>
+      events.push(
+        [
+          400 + i * 800,
+          0,
+          ((from % 5) + 0.5) / 5,
+          (Math.floor(from / 5) + 0.5) / 5,
+        ],
+        [
+          700 + i * 800,
+          2,
+          ((to % 5) + 0.5) / 5,
+          (Math.floor(to / 5) + 0.5) / 5,
+        ],
+      ),
+    );
+  }
+  if (a.mode === "logging") {
+    for (let i = 0; i < a.target; i++)
+      events.push(
+        [400 + i * 1800, 6, a.notches[i], 0],
+        [450 + i * 1800, 0, 0, 0],
+        [1150 + i * 1800, 2, 0, 0],
+      );
+  }
+  if (a.mode === "mining") {
+    const order = [
+      a.nodes.indexOf("brace"),
+      ...a.nodes
+        .map((type, i) => (type === "ore" ? i : -1))
+        .filter((i) => i >= 0),
+    ];
+    order.forEach((node, i) =>
+      events.push(
+        [400 + i * 1400, 6, node, 0],
+        [450 + i * 1400, 0, 0, 0],
+        [1200 + i * 1400, 2, 0, 0],
+      ),
+    );
+  }
+  if (a.mode === "forge" && a.recipe) {
+    const s = core.create(c);
+    function push(e) {
+      events.push(e);
+      core.act(s, e);
+    }
+    for (let t = 400; t < 14500 && !s.done; t += 40) {
+      core.advance(s, t);
+      const formed = s.sections.every((n, i) => n === a.recipe.sections[i]);
+      if (formed) {
+        if (s.heating) push([t, 2, 0, 0]);
+        else if (s.heat >= a.recipe.quench[0] && s.heat <= a.recipe.quench[1])
+          push([t, 5, 0, 0]);
+      } else if (s.heating && s.heat >= 0.81) push([t, 2, 0, 0]);
+      else if (
+        !s.heating &&
+        (s.heat < 0.62 || (a.recipe.thermal && s.heatBatchHits >= 2))
+      )
+        push([t, 0, 0, 0]);
+      else if (!s.heating && t - s.lastStrike >= 420)
+        push([t, 6, a.recipe.order[s.sections.reduce((n, v) => n + v, 0)], 0]);
+    }
+  }
+  if (a.mode === "forge" && !a.recipe) {
     events.push([300, 0, 0, 0], [2000, 2, 0, 0]);
     events.push([2200, 6, 0, 0], [2600, 6, 1, 0], [3000, 6, 2, 0]);
     events.push([3200, 0, 0, 0], [3900, 2, 0, 0]);
@@ -41,8 +184,12 @@ export function arcadeGesture(c) {
         break;
       }
     }
-  if (a.mode === "convoy")
-    for (const row of a.rows) events.push([row.at + 800, 4, row.crate, 0]);
+  if (["convoy", "trail"].includes(a.mode))
+    for (const row of a.rows) {
+      if (a.balance) events.push([row.at + 600, 0, 0, 0]);
+      events.push([row.at + 800, 4, row.crate, 0]);
+      if (a.balance) events.push([row.at + 1500, 2, 0, 0]);
+    }
   if (a.mode === "duel")
     for (const attack of a.attacks)
       events.push(

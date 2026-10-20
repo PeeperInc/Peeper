@@ -6,6 +6,8 @@ const { makeChallenge, inspect } = require("./gestures");
 const { findRoute } = require("./travel");
 const { createCampaign } = require("./campaign");
 const { createSiege } = require("./siege");
+const { deliveryTasks } = require("./delivery");
+const { eventStatus } = require("./lifecycle");
 class FrontierError extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -18,11 +20,10 @@ const fail = (ok, message, status) => {
 const parse = (value) => (value ? JSON.parse(value) : null);
 const M = content.mission;
 function createEngine(db, clock = () => Date.now()) {
-  install(db);
   const now = () => Math.floor(clock() / 1000);
+  install(db, now);
   const campaign = createCampaign(db, now, reward);
-  const newChallenge = (kind) =>
-    makeChallenge(kind, now(), campaign.weather().id);
+  const newChallenge = (kind) => makeChallenge(kind, now());
   const event = (message) => {
     db.prepare(
       "INSERT INTO frontier_events(message,created_at) VALUES (?,?)",
@@ -56,6 +57,58 @@ function createEngine(db, clock = () => Date.now()) {
       "Finish or leave your current activity first",
       409,
     );
+  function journeyActive() {
+    fail(
+      availability().active &&
+        db.prepare("SELECT phase FROM frontier_boss WHERE id=1").get().phase !==
+          "defeated",
+      "The event has ended",
+      409,
+    );
+  }
+  function pauseJourney() {
+    for (const j of db
+      .prepare("SELECT * FROM frontier_jobs WHERE status='active'")
+      .all()) {
+      for (const [item, qty] of Object.entries(
+        parse(j.recipe_inputs) || content.jobs[j.kind].inputs,
+      ))
+        stock(item, qty);
+      db.prepare(
+        "UPDATE frontier_jobs SET status='abandoned',result=? WHERE id=?",
+      ).run(
+        JSON.stringify({
+          passed: false,
+          reason:
+            "The journey has ended. Ingredients returned; your action score is saved.",
+        }),
+        j.id,
+      );
+    }
+    for (const m of db
+      .prepare(
+        "SELECT * FROM frontier_missions WHERE status IN ('lobby','active')",
+      )
+      .all())
+      refundMission(m);
+    db.prepare(
+      "UPDATE frontier_assaults SET status='cancelled',result=? WHERE status='active'",
+    ).run(
+      JSON.stringify({
+        damage: 0,
+        reason: "The journey is complete; earlier actions are saved.",
+      }),
+    );
+    db.prepare("DELETE FROM frontier_commitments").run();
+  }
+  function availability() {
+    return eventStatus(
+      db
+        .prepare("SELECT phase,defeated_at FROM frontier_boss WHERE id=1")
+        .get(),
+      clock() / 1000,
+    );
+  }
   const reserve = (uid, kind, ref) =>
     db
       .prepare("INSERT INTO frontier_commitments VALUES (?,?,?)")
@@ -96,6 +149,12 @@ function createEngine(db, clock = () => Date.now()) {
     return amount;
   }
   function activeRole(m, member, count) {
+    if (m.delivery_version) {
+      const members = db
+        .prepare("SELECT * FROM frontier_members WHERE mission_id=?")
+        .all(m.id);
+      return deliveryTasks(m, members, member)[m.round] || null;
+    }
     return count === 1 && m.round_count === 3
       ? ["driver", "guard", "mechanic"][m.round % 3]
       : member.role;
@@ -105,10 +164,10 @@ function createEngine(db, clock = () => Date.now()) {
       ? {
           driver: newChallenge("dodge"),
           guard: newChallenge("guard"),
-          mechanic: newChallenge("rune"),
+          mechanic: newChallenge("brew"),
         }
       : {
-          driver: newChallenge("steer"),
+          driver: newChallenge("drive"),
           guard: newChallenge("guard"),
           mechanic: newChallenge("crank"),
         };
@@ -118,6 +177,17 @@ function createEngine(db, clock = () => Date.now()) {
       .prepare("SELECT location,travel FROM frontier_players WHERE user_id=?")
       .get(uid);
     const trip = parse(row?.travel);
+    if (trip && trip.road_version !== 2 && trip.arrives_at > now()) {
+      const path = findRoute(trip.from, trip.to, completed());
+      if (path) {
+        trip.path = path;
+        trip.road_version = 2;
+        db.prepare("UPDATE frontier_players SET travel=? WHERE user_id=?").run(
+          JSON.stringify(trip),
+          uid,
+        );
+      }
+    }
     if (trip && trip.arrives_at <= now())
       db.prepare(
         "UPDATE frontier_players SET location=?,travel=NULL WHERE user_id=?",
@@ -153,6 +223,7 @@ function createEngine(db, clock = () => Date.now()) {
       from: p.location,
       to,
       path,
+      road_version: 2,
       started_at: now(),
       arrives_at: now() + (seconds || Math.max(1, Math.ceil(distance * 12))),
     };
@@ -182,12 +253,7 @@ function createEngine(db, clock = () => Date.now()) {
       .prepare("SELECT location,travel FROM frontier_players WHERE user_id=?")
       .get(uid);
     fail(!p.travel, "Finish travelling before starting work", 409);
-    fail(
-      p.location === def.location ||
-        (def.location === "village" && p.location === "mill"),
-      "Travel to the workshop first",
-      409,
-    );
+    fail(p.location === def.location, "Travel to the workshop first", 409);
     if (p.location === "mill")
       fail(
         completed().includes("bridge"),
@@ -203,8 +269,40 @@ function createEngine(db, clock = () => Date.now()) {
         409,
       );
   }
-  function finishJob(j, abandoned = false) {
+  function craftRef(j) {
+    return j.kind === "planks" ? "plank" : `craft:${j.kind}`;
+  }
+  function finishJob(j, abandoned = false, refundCraft = true) {
     const def = content.jobs[j.kind];
+    if (j.continuous) {
+      if (j.continuous === 2 && refundCraft)
+        for (const [item, qty] of Object.entries(parse(j.recipe_inputs)))
+          stock(item, qty);
+      // Each successful extraction was banked immediately, never pay again on exit.
+      const result = {
+        passed: j.successes > 0,
+        complete: true,
+        coins:
+          j.continuous === 2
+            ? db
+                .prepare(
+                  "SELECT COALESCE(SUM(coins),0) n FROM frontier_rewards WHERE user_id=? AND ref LIKE ?",
+                )
+                .get(j.user_id, `${craftRef(j)}:${j.id}:%`).n
+            : j.successes,
+        xp: j.successes * Math.ceil(def.xp / def.steps),
+        output: def.output,
+        quantity: j.successes,
+        successes: j.successes,
+      };
+      db.prepare("UPDATE frontier_jobs SET status=?,result=? WHERE id=?").run(
+        abandoned && !j.successes ? "abandoned" : "done",
+        JSON.stringify(result),
+        j.id,
+      );
+      release(j.id);
+      return result;
+    }
     const complete = j.successes >= def.steps;
     const gathering = Object.keys(def.inputs).length === 0;
     // Gathered pieces survive an early exit. A recipe consumes ingredients only
@@ -228,7 +326,10 @@ function createEngine(db, clock = () => Date.now()) {
       );
     } else {
       // Crafting ingredients are reservations until a successful batch is produced.
-      for (const [item, qty] of Object.entries(def.inputs)) stock(item, qty);
+      for (const [item, qty] of Object.entries(
+        parse(j.recipe_inputs) || def.inputs,
+      ))
+        stock(item, qty);
     }
     const result = {
       passed,
@@ -248,7 +349,7 @@ function createEngine(db, clock = () => Date.now()) {
     return result;
   }
   function refundMission(m) {
-    stock(m.kind === "boss" ? "supplies" : "planks", m.cargo);
+    stock(m.kind === "boss" ? "supplies" : "planks", m.input_cargo ?? m.cargo);
     db.prepare(
       "UPDATE frontier_missions SET status='cancelled',result=? WHERE id=?",
     ).run(
@@ -300,9 +401,19 @@ function createEngine(db, clock = () => Date.now()) {
     for (const p of eligible)
       if (passed) {
         payments[p.user_id] = activityCoins(p.user_id, M.coins);
+        const roles = m.delivery_version
+          ? deliveryTasks(m, members, p).filter(
+              (_, round) =>
+                db
+                  .prepare(
+                    "SELECT correct FROM frontier_actions WHERE mission_id=? AND user_id=? AND round=?",
+                  )
+                  .get(m.id, p.user_id, round)?.correct,
+            )
+          : [p.role];
         campaign.record(
           p.user_id,
-          { mission: m.kind, role: p.role, partySize: eligible.length },
+          { mission: m.kind, role: p.role, roles, partySize: eligible.length },
           completed(),
         );
         reward(
@@ -317,16 +428,24 @@ function createEngine(db, clock = () => Date.now()) {
             "UPDATE frontier_players SET deliveries=deliveries+1 WHERE user_id=?",
           ).run(p.user_id);
       }
-    if (!passed) stock(m.kind === "boss" ? "supplies" : "planks", m.cargo);
+    if (!passed)
+      stock(
+        m.kind === "boss" ? "supplies" : "planks",
+        m.input_cargo ?? m.cargo,
+      );
     const result = {
       passed,
       damage: 0,
       delivered,
+      spent: m.input_cargo ?? m.cargo,
+      bonus: passed ? m.cargo - (m.input_cargo ?? m.cargo) : 0,
       reason: passed
         ? null
         : m.health <= 0
           ? "The party could not protect the cargo. Reserved supplies returned to the shared stores."
-          : `This journey needed ${m.min_crew} ${m.min_crew === 1 ? "player" : "players"} to clear ${m.required_successes} encounters each; ${eligible.length} qualified. Reserved supplies returned to the shared stores.`,
+          : m.delivery_version
+            ? "Everyone must clear at least one task (solo: two). Reserved planks returned."
+            : `This journey needed ${m.min_crew} players to clear ${m.required_successes} encounters each. Reserved supplies returned.`,
       health: m.health,
       eligible: passed ? eligible.map((x) => x.user_id) : [],
       coins: M.coins,
@@ -334,8 +453,8 @@ function createEngine(db, clock = () => Date.now()) {
       xp: M.xp,
     };
     db.prepare(
-      "UPDATE frontier_missions SET status='done',health=?,round=?,result=? WHERE id=?",
-    ).run(m.health, m.round, JSON.stringify(result), m.id);
+      "UPDATE frontier_missions SET status='done',health=?,round=?,result=?,ends_at=CASE WHEN delivery_version=1 THEN ? ELSE ends_at END WHERE id=?",
+    ).run(m.health, m.round, JSON.stringify(result), now(), m.id);
     for (const p of members) {
       if (m.kind === "delivery")
         db.prepare(
@@ -347,6 +466,37 @@ function createEngine(db, clock = () => Date.now()) {
     }
     release(m.id);
   }
+  function advanceDelivery(m) {
+    const members = db
+      .prepare("SELECT * FROM frontier_members WHERE mission_id=?")
+      .all(m.id);
+    while (m.round < m.round_count) {
+      const assigned = members.filter(
+        (p) => deliveryTasks(m, members, p)[m.round],
+      );
+      const actions = db
+        .prepare(
+          "SELECT * FROM frontier_actions WHERE mission_id=? AND round=?",
+        )
+        .all(m.id, m.round);
+      const expired = now() >= m.round_started_at + M.roundSeconds;
+      if (!expired && actions.length < assigned.length) break;
+      const correct = actions.filter((a) => a.correct).length;
+      m.health = Math.max(0, m.health - (assigned.length - correct) * 30);
+      m.round++;
+      if (m.round >= m.round_count) {
+        finishMission(m);
+        return;
+      }
+      m.round_started_at = expired
+        ? m.round_started_at + M.roundSeconds
+        : now();
+      m.challenge = JSON.stringify(missionChallenge(m.kind));
+      db.prepare(
+        "UPDATE frontier_missions SET round=?,round_started_at=?,health=?,challenge=? WHERE id=?",
+      ).run(m.round, m.round_started_at, m.health, m.challenge, m.id);
+    }
+  }
   function tickInside() {
     const t = now();
     for (const j of db
@@ -357,13 +507,18 @@ function createEngine(db, clock = () => Date.now()) {
       finishJob(j);
     for (const m of db
       .prepare(
-        "SELECT * FROM frontier_missions WHERE (status='lobby' AND created_at+?<=?) OR (status='active' AND started_at+(round+1)*?<=?)",
+        "SELECT * FROM frontier_missions WHERE (status='lobby' AND created_at+?<=?) OR status='active'",
       )
-      .all(M.lobbySeconds, t, M.roundSeconds, t)) {
+      .all(M.lobbySeconds, t)) {
       if (m.status === "lobby") {
         if (t >= m.created_at + M.lobbySeconds) refundMission(m);
         continue;
       }
+      if (m.delivery_version) {
+        advanceDelivery(m);
+        continue;
+      }
+      if (m.started_at + (m.round + 1) * M.roundSeconds > t) continue;
       const count = db
         .prepare(
           "SELECT COUNT(*) AS n FROM frontier_members WHERE mission_id=?",
@@ -420,6 +575,8 @@ function createEngine(db, clock = () => Date.now()) {
     event,
     weather: () => campaign.weather().id,
     onDamage: (uid) => campaign.record(uid, { mission: "boss" }, completed()),
+    combatNow: () => clock() / 1000,
+    onDefeat: pauseJourney,
   });
   const tick = db.transaction(tickInside);
   const transact =
@@ -443,8 +600,16 @@ function createEngine(db, clock = () => Date.now()) {
       request_key: undefined,
       challenge: j.status === "active" ? parse(j.challenge) : null,
       result: parse(j.result),
-      target: content.jobs[j.kind].steps,
-      quantity: content.jobs[j.kind].quantity,
+      earnedCoins:
+        j.continuous === 2
+          ? db
+              .prepare(
+                "SELECT COALESCE(SUM(coins),0) n FROM frontier_rewards WHERE user_id=? AND ref LIKE ?",
+              )
+              .get(j.user_id, `${craftRef(j)}:${j.id}:%`).n
+          : j.successes,
+      target: j.continuous ? 1 : content.jobs[j.kind].steps,
+      quantity: j.continuous ? 1 : content.jobs[j.kind].quantity,
       coinReadyAt: db
         .prepare(
           "SELECT next_work_coin_at FROM frontier_players WHERE user_id=?",
@@ -486,10 +651,13 @@ function createEngine(db, clock = () => Date.now()) {
         .all(m.id, m.round)
         .map((a) => [a.user_id, Boolean(a.correct)]),
     );
-    for (const p of members)
+    for (const p of members) {
+      p.tasks = deliveryTasks(m, members, p);
+      p.active_role = p.tasks[m.round] || null;
       p.round_action = roundActions.has(p.user_id)
         ? roundActions.get(p.user_id)
         : null;
+    }
     const acted =
       member &&
       db
@@ -502,10 +670,15 @@ function createEngine(db, clock = () => Date.now()) {
       request_key: undefined,
       challenge:
         m.status === "active" && member
-          ? parse(m.challenge)[activeRole(m, member, members.length)]
+          ? parse(m.challenge)[activeRole(m, member, members.length)] || null
           : null,
       activeRole: member ? activeRole(m, member, members.length) : null,
       totalRounds: m.round_count,
+      plannedCargo: m.delivery_version
+        ? M.deliveryYield[members.length]
+        : m.cargo,
+      reservedPlanks: m.input_cargo ?? m.cargo,
+      yourTasks: member?.tasks || [],
       requiredSuccesses: m.required_successes,
       coinReadyAt: member
         ? db
@@ -518,7 +691,9 @@ function createEngine(db, clock = () => Date.now()) {
       acted: acted ? Boolean(acted.correct) : null,
       result: parse(m.result),
       nextAt: m.started_at
-        ? m.started_at + (m.round + 1) * M.roundSeconds
+        ? m.delivery_version
+          ? m.round_started_at + M.roundSeconds
+          : m.started_at + (m.round + 1) * M.roundSeconds
         : null,
     };
   }
@@ -532,10 +707,6 @@ function createEngine(db, clock = () => Date.now()) {
       )
       .get(uid);
     player.travel = parse(player.travel);
-    player.owned = db
-      .prepare("SELECT item FROM frontier_cosmetics WHERE user_id=?")
-      .all(uid)
-      .map((x) => x.item);
     player.honors = db
       .prepare(
         "SELECT h.cycle,h.contribution FROM frontier_boss_honors h JOIN frontier_boss b ON h.cycle<b.cycle OR (h.cycle=b.cycle AND b.hp=0) WHERE h.user_id=? ORDER BY h.cycle DESC LIMIT 10",
@@ -546,6 +717,8 @@ function createEngine(db, clock = () => Date.now()) {
       .get(uid);
     return {
       serverTime: clock() / 1000,
+      event: availability(),
+      journey: siege.progress(uid),
       commons,
       player,
       stock: Object.fromEntries(
@@ -612,13 +785,14 @@ function createEngine(db, clock = () => Date.now()) {
       return jobView(old);
     }
     fail(Object.hasOwn(content.jobs, kind), "Unknown work order");
+    journeyActive();
     const def = content.jobs[kind];
     free(uid);
     atWork(uid, def);
     for (const [item, qty] of Object.entries(def.inputs)) stock(item, -qty);
     const id = crypto.randomUUID();
     db.prepare(
-      "INSERT INTO frontier_jobs(id,user_id,request_key,kind,started_at,ends_at,challenge) VALUES (?,?,?,?,?,?,?)",
+      "INSERT INTO frontier_jobs(id,user_id,request_key,kind,started_at,ends_at,challenge,recipe_inputs,continuous) VALUES (?,?,?,?,?,?,?,?,?)",
     ).run(
       id,
       uid,
@@ -627,6 +801,8 @@ function createEngine(db, clock = () => Date.now()) {
       now(),
       now() + def.seconds,
       JSON.stringify(newChallenge(def.mechanic)),
+      JSON.stringify(def.inputs),
+      Object.keys(def.inputs).length ? 2 : 1,
     );
     reserve(uid, "job", id);
     return jobView(
@@ -647,17 +823,46 @@ function createEngine(db, clock = () => Date.now()) {
     fail(now() >= c.issued_at + 2, "Take a moment to line up the work", 429);
     const result = inspect(c, gesture, now() - c.issued_at);
     fail(result.valid, "A complete touch gesture is required");
+    if (result.passed) siege.record(uid, `job:${id}:${j.successes}`, "work");
+    if (j.continuous && result.passed) {
+      stock(def.output, 1);
+      reward(
+        uid,
+        `${j.continuous === 2 ? craftRef(j) : "gather"}:${id}:${step}`,
+        j.continuous === 2 ? activityCoins(uid, def.coins) : 1,
+        Math.ceil(def.xp / def.steps),
+        def.name,
+      );
+      campaign.record(uid, { job: j.kind }, completed());
+      db.prepare("UPDATE frontier_players SET jobs=jobs+1 WHERE user_id=?").run(
+        uid,
+      );
+    }
     db.prepare(
-      "UPDATE frontier_jobs SET step=step+1,successes=successes+?,challenge=? WHERE id=?",
+      "UPDATE frontier_jobs SET step=step+1,successes=successes+?,challenge=?,ends_at=CASE WHEN continuous<>0 THEN ? ELSE ends_at END WHERE id=?",
     ).run(
       result.passed ? 1 : 0,
       JSON.stringify(newChallenge(def.mechanic)),
+      now() + def.seconds,
       id,
     );
     const updated = db
       .prepare("SELECT * FROM frontier_jobs WHERE id=?")
       .get(id);
-    if (updated.successes >= def.steps) finishJob(updated);
+    if (j.continuous === 2 && result.passed) {
+      const inputs = parse(j.recipe_inputs);
+      const available = Object.entries(inputs).every(
+        ([item, qty]) =>
+          db
+            .prepare("SELECT quantity FROM frontier_stock WHERE item=?")
+            .get(item).quantity >= qty,
+      );
+      if (available)
+        for (const [item, qty] of Object.entries(inputs)) stock(item, -qty);
+      else finishJob(updated, false, false);
+    }
+    if (!updated.continuous && updated.successes >= def.steps)
+      finishJob(updated);
     return {
       ...jobView(db.prepare("SELECT * FROM frontier_jobs WHERE id=?").get(id)),
       feedback: result,
@@ -679,6 +884,7 @@ function createEngine(db, clock = () => Date.now()) {
   });
   const travel = transact((uid, to) => {
     ensure(uid);
+    journeyActive();
     settleTravel(uid);
     fail(
       content.locations.some((l) => l.id === to),
@@ -707,6 +913,7 @@ function createEngine(db, clock = () => Date.now()) {
   const createMission = transact(
     (uid, kind, role, requestKey, load = "cart") => {
       ensure(uid);
+      journeyActive();
       key(requestKey);
       fail(
         kind !== "boss",
@@ -717,7 +924,7 @@ function createEngine(db, clock = () => Date.now()) {
         load === "cart" || (load === "wagon" && kind === "delivery"),
         "Unknown caravan load",
       );
-      const cargo = load === "wagon" ? 6 : M.deliveryPlanks;
+      const cargo = M.deliveryPlanks;
       const old = db
         .prepare(
           "SELECT * FROM frontier_missions WHERE owner_id=? AND request_key=?",
@@ -725,7 +932,10 @@ function createEngine(db, clock = () => Date.now()) {
         .get(uid, requestKey);
       if (old) {
         fail(
-          old.kind === kind && old.cargo === cargo,
+          old.kind === kind &&
+            (old.delivery_version
+              ? old.load_kind === load
+              : old.cargo === (load === "wagon" ? 6 : cargo)),
           "This request belongs to a different journey",
           409,
         );
@@ -747,7 +957,7 @@ function createEngine(db, clock = () => Date.now()) {
       stock(kind === "boss" ? "supplies" : "planks", -cargo);
       const id = crypto.randomUUID();
       db.prepare(
-        "INSERT INTO frontier_missions(id,owner_id,request_key,kind,project_id,created_at,challenge,boss_cycle,round_count,required_successes,cargo,min_crew) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO frontier_missions(id,owner_id,request_key,kind,project_id,created_at,challenge,boss_cycle,round_count,required_successes,cargo,min_crew,delivery_version,input_cargo,load_kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
       ).run(
         id,
         uid,
@@ -761,6 +971,8 @@ function createEngine(db, clock = () => Date.now()) {
         M.requiredSuccesses,
         cargo,
         load === "wagon" ? 2 : 1,
+        cargo,
+        load,
       );
       db.prepare(
         "INSERT INTO frontier_members(mission_id,user_id,role) VALUES (?,?,?)",
@@ -799,9 +1011,20 @@ function createEngine(db, clock = () => Date.now()) {
       409,
     );
     walk(uid, m.kind === "boss" ? "pool" : "village");
+    if (m.delivery_version) stock("planks", -M.deliveryPlanks);
     db.prepare(
       "INSERT INTO frontier_members(mission_id,user_id,role) VALUES (?,?,?)",
     ).run(id, uid, role);
+    if (m.delivery_version) {
+      const count = db
+        .prepare("SELECT COUNT(*) n FROM frontier_members WHERE mission_id=?")
+        .get(id).n;
+      m.input_cargo += M.deliveryPlanks;
+      m.cargo = M.deliveryYield[count];
+      db.prepare(
+        "UPDATE frontier_missions SET input_cargo=?,cargo=? WHERE id=?",
+      ).run(m.input_cargo, m.cargo, id);
+    }
     reserve(uid, "mission", id);
     return missionView(m, uid);
   });
@@ -829,6 +1052,14 @@ function createEngine(db, clock = () => Date.now()) {
       409,
     );
     for (const p of members) assembly(p.user_id, m.kind);
+    if (m.delivery_version) {
+      m.round_count = Math.ceil(3 / members.length);
+      m.required_successes = members.length === 1 ? 2 : 1;
+      m.min_crew = members.length;
+      db.prepare(
+        "UPDATE frontier_missions SET round_count=?,required_successes=?,min_crew=?,round_started_at=? WHERE id=?",
+      ).run(m.round_count, m.required_successes, m.min_crew, now(), id);
+    }
     if (m.kind === "delivery")
       for (const p of members)
         walk(
@@ -865,6 +1096,18 @@ function createEngine(db, clock = () => Date.now()) {
     );
     if (m.owner_id === uid) refundMission(m);
     else {
+      if (m.delivery_version) {
+        stock("planks", M.deliveryPlanks);
+        const count =
+          db
+            .prepare(
+              "SELECT COUNT(*) n FROM frontier_members WHERE mission_id=?",
+            )
+            .get(id).n - 1;
+        db.prepare(
+          "UPDATE frontier_missions SET input_cargo=input_cargo-?,cargo=? WHERE id=?",
+        ).run(M.deliveryPlanks, M.deliveryYield[count], id);
+      }
       db.prepare(
         "DELETE FROM frontier_members WHERE mission_id=? AND user_id=?",
       ).run(id, uid);
@@ -884,6 +1127,15 @@ function createEngine(db, clock = () => Date.now()) {
       .get(id, uid);
     fail(p, "Join this party first", 403);
     if (m.status === "done") return missionView(m, uid);
+    if (
+      Number.isInteger(round) &&
+      db
+        .prepare(
+          "SELECT 1 FROM frontier_actions WHERE mission_id=? AND user_id=? AND round=?",
+        )
+        .get(id, uid, round)
+    )
+      return missionView(m, uid);
     fail(
       m.status === "active" && Number.isInteger(round) && round === m.round,
       "This encounter has moved on",
@@ -901,16 +1153,22 @@ function createEngine(db, clock = () => Date.now()) {
       .prepare("SELECT COUNT(*) AS n FROM frontier_members WHERE mission_id=?")
       .get(id).n;
     const c = parse(m.challenge)[activeRole(m, p, count)];
+    fail(c, "Your tasks are complete. Wait for your crew.", 409);
     fail(nonce === c.nonce, "Challenge expired", 409);
 
     fail(
-      now() >= m.started_at + round * M.roundSeconds + 2,
+      now() >=
+        (m.delivery_version
+          ? m.round_started_at
+          : m.started_at + round * M.roundSeconds) +
+          2,
       "Line up your action first",
       429,
     );
     const result = inspect(c, gesture, now() - c.issued_at);
     fail(result.valid, "A complete touch gesture is required");
     const correct = result.passed ? 1 : 0;
+    if (correct) siege.record(uid, `mission:${id}:${round}`, "caravan");
     db.prepare("INSERT INTO frontier_actions VALUES (?,?,?,?)").run(
       id,
       uid,
@@ -920,56 +1178,100 @@ function createEngine(db, clock = () => Date.now()) {
     db.prepare(
       "UPDATE frontier_members SET actions=actions+1,successes=successes+? WHERE mission_id=? AND user_id=?",
     ).run(correct, id, uid);
-    return missionView(m, uid);
-  });
-  const cosmetic = transact((uid, item, equip = false) => {
-    ensure(uid);
-    const def = content.cosmetics.find((x) => x.id === item);
-    fail(def || item === null, "Unknown keepsake");
-    if (!equip) {
-      fail(def, "Choose a keepsake");
-      if (
-        !db
-          .prepare(
-            "SELECT 1 FROM frontier_cosmetics WHERE user_id=? AND item=?",
-          )
-          .get(uid, item)
-      ) {
-        fail(
-          db
-            .prepare("UPDATE users SET coins=coins-? WHERE id=? AND coins>=?")
-            .run(def.price, uid, def.price).changes === 1,
-          "Not enough coins",
-          409,
-        );
-        db.prepare("INSERT INTO frontier_cosmetics VALUES (?,?)").run(
-          uid,
-          item,
-        );
-      }
-    } else
-      fail(
-        item === null ||
-          db
-            .prepare(
-              "SELECT 1 FROM frontier_cosmetics WHERE user_id=? AND item=?",
-            )
-            .get(uid, item),
-        "You do not own this keepsake",
-        403,
-      );
-    db.prepare("UPDATE frontier_players SET equipped=? WHERE user_id=?").run(
-      item,
+    if (m.delivery_version) advanceDelivery(m);
+    return missionView(
+      db.prepare("SELECT * FROM frontier_missions WHERE id=?").get(id),
       uid,
     );
-    return { ok: true };
   });
+  const cosmetic = () => {
+    throw new FrontierError("Map accessories have been removed", 410);
+  };
+  // Upgrade unfinished saved gathering batches without losing their earned pieces.
+  db.transaction(() => {
+    // Saved batches return their original reservation before single-item crafting.
+    for (const j of db
+      .prepare(
+        "SELECT * FROM frontier_jobs WHERE kind IN ('planks','supplies','weapons') AND status='active' AND continuous=0",
+      )
+      .all()) {
+      for (const [item, qty] of Object.entries(parse(j.recipe_inputs)))
+        stock(item, qty);
+      db.prepare(
+        "UPDATE frontier_jobs SET status='abandoned',result=? WHERE id=?",
+      ).run(
+        JSON.stringify({
+          passed: false,
+          reason: "Crafting updated. Reserved ingredients returned.",
+        }),
+        j.id,
+      );
+      release(j.id);
+    }
+    for (const j of db
+      .prepare(
+        "SELECT * FROM frontier_jobs WHERE status='active' AND continuous=0 AND kind IN ('wood','ore')",
+      )
+      .all()) {
+      const def = content.jobs[j.kind];
+      for (let i = 0; i < j.successes; i++) {
+        stock(def.output, 1);
+        reward(
+          j.user_id,
+          `gather:${j.id}:legacy-${i}`,
+          1,
+          Math.ceil(def.xp / def.steps),
+          def.name,
+        );
+        campaign.record(j.user_id, { job: j.kind }, completed());
+      }
+      db.prepare("UPDATE frontier_players SET jobs=jobs+? WHERE user_id=?").run(
+        j.successes,
+        j.user_id,
+      );
+      db.prepare("UPDATE frontier_jobs SET continuous=1 WHERE id=?").run(j.id);
+    }
+  })();
   return {
     db,
     content,
     now,
     tick,
     state,
+    eventStatus: availability,
+    eventSummary: transact(() => {
+      const status = availability();
+      if (!status.active) return status;
+      const boss = db.prepare("SELECT * FROM frontier_boss WHERE id=1").get(),
+        bridge = db
+          .prepare("SELECT * FROM frontier_projects WHERE id='bridge'")
+          .get(),
+        base = {
+          active: true,
+          name: content.event.name,
+          cycle: boss.cycle,
+          serverTime: clock() / 1000,
+        };
+      if (status.phase === "results") return { ...base, ...status };
+      if (!bridge.completed_at)
+        return {
+          ...base,
+          phase: "bridge",
+          progress: bridge.progress,
+          target: content.projects.find((p) => p.id === "bridge").target,
+        };
+      if (boss.phase === "preparing")
+        return {
+          ...base,
+          phase: "preparing",
+          kits: boss.supplies_filled,
+          kitsTarget: boss.supplies_required,
+          weapons: boss.weapons_filled,
+          weaponsTarget: boss.weapons_required,
+        };
+      if (boss.phase === "open")
+        return { ...base, phase: "battle", hp: boss.hp, maxHp: boss.max_hp };
+    }),
     startJob,
     actJob,
     resumeJob,
@@ -989,6 +1291,10 @@ function createEngine(db, clock = () => Date.now()) {
       siege.act(uid, id, nonce, gesture),
     ),
     cancelAssault: transact((uid, id) => siege.cancel(uid, id)),
+    bossCombat: transact((uid) => siege.combat(uid)),
+    hitBoss: transact((uid, kind, key, options) =>
+      siege.strike(uid, kind, key, options),
+    ),
     prepareBoss: transact((uid, item, amount, key) =>
       siege.contribute(uid, item, amount, key),
     ),

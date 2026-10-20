@@ -1,87 +1,89 @@
 import React, { useState } from "react";
 import WorldIcon from "./WorldIcon";
-export default function CommonsBoard({ commons, now, onChoose, onChat }) {
-  const [selected, setSelected] = useState(0),
-    tile = commons.tiles[selected];
-  const left = commons.ends_at ? Math.max(0, commons.ends_at - now) : null;
+export default function CommonsBoard({ commons: q, onChoose, onChat }) {
+  const [selected, setSelected] = useState(-1);
   return (
-    <div className="commons-board">
+    <div className="commons-board quest-board">
       <div className="commons-intro">
-        <span>
-          Season {commons.season} · Week {commons.week}
-        </span>
-        <h3>A little from each of us.</h3>
+        <span>JOURNEY {q.cycle} · PERSONAL QUESTS</span>
+        <h3>
+          {q.completed} / {q.total} quests complete
+        </h3>
         <p>
-          Finish a row, column or diagonal together. Each line earns a commons
-          seal, up to three this week.
+          Finish any 3 quests: +100 coins. Reach 6 and 9 for another 100 each.
         </p>
       </div>
-      <div className="commons-weather">
-        <WorldIcon name={commons.weather.symbol} />
-        <div>
-          <b>{commons.weather.name}</b>
-          <span>{commons.weather.hint}</span>
-        </div>
-      </div>
-      <div className="commons-grid" aria-label="Weekly community orders">
-        {commons.tiles.map((t, i) => (
-          <button
-            key={`${commons.period}:${i}`}
-            className={`${i === selected ? "selected" : ""} ${t.progress >= t.target ? "complete" : ""}`}
-            aria-pressed={i === selected}
-            onClick={() => setSelected(i)}
-          >
-            <WorldIcon name={t.icon} size={40} />
-            <strong>{t.name}</strong>
-            <span>
-              {t.progress} / {t.target}
-            </span>
+      <div className="quest-milestones" aria-label="Quest rewards">
+        {q.milestones.map((m) => (
+          <div key={m.at} className={m.paid ? "paid" : ""}>
+            <span>{m.at} quests</span>
+            <b>{m.paid ? "✓ Paid" : `+${m.coins} ✦`}</b>
             <i>
               <em
                 style={{
-                  transform: `scaleX(${Math.min(1, t.progress / t.target)})`,
+                  width: `${Math.min(100, (q.completed / m.at) * 100)}%`,
                 }}
               />
             </i>
-            {t.progress >= t.target && <small>✓</small>}
-          </button>
+          </div>
         ))}
       </div>
-      <section className="commons-detail">
-        <div>
-          <b>{tile.name}</b>
-          <p>{tile.hint}. Each contributor's completed activity counts.</p>
-        </div>
-        <button
-          className="frontier-primary"
-          onClick={() => onChoose(tile.location)}
-        >
-          Show on map →
-        </button>
-      </section>
-      <footer className="commons-footer">
-        <div>
-          <b>{commons.points} contributions from you</b>
-          <span>
-            {commons.points < commons.minimumContributions
-              ? `${commons.minimumContributions - commons.points} more to qualify for this week's seals`
-              : `${commons.seals} / 3 seals earned · 10 experience per seal`}
-          </span>
-        </div>
-        <span>
-          {left === null
-            ? "Starts with the first order"
-            : `${Math.ceil(left / 86400)} days left`}
-        </span>
-      </footer>
+      <p className="quest-rule">
+        {q.paidStages * q.rewardCoins} / {q.maxCoins} reward coins received.
+        Complete the cards in any order.
+      </p>
+      {q.legacyCredit > 0 && (
+        <p className="commons-fine">
+          Earlier task rewards count toward this journey’s reward cap.
+        </p>
+      )}
+      <div className="quest-list" aria-label="Your journey quests">
+        {q.tiles.map((t, i) => (
+          <React.Fragment key={`${q.cycle}:${t.kind}`}>
+            <button
+              aria-pressed={selected === i}
+              className={`${selected === i ? "selected" : ""} ${t.progress >= t.target ? "complete" : ""}`}
+              aria-expanded={selected === i}
+              onClick={() => setSelected(selected === i ? -1 : i)}
+            >
+              <WorldIcon name={t.icon} size={30} />
+              <span>
+                <b>{t.name}</b>
+                <small>
+                  {t.progress} / {t.target}
+                  {t.progress >= t.target ? " · Complete ✓" : ""}
+                </small>
+                <i>
+                  <em
+                    style={{
+                      width: `${Math.min(100, (t.progress / t.target) * 100)}%`,
+                    }}
+                  />
+                </i>
+              </span>
+            </button>
+            {selected === i && (
+              <section className="commons-detail quest-inline">
+                <p>{t.hint}.</p>
+                <button
+                  className="frontier-primary"
+                  onClick={() => onChoose(t.location)}
+                >
+                  Show location →
+                </button>
+              </section>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
       <p className="commons-fine">
-        {commons.contributors} people contributing · {commons.lines} lines
-        completed. New orders next week. Your buildings and earned seals stay.
+        {q.closed
+          ? "Journey complete. New quests next journey."
+          : "Quests last the whole journey. Only your own actions count."}
       </p>
       {onChat && (
         <button className="commons-chat" onClick={onChat}>
-          <WorldIcon name="chat" size={24} />
-          Coordinate in Global Chat →
+          <WorldIcon name="chat" size={22} /> Find delivery teammates →
         </button>
       )}
     </div>

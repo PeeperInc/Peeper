@@ -17,11 +17,18 @@ function createRouter(engine, live) {
       for (const [id, v] of limits) if (t - v.at > 60000) limits.delete(id);
     let bucket = limits.get(row.id);
     if (!bucket || t - bucket.at >= 60000) {
-      bucket = { at: t, reads: 0, writes: 0 };
+      bucket = { at: t, reads: 0, writes: 0, combat: 0 };
       limits.set(row.id, bucket);
     }
-    const type = req.method === "GET" ? "reads" : "writes";
-    if (++bucket[type] > (type === "reads" ? 240 : 50)) {
+    const type =
+      req.method === "GET"
+        ? "reads"
+        : req.path === "/boss/combat/action"
+          ? "combat"
+          : "writes";
+    if (
+      ++bucket[type] > (type === "reads" ? 240 : type === "combat" ? 360 : 50)
+    ) {
       res.set(
         "Retry-After",
         String(Math.ceil((60000 - (t - bucket.at)) / 1000)),
@@ -35,6 +42,12 @@ function createRouter(engine, live) {
   });
   const route = (fn) => (req, res) => {
     try {
+      if (
+        req.path !== "/event" &&
+        req.path !== "/state" &&
+        !engine.eventStatus().active
+      )
+        throw new FrontierError("The event has ended", 410);
       const result = fn(req.frontierUid, req.body || {}, req);
       if (req.method !== "GET" && req.path !== "/ticket")
         live.broadcast(req.frontierUid);
@@ -53,12 +66,29 @@ function createRouter(engine, live) {
     route((uid, b) => engine.travel(uid, b.to)),
   );
   router.get(
+    "/event",
+    route(() => engine.eventSummary()),
+  );
+  router.get(
     "/state",
     route((uid) => engine.state(uid)),
   );
   router.get(
     "/boss",
     route((uid) => engine.bossView(uid)),
+  );
+  router.get(
+    "/boss/combat",
+    route((uid) => engine.bossCombat(uid)),
+  );
+  router.post(
+    "/boss/combat/action",
+    route((uid, b) =>
+      engine.hitBoss(uid, b.action, b.requestId, {
+        direction: b.direction,
+        at: b.at,
+      }),
+    ),
   );
   router.post(
     "/boss/prepare",
@@ -147,7 +177,7 @@ function createRouter(engine, live) {
           message:
             mission.kind === "boss"
               ? "Beyond the Fog: taking on the Leech King. Join my party!"
-              : `Reedbank: ${mission.cargo} planks loaded for ${mission.project_id === "mill" ? "the Far Mill" : "the bridge"}. ${mission.members.length}/${mission.min_crew} crew ready — join my caravan!`,
+              : "Bridge delivery: 2 shared planks each. Two players deliver 6; three deliver 10. Join my crew!",
           nowTs: engine.now(),
         });
         engine.db

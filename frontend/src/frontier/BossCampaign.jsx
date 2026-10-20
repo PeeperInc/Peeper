@@ -3,13 +3,9 @@ import dragon from "../assets/frontier/marsh-dragon.png";
 import { Meter, resourceNames } from "./components";
 import WorldIcon from "./WorldIcon";
 import ArcadeStage from "./ArcadeStage";
-import content from "../../../backend/frontier/content.json";
 export function BossCampaign({ state, busy, onPrepare, onGo, onAttack, now }) {
   const b = state.boss,
-    restMinutes = Math.max(
-      0,
-      Math.ceil((b.defeated_at + content.siege.restSeconds - now) / 60),
-    ),
+    resultsMinutes = Math.max(0, Math.ceil((b.results_until - now) / 60)),
     atPool = state.player.location === "pool" && !state.player.travel;
   return (
     <div className="boss-campaign">
@@ -29,9 +25,8 @@ export function BossCampaign({ state, busy, onPrepare, onGo, onAttack, now }) {
         {b.phase === "preparing" ? (
           <>
             <p>
-              The dragon is in sight. Fill both shared reserves to open the
-              battle for everyone. Kits and weapons are used once to equip the
-              expedition.
+              Fill both reserves to unlock the battle for everyone. Attacks are
+              free after that.
             </p>
             <div className="siege-reserves">
               {["supplies", "weapons"].map((item) => {
@@ -86,26 +81,25 @@ export function BossCampaign({ state, busy, onPrepare, onGo, onAttack, now }) {
             </div>
             <div className="siege-personal">
               <span>
-                Your total damage
-                <strong>{b.contribution.toLocaleString()}</strong>
+                Your journey actions
+                <strong>{(b.actions ?? 0).toLocaleString()}</strong>
               </span>
               <span>
-                {b.phase === "defeated"
-                  ? "Coins paid to you"
-                  : "Estimated death reward"}
+                {b.phase === "defeated" ? "Coins paid to you" : "Your damage"}
                 <strong>
                   {b.phase === "defeated"
                     ? (b.payout ?? 0)
-                    : `~${b.estimatedCoins}`}{" "}
-                  ✦
+                    : (b.contribution ?? 0).toLocaleString()}
+                  {b.phase === "defeated" ? " ✦" : ""}
                 </strong>
               </span>
             </div>
             {b.phase === "open" ? (
               <>
                 <p>
-                  Attack as often as you like. Every clean counter adds
-                  permanent damage. Attempts cost no kits, coins or energy.
+                  Tap to combo. Swipe sideways to dodge. A last-moment dodge
+                  opens a powerful counter. Getting hit stuns you for 10
+                  seconds.
                 </p>
                 <button
                   className="frontier-primary"
@@ -115,48 +109,37 @@ export function BossCampaign({ state, busy, onPrepare, onGo, onAttack, now }) {
                   onClick={atPool ? onAttack : () => onGo("pool")}
                 >
                   {atPool
-                    ? "Attack Mirewake"
+                    ? "Join the battle"
                     : "Follow the trail to Mirewake →"}
                 </button>
               </>
             ) : (
               <p>
-                The {b.reward_pool.toLocaleString()} coin fund has been
-                distributed, including to offline players. Next expedition in{" "}
-                {restMinutes >= 60
-                  ? `${Math.floor(restMinutes / 60)}h ${restMinutes % 60}m`
-                  : `${restMinutes}m`}
+                Rewards are paid, including to offline contributors. Results
+                close in{" "}
+                {resultsMinutes >= 60
+                  ? `${Math.floor(resultsMinutes / 60)}h ${resultsMinutes % 60}m`
+                  : `${resultsMinutes}m`}
                 .
               </p>
             )}
           </>
         )}
-        <p className="siege-reward-rule">
-          <b>{b.reward_pool.toLocaleString()} coins in the victory fund.</b>{" "}
-          Paid once on defeat, in proportion to actual damage. No last-hit
-          bonus. Whole-coin rounding is settled across all contributors.
-        </p>
         {b.leaders.length > 0 && (
           <div className="siege-leaders">
             <h3>
-              {b.contributors} {b.contributors === 1 ? "fighter" : "fighters"}{" "}
-              on the same side
+              {b.contributors}{" "}
+              {b.contributors === 1 ? "contributor" : "contributors"}
             </h3>
             {b.leaders.map((p, i) => (
               <div key={p.user_id}>
                 <span>
                   {i + 1}. {p.name}
                 </span>
-                <b>{p.contribution.toLocaleString()} damage</b>
+                <b>{(p.actions ?? 0).toLocaleString()} actions</b>
               </div>
             ))}
           </div>
-        )}
-        {b.previousPayouts.length > 0 && (
-          <p>
-            Previous victories:{" "}
-            {b.previousPayouts.map((p) => `+${p.coins} coins`).join(" · ")}
-          </p>
         )}
       </div>
     </div>

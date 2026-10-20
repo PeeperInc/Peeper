@@ -1,0 +1,37 @@
+.scene-peeper {
+  position: absolute;
+  left: 50%;
+  top: 74%;
+  width: 150px;
+  height: 150px;
+  transform: translate(-50%, -88%);
+  pointer-events: none;
+  z-index: 1;
+  filter: drop-shadow(0 9px 4px #1e332b66);
+}
+.scene-peeper.working {
+  filter: drop-shadow(0 9px 4px #1e332b66) brightness(1.08);
+}
+.scene-peeper > .peeper-stage {
+  width: 100% !important;
+  height: 100% !important;
+}
+.touch-chopping .scene-peeper {
+  left: 8px;
+  top: auto;
+  bottom: 10px;
+  width: clamp(72px, 22vw, 110px);
+  height: clamp(72px, 22vw, 110px);
+  transform: none;
+  z-index: 0;
+}
+.touch-chopping .touch-targets {
+  z-index: 2;
+}
+.touch-trail .scene-peeper,
+.field-convoy .scene-peeper {
+  width: clamp(42px, 12vw, 62px);
+  height: clamp(42px, 12vw, 62px);
+  transform: translate(-50%, -78%);
+  filter: drop-shadow(0 4px 2px #1e332b55);
+}

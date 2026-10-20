@@ -36,8 +36,7 @@ function makeChallenge(kind, now, weather = "clear") {
     seed: randomInt(100000),
   };
   if (arcade.modes[kind]) {
-    c.arcade = arcade.make(kind, c.seed, weather);
-    c.weather = weather;
+    c.arcade = arcade.make(kind, c.seed);
     return c;
   }
   if (kind === "saw") {

@@ -1,5 +1,5 @@
 "use strict";
-// Waypoints follow the painted road centres. Gates apply to entire road segments.
+// The server route and the 3D roads use this same waypoint network.
 const { nodes, edges } = require("./roads.json");
 function findRoute(from, to, completed) {
   if (!nodes[from] || !nodes[to]) return null;

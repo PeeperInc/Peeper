@@ -59,6 +59,7 @@ async function frontierRequest(method,path,body) {
 }
 export const frontierTravel = to => frontierRequest('POST','/travel',{to});
 export const frontierState = () => frontierRequest('GET','/state');
+export const frontierEvent = () => frontierRequest('GET','/event');
 export const frontierTicket = () => frontierRequest('POST','/ticket', {});
 export const frontierStartJob = (kind, requestId) => frontierRequest('POST','/jobs', {kind,requestId});
 export const frontierJob = id => frontierRequest('GET',`/jobs/${encodeURIComponent(id)}`);
@@ -67,7 +68,6 @@ export const frontierCancelJob = id => frontierRequest('POST',`/jobs/${encodeURI
 export const frontierCreateMission = (kind,role,requestId,load='cart') => frontierRequest('POST','/missions', {kind,role,requestId,load});
 export const frontierMission = id => frontierRequest('GET',`/missions/${encodeURIComponent(id)}`);
 export const frontierMissionAction = (id,action,payload={}) => frontierRequest('POST',`/missions/${encodeURIComponent(id)}/${encodeURIComponent(action)}`,payload);
-export const frontierCosmetic = (action,item) => frontierRequest('POST',`/cosmetics/${encodeURIComponent(action)}`,{item});
 
 export const getGameState = () => get('/game/state');
 export const getCasinoState = () => get('/game/casino/state');
@@ -229,3 +229,5 @@ export const frontierStartAssault = requestId => frontierRequest('POST','/boss/a
 export const frontierAssault = id => frontierRequest('GET',`/boss/attacks/${encodeURIComponent(id)}`);
 export const frontierAssaultAction = (id,payload) => frontierRequest('POST',`/boss/attacks/${encodeURIComponent(id)}/action`,payload);
 export const frontierCancelAssault = id => frontierRequest('POST',`/boss/attacks/${encodeURIComponent(id)}/cancel`,{});
+export const frontierBossCombat = () => frontierRequest('GET','/boss/combat');
+export const frontierBossHit = (action,requestId,options={}) => frontierRequest('POST','/boss/combat/action',{action,requestId,...options});

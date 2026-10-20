@@ -6,46 +6,21 @@
     "successfulOrderRate": 0.8,
     "averagePartySize": 2
   },
-  "weekSeconds": 604800,
-  "sealXp": 10,
-  "sealMinimumContributions": 3,
-  "weeklyTargets": {
-    "wood": 112,
-    "ore": 84,
-    "planks": 84,
-    "delivery": 56,
-    "work": 350,
-    "team": 42,
-    "driver": 28,
-    "guard": 28,
-    "mechanic": 28,
-    "supplies": 56,
-    "boss": 28
+  "boardTargets": {
+    "wood": 150,
+    "ore": 120,
+    "planks": 45,
+    "delivery": 36,
+    "work": 450,
+    "team": 12,
+    "driver": 24,
+    "guard": 24,
+    "mechanic": 24
   },
-  "weather": [
-    {
-      "id": "clear",
-      "name": "Clear trails",
-      "hint": "Good visibility across the marsh.",
-      "symbol": "sun"
-    },
-    {
-      "id": "rain",
-      "name": "Rain on the road",
-      "hint": "The cart changes lanes more slowly. Turn early.",
-      "symbol": "rain"
-    },
-    {
-      "id": "wind",
-      "name": "Reedwind",
-      "hint": "Flying beetles drift further sideways.",
-      "symbol": "wind"
-    },
-    {
-      "id": "harvest",
-      "name": "Fresh herbs",
-      "hint": "Remedies need one fewer ingredient today.",
-      "symbol": "leaf"
-    }
+  "questRewardCoins": 100,
+  "questMilestones": [
+    3,
+    6,
+    9
   ]
 }

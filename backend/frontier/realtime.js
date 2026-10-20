@@ -37,15 +37,7 @@ function createRealtime(engine) {
         }),
     ).values(),
   ];
-  function broadcast(uid) {
-    if (uid) {
-      const outfit = engine.db
-        .prepare("SELECT equipped FROM frontier_players WHERE user_id=?")
-        .get(uid);
-      for (const p of clients.values())
-        if (p.uid === uid && p.public)
-          p.public.equipped = outfit?.equipped || null;
-    }
+  function broadcast() {
     if (pendingBroadcast || !clients.size) return;
     // Coalesce simultaneous party actions and encode the world snapshot once.
     pendingBroadcast = setTimeout(flushBroadcast, 250);
@@ -119,7 +111,7 @@ function createRealtime(engine) {
             }
             const row = engine.db
               .prepare(
-                "SELECT u.id,u.first_name AS name,p.slot_head,p.slot_body,p.slot_hands,p.slot_face,p.slot_fren,p.alive,fp.equipped FROM users u LEFT JOIN peepers p ON p.user_id=u.id LEFT JOIN frontier_players fp ON fp.user_id=u.id WHERE u.id=?",
+                "SELECT u.id,u.first_name AS name,p.slot_head,p.slot_body,p.slot_hands,p.slot_face,p.slot_fren,p.alive FROM users u LEFT JOIN peepers p ON p.user_id=u.id WHERE u.id=?",
               )
               .get(p.uid);
             if (!row) {

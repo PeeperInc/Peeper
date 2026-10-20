@@ -21,7 +21,6 @@ const FrontierScreen = lazy(() => import('./screens/FrontierScreen'));
 // ── Tabs config ─────────────────────────────────────────────────────────────
 const BASE_TABS = [
   { id: 'home',        label: 'Home',       icon: '🏠' },
-  { id: 'world',       label: 'World',      icon: '🌿' },
   { id: 'outfits',     label: 'Outfits',    icon: '👗' },
   { id: 'family',      label: 'Family',     icon: '👨‍👩‍👧' },
   { id: 'gift',        label: 'Gift',       icon: '🎁' },
@@ -386,6 +385,7 @@ function AppContent() {
             hasNewGifts={hasNewGifts}
             onGiftSeen={handleGiftSeen}
             onAdminOpen={userIsAdmin ? () => setActiveTab('admin') : null}
+            onOpenFrontier={() => { setFrontierMissionId(null); setActiveTab('world'); }}
           />
         </div>
         {viewingFamilyId && (

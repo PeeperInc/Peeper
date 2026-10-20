@@ -42,11 +42,11 @@ export function estimate(s) {
       (bridgeMinutes + prepMinutes + bossMinutes) /
       minutes
     ).toFixed(1),
-    repeatCycleDays: +(
-      (prepMinutes + bossMinutes) / minutes +
-      content.siege.restSeconds / 86400
-    ).toFixed(1),
-    victoryCoins: content.siege.rewardPool,
+    resultsWindowHours: content.event.resultsSeconds / 3600,
+    automaticRestart: false,
+    victoryCoinsPerActivity: content.siege.rewards.activityCoins,
+    battleCoinsPerDamageStep: content.siege.rewards.damageCoins,
+    battleDamageStep: content.siege.rewards.damageStep,
   };
 }
 const scenarios = [
@@ -87,9 +87,9 @@ console.log(
         notes: [
           "Perfectly allocated shared production; travel, retries and chat represented by success/focus assumptions.",
           "15 seconds per attempt includes 9.5 seconds of combat and navigation between attempts.",
-          "No enforced month-long lock. More participation means an earlier kill; repeat expeditions preserve replayability.",
+          "More participation means an earlier kill. Results remain for 24 hours; future events are launched manually.",
           "Kit and weapon preparation is consumed once per cycle. Attacks consume no materials or energy.",
-          "Ordinary activity coins remain capped at one payment per 180 seconds; boss death has a separate fixed shared pool.",
+          "Gathering pays 1 coin immediately per extraction; crafting/delivery coins use a 180-second cooldown. Personal victory rewards pay 3 per successful game and 3 per 40 damage, with no shared pool.",
         ],
       },
       scenarios: scenarios.map(estimate),

@@ -8,6 +8,7 @@ export default function ForgeStage({
   disabled,
   onComplete,
   feedback,
+  autoStart = false,
 }) {
   const run = useRef(null),
     send = useRef(onComplete),
@@ -16,6 +17,8 @@ export default function ForgeStage({
     [retry, setRetry] = useState(0),
     [failed, setFailed] = useState(false),
     [started, setStarted] = useState(false);
+  const recipe = challenge.arcade.recipe,
+    required = recipe?.sections || [2, 2, 2];
   send.current = onComplete;
   blocked.current = disabled;
   function action(type, x = 0) {
@@ -39,12 +42,12 @@ export default function ForgeStage({
     const r = {
       s: core.create(challenge),
       events: [],
-      start: Infinity,
+      start: autoStart ? performance.now() : Infinity,
       sent: false,
     };
     run.current = r;
     setFailed(false);
-    setStarted(false);
+    setStarted(autoStart);
     setView(null);
     let frame,
       gone = false,
@@ -95,9 +98,15 @@ export default function ForgeStage({
     };
   }, [challenge.nonce, retry]);
   const s = view || { heat: 0.25, sections: [0, 0, 0], t: 0 },
-    formed = s.sections.every((n) => n === 2),
-    hot = s.heat >= 0.45 && s.heat <= 0.9,
-    quenchable = formed && s.heat >= 0.35 && s.heat <= 0.7,
+    formed = s.sections.every((n, i) => n === required[i]),
+    hot =
+      s.heat >= (recipe?.hot[0] ?? 0.45) &&
+      s.heat <= (recipe?.hot[1] ?? 0.9) &&
+      (!recipe?.thermal || s.heatBatchHits < 2),
+    quenchable =
+      formed &&
+      s.heat >= (recipe?.quench[0] ?? 0.35) &&
+      s.heat <= (recipe?.quench[1] ?? 0.7),
     locked = disabled || s.done || !s.ready,
     cue = s.done
       ? s.quenched
@@ -112,10 +121,12 @@ export default function ForgeStage({
         : s.heating
           ? "Release in the gold band"
           : hot
-            ? "Hammer the unshaped sections"
-            : s.heat > 0.9
-              ? "Too hot — let it cool"
-              : "Hold the bellows to reheat",
+            ? "Hammer the glowing section"
+            : recipe?.thermal && s.heatBatchHits >= 2
+              ? "Reheat for the next two strikes"
+              : s.heat > 0.9
+                ? "Too hot — let it cool"
+                : "Hold the bellows to reheat",
     fill = s.quenched
       ? "#cad9cf"
       : `hsl(${12 + s.heat * 34} 85% ${28 + s.heat * 39}%)`;
@@ -124,17 +135,21 @@ export default function ForgeStage({
       <header className="forge-heading">
         <div>
           <small>REEDBANK ARMORY</small>
-          <h3>From iron to steel</h3>
+          <h3>
+            {recipe
+              ? `Forge a ${recipe.name.toLowerCase()}`
+              : "From iron to steel"}
+          </h3>
         </div>
         <b>
           {Math.max(0, Math.ceil((challenge.arcade.duration - s.t) / 1000))}s
         </b>
       </header>
       <ol className="forge-steps" aria-label="Forging steps">
-        <li className={!formed ? "current" : ""}>Heat</li>
-        <li className={!formed && s.sections.some(Boolean) ? "current" : ""}>
-          Shape
+        <li className={!formed && (s.heating || !hot) ? "current" : ""}>
+          Heat
         </li>
+        <li className={!formed && !s.heating && hot ? "current" : ""}>Shape</li>
         <li className={formed ? "current" : ""}>Quench</li>
       </ol>
       <div className="forge-scene">
@@ -145,13 +160,15 @@ export default function ForgeStage({
                 ? "Try again — earlier rounds are kept."
                 : "Heat, shape, then quench."}
               <small>
-                Hold the bellows. Hammer each section twice in the gold band.
+                {recipe
+                  ? "Two strikes per heat. Reheat, shape the next marks, then quench in blue."
+                  : "Hold the bellows. Hammer each section twice in the gold band."}
               </small>
             </p>
             <button
               disabled={disabled}
               onClick={() => {
-                run.current.start = performance.now() + 300;
+                run.current.start = performance.now();
                 run.current.animate();
                 setStarted(true);
               }}
@@ -169,6 +186,24 @@ export default function ForgeStage({
               : "Glowing blade on a hand drawn anvil"
           }
         >
+          <defs>
+            <radialGradient id="forge-fire-glow">
+              <stop stopColor="#ffc75e" stopOpacity=".6" />
+              <stop offset="1" stopColor="#e7812e" stopOpacity="0" />
+            </radialGradient>
+            <linearGradient id="forge-steel">
+              <stop stopColor="#b3bdac" />
+              <stop offset=".5" stopColor="#7e9186" />
+              <stop offset="1" stopColor="#455e55" />
+            </linearGradient>
+          </defs>
+          <ellipse
+            cx="95"
+            cy="154"
+            rx={s.heating ? 135 : 85}
+            ry="105"
+            fill="url(#forge-fire-glow)"
+          />
           <path d="M0 234L400 227V290H0Z" fill="#3d392d" />
           <path
             d="M22 227V35L121 31L124 232Z"
@@ -198,7 +233,7 @@ export default function ForgeStage({
           />
           <path
             d="M106 155L312 150L365 159L317 182L266 184L269 213L157 215L165 180L118 180Z"
-            fill="#87968b"
+            fill="url(#forge-steel)"
             stroke="#26372d"
             strokeWidth="4"
           />
@@ -209,7 +244,13 @@ export default function ForgeStage({
             strokeWidth="2"
           />
           <path
-            d={`M126 139L154 132L291 132L326 145L291 157L154 157L126 151Z`}
+            d={
+              recipe?.name === "Hatchet"
+                ? "M126 132L180 119L223 105L245 147L224 179L181 160L126 157Z"
+                : recipe?.name === "Spearhead"
+                  ? "M126 139L166 131L260 131L338 145L260 159L166 159L126 151Z"
+                  : "M126 139L154 132L291 132L326 145L291 157L154 157L126 151Z"
+            }
             fill={fill}
             stroke="#372d24"
             strokeWidth="3"
@@ -218,7 +259,7 @@ export default function ForgeStage({
             <g key={i}>
               <path
                 d={`M${157 + i * 50} ${140 - n * 2}l31 ${3 - n}M${160 + i * 50} 149l27 -1`}
-                stroke={n === 2 ? "#ffe5a3" : "#894931"}
+                stroke={n === required[i] ? "#ffe5a3" : "#894931"}
                 strokeWidth="2"
               />
               <text
@@ -264,6 +305,30 @@ export default function ForgeStage({
                 strokeWidth="3"
               />
             ))}
+          <g
+            className={
+              s.flash && s.t - s.flash.t < 320
+                ? "forge-hammer striking"
+                : "forge-hammer"
+            }
+            style={{
+              transformOrigin: `${173 + (s.flash?.section ?? 0) * 50}px 140px`,
+            }}
+            transform={`translate(${173 + (recipe?.order[s.sections.reduce((n, v) => n + v, 0)] ?? s.flash?.section ?? 0) * 50} 82) rotate(-28)`}
+          >
+            <path d="M0-15V43" stroke="#b58b55" strokeWidth="9" />
+            <rect
+              x="-24"
+              y="-30"
+              width="48"
+              height="23"
+              rx="4"
+              fill="#a7bab0"
+              stroke="#324c42"
+              strokeWidth="3"
+            />
+            <path d="M-19-24H18" stroke="#d7dfc7" strokeWidth="3" />
+          </g>
           {s.quenched && (
             <path
               d="M40 202Q20 187 41 175T38 147M57 204Q73 185 56 167"
@@ -279,6 +344,20 @@ export default function ForgeStage({
         <div className="forge-cue" aria-live="polite">
           {cue}
         </div>
+        {recipe?.thermal && (
+          <div className="forge-heat-batch">
+            <span>
+              {Math.floor(s.sections.reduce((n, v) => n + v, 0) / 2) + 1 > 3
+                ? "Shaping complete"
+                : `Heat ${Math.floor(s.sections.reduce((n, v) => n + v, 0) / 2) + 1} of 3`}
+            </span>
+            <span>
+              {formed
+                ? "Finish in the blue band"
+                : `${Math.max(0, 2 - (s.heatBatchHits || 0))} strikes before reheating`}
+            </span>
+          </div>
+        )}
         <div
           className="forge-temperature"
           role="meter"
@@ -287,7 +366,17 @@ export default function ForgeStage({
           aria-valuemin="0"
           aria-valuemax="100"
         >
-          <i className={formed ? "quench-band" : "hammer-band"} />
+          <i
+            className={formed ? "quench-band" : "hammer-band"}
+            style={
+              recipe
+                ? {
+                    left: `${(formed ? recipe.quench[0] : recipe.hot[0]) * 100}%`,
+                    width: `${((formed ? recipe.quench[1] : recipe.hot[1]) - (formed ? recipe.quench[0] : recipe.hot[0])) * 100}%`,
+                  }
+                : undefined
+            }
+          />
           <b style={{ left: `${s.heat * 100}%` }} />
         </div>
         <div className="forge-scale">
@@ -299,17 +388,27 @@ export default function ForgeStage({
           {names.map((name, i) => (
             <button
               key={name}
+              className={
+                recipe &&
+                recipe.order[s.sections.reduce((sum, n) => sum + n, 0)] === i
+                  ? "forge-next"
+                  : ""
+              }
               disabled={
                 locked ||
                 s.heating ||
                 s.t - s.lastStrike < 320 ||
-                s.sections[i] === 2
+                s.sections[i] === required[i]
               }
               onClick={() => action(6, i)}
               aria-label={`Hammer ${name.toLowerCase()}`}
             >
               <span>{name}</span>
-              <b>{s.sections[i] === 2 ? "✓" : `${s.sections[i]} / 2`}</b>
+              <b>
+                {s.sections[i] === required[i]
+                  ? "✓"
+                  : `${s.sections[i]} / ${required[i]}`}
+              </b>
             </button>
           ))}
         </div>
@@ -361,7 +460,9 @@ export default function ForgeStage({
           {disabled
             ? "Saving your blade…"
             : s.message ||
-              "Two strikes per section. Reheat whenever the metal cools."}
+              (recipe
+                ? "Hammer the glowing section. Reheat when needed."
+                : "Two strikes per section. Reheat whenever the metal cools.")}
         </p>
         {failed && (
           <button onClick={() => setRetry((n) => n + 1)}>

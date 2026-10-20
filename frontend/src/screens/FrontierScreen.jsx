@@ -12,8 +12,12 @@ import CommonsBoard from "../frontier/CommonsBoard";
 import ConstructionPlan, {
   nextContribution,
 } from "../frontier/ConstructionPlan";
-import DeliverySetup from "../frontier/DeliverySetup";
+import DeliverySetup, { DeliveryBonus } from "../frontier/DeliverySetup";
+import { JourneyGuide } from "../frontier/JourneyPanels";
+import "../frontier/JourneyMenus.css";
 import { BossCampaign, AssaultScene } from "../frontier/BossCampaign";
+import BossCombat from "../frontier/BossCombat";
+import { ScenePeeperContext } from "../frontier/ScenePeeper";
 import "../frontier/BossCampaign.css";
 
 import { WorkScene, MissionScene } from "../frontier/Activities";
@@ -42,14 +46,27 @@ export default function FrontierScreen({
     [busy, setBusy] = useState(false),
     [localError, setLocalError] = useState(null),
     [now, setNow] = useState(Date.now() / 1000),
-    [role, setRole] = useState("driver"),
-    [confirm, setConfirm] = useState(null);
+    [role, setRole] = useState("driver");
+
   const clockOffset = useRef(0),
+    paidCycle = useRef(null),
+    journeyCycle = useRef(null),
     initial = useRef(false),
     pendingKey = useRef(null),
     alive = useRef(true),
     commandLock = useRef(false),
     commandEpoch = useRef(0);
+  useEffect(() => {
+    const cycle = state?.journey?.cycle;
+    if (cycle === undefined) return;
+    if (journeyCycle.current !== null && journeyCycle.current !== cycle) {
+      setSelected("village");
+      setPanel(null);
+      setActivity(null);
+      setActivityData(null);
+    }
+    journeyCycle.current = cycle;
+  }, [state?.journey?.cycle]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -87,6 +104,25 @@ export default function FrontierScreen({
     );
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (state?.event?.phase !== "results" && state?.event?.active !== false)
+      return;
+    setPanel(null);
+    setActivity(null);
+    setActivityData(null);
+    if (
+      state.boss?.phase === "defeated" &&
+      paidCycle.current !== state.boss.cycle
+    ) {
+      paidCycle.current = state.boss.cycle;
+      refreshGameState();
+    }
+  }, [
+    state?.event?.phase,
+    state?.event?.active,
+    state?.boss?.cycle,
+    refreshGameState,
+  ]);
   useEffect(() => {
     const trip = state?.player.travel;
     if (!trip) return;
@@ -282,521 +318,365 @@ export default function FrontierScreen({
     refresh();
     refreshGameState();
   }
-  const rank = [...content.ranks]
-    .reverse()
-    .find((r) => (state?.player.xp || 0) >= r.xp);
-  return (
-    <div className="frontier-screen">
-      {state ? (
-        <WorldHud
-          state={state}
-          selected={selected}
-          onSelect={choose}
-          onTravel={(id) => perform(() => api.frontierTravel(id))}
-          user={user}
-          peeper={peeper}
-          players={players}
-          connected={connected}
-          busy={busy}
-          now={now}
-          error={localError || error}
-          onClose={() => {
-            refreshGameState();
-            onClose();
-          }}
-          onPanel={setPanel}
-          onWork={startJob}
-          onMission={createMission}
-          role={role}
-          onRole={setRole}
-          onResume={() => {
-            const item = state.assault || state.job || state.mission;
-            setActivityData(item);
-            setActivity({
-              kind: state.assault ? "assault" : state.job ? "job" : "mission",
-              id: item.id,
-            });
-          }}
-          onParty={(id) => setActivity({ kind: "mission", id })}
-        />
-      ) : (
-        <div className="marsh-loading">
-          <span>BEYOND THE FOG</span>
-          <h1>Reedbank</h1>
-          <p>{error || "Following the trail home…"}</p>
-          {error && <button onClick={refresh}>Reconnect</button>}
-        </div>
-      )}
-      {panel === "orders" && state?.commons && (
-        <Dialog title="The community board" onClose={() => setPanel(null)}>
-          <CommonsBoard
-            commons={state.commons}
-            now={now}
-            onChoose={(id) => {
-              choose(id);
-              setPanel(null);
-            }}
-            onChat={() => setPanel("chat")}
-          />
-        </Dialog>
-      )}
-      {panel === "stores" && state && (
-        <Dialog title="Community stores" onClose={() => setPanel(null)}>
-          <ConstructionPlan
-            state={state}
-            onGo={(id) => {
-              choose(id);
-              setPanel(null);
-              if (
-                !state.job &&
-                !state.mission &&
-                !state.assault &&
-                !state.player.travel
-              )
-                perform(() => api.frontierTravel(id));
-            }}
-          />
-        </Dialog>
-      )}
-      {panel === "weather" && state?.commons && (
-        <Dialog
-          title={state.commons.weather.name}
-          onClose={() => setPanel(null)}
+  const closed =
+    state?.event?.active === false ||
+    (state?.event?.endsAt != null && now >= state.event.endsAt);
+  if (closed || state?.event?.phase === "results") {
+    const leaveResults = () => {
+      refreshGameState();
+      onClose();
+    };
+    return (
+      <div className="frontier-screen">
+        <section
+          className="frontier-results"
+          aria-label={closed ? "Event ended" : "Event results"}
         >
-          <div className="frontier-panel-body weather-explanation">
-            <h3>On the trails today</h3>
-            <p>{state.commons.weather.hint}</p>
-            <p>
-              {state.commons.weather.id === "clear"
-                ? "Normal steering, light insect drift and the usual herb recipe. There is no difficulty modifier today."
-                : state.commons.weather.id === "rain"
-                  ? "During caravan driving, steering is 30% slower. Watch the mud and start turns earlier. Work inside the workshops is unchanged."
-                  : state.commons.weather.id === "wind"
-                    ? "During guard encounters, gusts bend insect flight paths. Read their movement and swipe in short bursts. Other tasks keep their usual rules."
-                    : "In the healer's herb puzzle, a remedy needs 8 herbs instead of 9. This benefit applies to herb-gathering tasks."}
-            </p>
-          </div>
-        </Dialog>
-      )}
-      {panel === "parties" && state && (
-        <Dialog title="Find a party" onClose={() => setPanel(null)}>
-          <div className="frontier-panel-body">
-            {state.lobbies.length ? (
-              state.lobbies.map((m) => (
-                <button
-                  className="hud-party-row"
-                  key={m.id}
-                  onClick={() => {
-                    setPanel(null);
-                    setActivity({ kind: "mission", id: m.id });
-                  }}
-                >
-                  <b>
-                    {m.kind === "boss"
-                      ? "Reedlands patrol"
-                      : "Construction delivery"}
-                  </b>
-                  <span>
-                    {m.members.map((p) => p.name).join(", ")} ·{" "}
-                    {m.members.length}/3
-                  </span>
-                  <small>Join the group →</small>
-                </button>
-              ))
-            ) : (
-              <div>
-                <h3>The next caravan could be yours.</h3>
-                <p>
-                  One drives, one protects the cargo, one keeps the wheels
-                  turning. Everyone earns their own reward.
-                </p>
-                <button
-                  className="frontier-primary"
-                  onClick={() => {
-                    choose("village");
-                    setPanel(null);
-                  }}
-                >
-                  Go to Crooked Post →
-                </button>
-              </div>
-            )}
-          </div>
-        </Dialog>
-      )}
-      {panel === "boss" && state?.boss && (
-        <Dialog title="The shared expedition" onClose={() => setPanel(null)}>
-          <BossCampaign
+          <header>
+            <button type="button" onClick={leaveResults}>
+              ‹ Back
+            </button>
+            <strong>{closed ? "Event ended" : "Event results"}</strong>
+          </header>
+          {closed ? (
+            <div className="frontier-ended">
+              <h1>Beyond the Fog has ended</h1>
+              <p>
+                The results window has closed. Your coins and outfits are saved.
+              </p>
+              <button className="frontier-primary" onClick={leaveResults}>
+                Back to Peeper
+              </button>
+            </div>
+          ) : (
+            <div className="frontier-results-scroll">
+              <BossCampaign state={state} busy={false} now={now} />
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+  return (
+    <ScenePeeperContext.Provider value={peeper}>
+      <div className="frontier-screen">
+        {state ? (
+          <WorldHud
             state={state}
+            selected={selected}
+            onSelect={choose}
+            onTravel={(id) => perform(() => api.frontierTravel(id))}
+            user={user}
+            peeper={peeper}
+            players={players}
+            connected={connected}
+            mapPaused={!!(panel || activity)}
             busy={busy}
             now={now}
-            onPrepare={prepareBoss}
-            onAttack={startAssault}
-            onGo={(id) => {
-              setPanel(null);
-              choose(id);
-              if (
-                !state.job &&
-                !state.mission &&
-                !state.assault &&
-                !state.player.travel
-              )
-                perform(() => api.frontierTravel(id));
+            error={localError || error}
+            onClose={() => {
+              refreshGameState();
+              onClose();
             }}
-          />
-        </Dialog>
-      )}
-      {panel === "dispatch" && state && (
-        <Dialog title="Prepare a delivery" onClose={() => setPanel(null)}>
-          <DeliverySetup
-            state={state}
+            onPanel={setPanel}
+            onWork={startJob}
+            onMission={createMission}
             role={role}
             onRole={setRole}
-            busy={busy}
-            onCreate={(load) => createMission("delivery", load)}
+            onResume={() => {
+              const item = state.assault || state.job || state.mission;
+              setActivityData(item);
+              setActivity({
+                kind: state.assault ? "assault" : state.job ? "job" : "mission",
+                id: item.id,
+              });
+            }}
+            onParty={(id) => setActivity({ kind: "mission", id })}
           />
-        </Dialog>
-      )}
-      {activity && (
-        <Dialog
-          title={
-            activity.kind === "job"
-              ? content.jobs[activityData?.kind]?.name || "Work order"
-              : activity.kind === "assault"
-                ? "Mirewake · world battle"
-                : "On the trail"
-          }
-          onClose={() => setActivity(null)}
-          className="frontier-activity-dialog"
-        >
-          {localError && (
-            <div className="frontier-warning" role="alert">
-              {localError}
-            </div>
-          )}
-          {activityData ? (
-            activity.kind === "assault" ? (
-              <AssaultScene
-                attempt={activityData}
-                boss={state?.boss}
-                busy={busy}
-                onAct={(p) =>
-                  perform(
-                    () => api.frontierAssaultAction(activity.id, p),
-                    setActivityData,
-                  )
-                }
-                onCancel={() =>
-                  perform(
-                    () => api.frontierCancelAssault(activity.id),
-                    setActivityData,
-                  )
-                }
-                onAgain={startAssault}
-                onReturn={() => {
-                  returnToMap();
-                  setPanel("boss");
-                }}
-              />
-            ) : activity.kind === "job" ? (
-              <WorkScene
-                job={activityData}
-                nextTask={
-                  ["wood", "ore", "supplies", "weapons"].includes(
-                    activityData.kind,
-                  )
-                    ? nextContribution(state)
-                    : null
-                }
-                now={now}
-                busy={busy}
-                onAct={(payload) =>
-                  perform(
-                    () => api.frontierJobAction(activity.id, payload),
-                    setActivityData,
-                  )
-                }
-                onCancel={() =>
-                  perform(
-                    () => api.frontierCancelJob(activity.id),
-                    setActivityData,
-                  )
-                }
-                onReturn={returnToMap}
-                onAgain={() => startJob(activityData.kind)}
-                onNext={(id) => {
-                  returnToMap();
-                  if (id === "boss") {
-                    setPanel("boss");
-                    return;
-                  }
-                  choose(id);
+        ) : (
+          <div className="marsh-loading">
+            <span>BEYOND THE FOG</span>
+            <h1>Reedbank</h1>
+            <p>{error || "Following the trail home…"}</p>
+            {error && <button onClick={refresh}>Reconnect</button>}
+          </div>
+        )}
+        {panel === "orders" && state?.commons && (
+          <Dialog title="Your quests" onClose={() => setPanel(null)}>
+            <CommonsBoard
+              commons={state.commons}
+              now={now}
+              onChoose={(id) => {
+                choose(id);
+                setPanel(null);
+              }}
+              onChat={() => setPanel("chat")}
+            />
+          </Dialog>
+        )}
+        {panel === "stores" && state && (
+          <Dialog title="Community stores" onClose={() => setPanel(null)}>
+            <ConstructionPlan
+              state={state}
+              onGo={(id) => {
+                choose(id);
+                setPanel(null);
+                if (
+                  !state.job &&
+                  !state.mission &&
+                  !state.assault &&
+                  !state.player.travel
+                )
                   perform(() => api.frontierTravel(id));
-                }}
-              />
-            ) : (
-              <MissionScene
-                mission={activityData}
-                user={user}
-                peeper={peeper}
-                now={now}
-                busy={busy}
-                onCommand={missionCommand}
-                onOpenChat={() => setPanel("chat")}
-                onReturn={returnToMap}
-              />
-            )
-          ) : (
-            <div className="frontier-panel-body">Finding your party…</div>
-          )}
-        </Dialog>
-      )}
-      {panel === "guide" && (
-        <Dialog
-          title="A field guide to the commons"
-          onClose={() => setPanel(null)}
-        >
-          <div className="frontier-panel-body frontier-guide">
-            <p className="frontier-lead">
-              A place built by the people who pass through it.
-            </p>
-            <ol>
-              <li>
-                <b>Gather.</b> Work at the sawmill or quarry. Complete the
-                physical tasks to earn experience and add resources to the
-                shared stores.
-              </li>
-              <li>
-                <b>Make.</b> Stack and trim construction planks at Crooked Post.
-              </li>
-              <li>
-                <b>Travel together.</b> Gather a public caravan at Crooked Post.
-                Pick a role and invite others in Global Chat.
-              </li>
-              <li>
-                <b>Open the world.</b> Delivered planks build permanent
-                structures for everyone. The repaired bridge opens the far bank.
-                The dragon becomes visible. Craft expedition kits at the mill
-                and weapons at the armory. Fill both shared reserves to open the
-                battle.
-              </li>
-              <li>
-                <b>Fight together.</b> Both reserves open the dragon for every
-                player. Attack without spending kits or energy. Your accumulated
-                damage earns a proportional share of the fixed coin fund when
-                the dragon falls, even if you are offline.
-              </li>
-            </ol>
-            <p>
-              A work batch finishes after 3 good rounds. Misses keep your
-              progress. Gathered timber and iron go straight into the shared
-              stores, including pieces collected before leaving early.
-              Unfinished recipes return their ingredients.
-            </p>
-            <p>
-              A journey has 3 encounters over 45 seconds. Clear at least 2 for
-              an individual reward. A handcart carries 2 planks; a wagon carries
-              6 and needs at least two crewmates to clear 2 encounters each. On
-              a solo journey, you drive, defend and repair in turn.
-            </p>
-            <p>
-              Materials and experience can be earned continuously. Successful
-              work and journeys share one coin payment every 3 minutes. No
-              energy or daily quota is used. Keep your Peeper cared for as
-              usual.
-            </p>
-            <p>
-              One activity at a time. Reopen it after a connection drop.
-              Journeys already underway continue on the server; failed or
-              cancelled journeys return their reserved cargo.
-            </p>
-          </div>
-        </Dialog>
-      )}
-      {panel === "journal" && state && (
-        <Dialog title="Your field journal" onClose={() => setPanel(null)}>
-          <div className="frontier-panel-body">
-            <span className="frontier-eyebrow">{rank.name}</span>
-            <h3>{user.first_name}, of Reedbank</h3>
-            {state.commons && (
-              <div className="commons-journal">
-                <b>{state.commons.totalSeals} community seals</b>
-                <p>
-                  {state.commons.points} contributions this week. Complete
-                  shared rows for seals and trail experience.
-                </p>
-                <button
-                  className="frontier-secondary"
-                  onClick={() => setPanel("orders")}
-                >
-                  Open this week’s board →
-                </button>
-              </div>
-            )}
-            <button
-              className="frontier-secondary"
-              onClick={() => setPanel("guide")}
-            >
-              How the commons works →
-            </button>
-            <div className="frontier-journal-stats">
-              <span>
-                <b>{state.player.jobs}</b> orders
-              </span>
-              <span>
-                <b>{state.player.deliveries}</b> deliveries
-              </span>
-              {state.boss && (
-                <span>
-                  <b>{state.player.boss_contribution}</b> total dragon damage
-                </span>
-              )}
-            </div>
-            <p>
-              {state.player.xp} experience.{" "}
-              {content.ranks.find((r) => r.xp > state.player.xp)
-                ? `${content.ranks.find((r) => r.xp > state.player.xp).xp - state.player.xp} to the next trail rank.`
-                : "A familiar face across the marsh."}
-            </p>
-            {state.player.honors.map((h) => (
-              <p key={h.cycle}>
-                ♛ World expedition {h.cycle} · {h.contribution} contribution
-              </p>
-            ))}
-            <h3>Recent earnings</h3>
-            {state.history.length ? (
-              state.history.map((h) => (
-                <div className="frontier-journal-entry" key={h.ref}>
-                  <span>{h.reason}</span>
-                  <b>{h.coins ? `+${h.coins} ✦` : `+${h.xp} XP`}</b>
-                </div>
-              ))
-            ) : (
-              <p className="frontier-fine">
-                Your first completed order starts the story.
-              </p>
-            )}
-            <h3>News from the marsh</h3>
-            {state.events.length ? (
-              state.events.map((e) => (
-                <p className="frontier-event" key={e.id}>
-                  {e.message}
-                </p>
-              ))
-            ) : (
-              <p className="frontier-fine">
-                The first chapter is still being written.
-              </p>
-            )}
-          </div>
-        </Dialog>
-      )}
-      {panel === "shop" && state && (
-        <Dialog title="Trail keepsakes" onClose={() => setPanel(null)}>
-          <div className="frontier-panel-body">
-            <p>
-              Small things for your life in the commons. Keepsakes appear beside
-              your Peeper on the world map.
-            </p>
-            {content.cosmetics.map((c) => (
-              <div className="frontier-keepsake" key={c.id}>
-                <span style={{ color: c.color }}>
-                  {c.type === "pennant"
-                    ? "⚑"
-                    : c.type === "lantern"
-                      ? "✧"
-                      : "♛"}
-                </span>
-                <div>
-                  <h3>{c.name}</h3>
-                  <p>{c.description}</p>
+              }}
+            />
+          </Dialog>
+        )}
+        {panel === "parties" && state && (
+          <Dialog title="Team deliveries" onClose={() => setPanel(null)}>
+            <div className="frontier-panel-body delivery-party-list">
+              <DeliveryBonus />
+              <p>2 shared planks per player. Teams split the three tasks.</p>
+              {state.lobbies.length ? (
+                state.lobbies.map((m) => (
                   <button
-                    className="frontier-secondary"
-                    disabled={busy}
-                    onClick={() =>
-                      state.player.owned.includes(c.id)
-                        ? perform(() =>
-                            api.frontierCosmetic(
-                              "equip",
-                              state.player.equipped === c.id ? null : c.id,
-                            ),
-                          )
-                        : setConfirm({
-                            title: `Buy ${c.name.toLowerCase()}?`,
-                            body: `Spend ${c.price} coins from your Peeper balance. This is a permanent keepsake.`,
-                            action: () =>
-                              perform(
-                                () => api.frontierCosmetic("buy", c.id),
-                                () => refreshGameState(),
-                              ),
-                          })
-                    }
+                    className="hud-party-row"
+                    key={m.id}
+                    onClick={() => {
+                      setPanel(null);
+                      setActivity({ kind: "mission", id: m.id });
+                    }}
                   >
-                    {state.player.equipped === c.id
-                      ? "Put away"
-                      : state.player.owned.includes(c.id)
-                        ? "Equip"
-                        : `${c.price} ✦ · Buy`}
+                    <b>
+                      {m.kind === "boss"
+                        ? "Reedlands patrol"
+                        : "Construction delivery"}
+                    </b>
+                    <span>
+                      {m.members.map((p) => p.name).join(", ")} ·{" "}
+                      {m.members.length}/3 · {m.plannedCargo ?? m.cargo} planks
+                      on arrival
+                    </span>
+                    <small>Join · reserve 2 shared planks →</small>
+                  </button>
+                ))
+              ) : (
+                <div>
+                  <h3>No crews waiting yet.</h3>
+                  <p>Create a delivery at Crooked Post and invite teammates.</p>
+                  <button
+                    className="frontier-primary"
+                    onClick={() => {
+                      if (
+                        state.player.location === "village" &&
+                        !state.player.travel
+                      )
+                        setPanel("dispatch");
+                      else {
+                        choose("village");
+                        setPanel(null);
+                      }
+                    }}
+                  >
+                    {state.player.location === "village" && !state.player.travel
+                      ? "Create a delivery →"
+                      : "Go to Crooked Post →"}
                   </button>
                 </div>
-              </div>
-            ))}
-          </div>
-        </Dialog>
-      )}
-      {panel === "chat" && (
-        <Dialog
-          title="Global Chat"
-          onClose={() => setPanel(null)}
-          className="frontier-chat-dialog"
-        >
-          <GlobalChatScreen
-            onSendGift={(recipient) => {
+              )}
+            </div>
+          </Dialog>
+        )}
+        {panel === "combat" && (
+          <Dialog
+            title="Mirewake · shared battle"
+            className="frontier-activity-dialog"
+            onClose={() => {
               setPanel(null);
-              onSendGift?.(recipient);
+              refresh();
             }}
-            onOpenFamily={(family) => {
-              setPanel(null);
-              onOpenFamily?.(family);
-            }}
-            onViewProfile={(id) => {
-              setPanel(null);
-              onViewProfile?.(id);
-            }}
-            onOpenFrontier={(id) => {
-              setPanel(null);
-              setActivity({ kind: "mission", id });
-            }}
-          />
-        </Dialog>
-      )}
-      {confirm && (
-        <Dialog
-          title={confirm.title}
-          onClose={() => setConfirm(null)}
-          className="frontier-confirm"
-        >
-          <div className="frontier-panel-body">
-            <p>{confirm.body}</p>
-            <button
-              className="frontier-primary"
-              onClick={() => {
-                const action = confirm.action;
-                setConfirm(null);
-                action();
+          >
+            <BossCombat
+              onVictory={() => {
+                refresh();
+                refreshGameState();
               }}
-            >
-              Confirm
-            </button>
-            <button
-              className="frontier-secondary"
-              onClick={() => setConfirm(null)}
-            >
-              Keep playing
-            </button>
-          </div>
-        </Dialog>
-      )}
-    </div>
+              onExit={() => {
+                setPanel("boss");
+                refresh();
+              }}
+            />
+          </Dialog>
+        )}
+        {panel === "boss" && state?.boss && (
+          <Dialog title="The shared expedition" onClose={() => setPanel(null)}>
+            <BossCampaign
+              state={state}
+              busy={busy}
+              now={now}
+              onPrepare={prepareBoss}
+              onAttack={() => setPanel("combat")}
+              onGo={(id) => {
+                setPanel(null);
+                choose(id);
+                if (
+                  !state.job &&
+                  !state.mission &&
+                  !state.assault &&
+                  !state.player.travel
+                )
+                  perform(() => api.frontierTravel(id));
+              }}
+            />
+          </Dialog>
+        )}
+        {panel === "dispatch" && state && (
+          <Dialog title="Prepare a delivery" onClose={() => setPanel(null)}>
+            <DeliverySetup
+              state={state}
+              role={role}
+              onRole={setRole}
+              busy={busy}
+              onCreate={(load) => createMission("delivery", load)}
+            />
+          </Dialog>
+        )}
+        {activity && (
+          <Dialog
+            title={
+              activity.kind === "job"
+                ? content.jobs[activityData?.kind]?.name || "Work order"
+                : activity.kind === "assault"
+                  ? "Mirewake · world battle"
+                  : "On the trail"
+            }
+            onClose={() =>
+              activity.kind === "job" && activityData?.continuous
+                ? perform(() => api.frontierCancelJob(activity.id), returnToMap)
+                : setActivity(null)
+            }
+            className="frontier-activity-dialog"
+          >
+            {localError && (
+              <div className="frontier-warning" role="alert">
+                {localError}
+              </div>
+            )}
+            {activityData ? (
+              activity.kind === "assault" ? (
+                <AssaultScene
+                  attempt={activityData}
+                  boss={state?.boss}
+                  busy={busy}
+                  onAct={(p) =>
+                    perform(
+                      () => api.frontierAssaultAction(activity.id, p),
+                      setActivityData,
+                    )
+                  }
+                  onCancel={() =>
+                    perform(
+                      () => api.frontierCancelAssault(activity.id),
+                      setActivityData,
+                    )
+                  }
+                  onAgain={startAssault}
+                  onReturn={() => {
+                    returnToMap();
+                    setPanel("boss");
+                  }}
+                />
+              ) : activity.kind === "job" ? (
+                <WorkScene
+                  job={activityData}
+                  nextTask={
+                    ["wood", "ore", "supplies", "weapons"].includes(
+                      activityData.kind,
+                    )
+                      ? nextContribution(state)
+                      : null
+                  }
+                  now={now}
+                  busy={busy}
+                  onAct={(payload) =>
+                    perform(
+                      () => api.frontierJobAction(activity.id, payload),
+                      setActivityData,
+                    )
+                  }
+                  onCancel={() =>
+                    perform(
+                      () => api.frontierCancelJob(activity.id),
+                      setActivityData,
+                    )
+                  }
+                  onReturn={returnToMap}
+                  onLeave={() =>
+                    perform(
+                      () => api.frontierCancelJob(activity.id),
+                      returnToMap,
+                    )
+                  }
+                  onAgain={() => startJob(activityData.kind)}
+                  onNext={(id) => {
+                    returnToMap();
+                    if (id === "boss") {
+                      setPanel("boss");
+                      return;
+                    }
+                    choose(id);
+                    perform(() => api.frontierTravel(id));
+                  }}
+                />
+              ) : (
+                <MissionScene
+                  mission={activityData}
+                  user={user}
+                  peeper={peeper}
+                  now={now}
+                  busy={busy}
+                  onCommand={missionCommand}
+                  onOpenChat={() => setPanel("chat")}
+                  onReturn={returnToMap}
+                />
+              )
+            ) : (
+              <div className="frontier-panel-body">Finding your party…</div>
+            )}
+          </Dialog>
+        )}
+        {panel === "guide" && (
+          <Dialog title="How to play" onClose={() => setPanel(null)}>
+            <JourneyGuide state={state} />
+          </Dialog>
+        )}
+        {panel === "chat" && (
+          <Dialog
+            title="Global Chat"
+            onClose={() => setPanel(null)}
+            className="frontier-chat-dialog"
+          >
+            <GlobalChatScreen
+              onSendGift={(recipient) => {
+                setPanel(null);
+                onSendGift?.(recipient);
+              }}
+              onOpenFamily={(family) => {
+                setPanel(null);
+                onOpenFamily?.(family);
+              }}
+              onViewProfile={(id) => {
+                setPanel(null);
+                onViewProfile?.(id);
+              }}
+              onOpenFrontier={(id) => {
+                setPanel(null);
+                setActivity({ kind: "mission", id });
+              }}
+            />
+          </Dialog>
+        )}
+      </div>
+    </ScenePeeperContext.Provider>
   );
 }

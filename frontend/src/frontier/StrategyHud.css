@@ -82,47 +82,31 @@
   flex-shrink: 0;
   filter: drop-shadow(0 1px 0 #f8e9b666);
 }
-.strategy-hud .world-objective {
-  top: 136px;
+.strategy-hud .world-dock {
+  position: absolute;
   left: 20px;
-  right: auto;
-  width: 300px;
-  min-width: 0;
-  padding: 11px 14px;
-  gap: 10px;
-  border: 1px solid #aabc8f8c;
-  border-radius: 10px;
-  background: #294635f0;
-  box-shadow:
-    0 4px #1b3429a8,
-    inset 0 1px #e4e5b528;
+  bottom: 0;
+  padding-bottom: max(22px, var(--tg-safe-bottom-ui, 0px), env(safe-area-inset-bottom));
+  width: 350px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
 }
-.strategy-hud .world-objective small {
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  color: #ced8b7;
-}
-.strategy-hud .world-objective strong {
-  font-size: 14px;
-  color: #f4e7c0;
-}
-.strategy-hud .world-objective .frontier-meter {
-  height: 5px;
-  margin: 7px 0 5px;
-}
-.strategy-hud .objective-mark {
-  display: grid;
-  place-items: center;
+.strategy-hud .world-dock > * {
+  pointer-events: auto;
 }
 .strategy-hud .world-presence {
-  top: 72px;
-  left: auto;
-  right: 24px;
+  position: static;
+  align-self: flex-start;
+  margin-left: 4px;
   color: #e2e8ce;
   background: #203c2eaa;
   border-radius: 8px;
-  padding: 5px 8px;
-  font-size: 11px;
+  padding: 3px 6px;
+  font-size: 10px;
+  line-height: 1.2;
 }
 .strategy-hud .hud-map-button {
   top: 109px;
@@ -149,10 +133,10 @@
   cursor: pointer;
 }
 .strategy-hud .hud-location {
-  left: 20px;
-  bottom: 104px;
-  max-width: 350px;
-  width: 350px;
+  position: relative;
+  inset: auto;
+  max-width: none;
+  width: 100%;
   padding: 15px 18px;
   background: #eee0bff5;
   color: #324331;
@@ -246,13 +230,13 @@
   color: #fff1ca !important;
 }
 .strategy-hud .marsh-toolbar {
-  left: 20px;
-  bottom: 22px;
+  position: relative;
+  inset: auto;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  width: 350px;
-  padding: 8px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  width: 100%;
+  padding: 5px;
   background: #294533f5;
   border: 1px solid #c4c49c7a;
   border-radius: 15px;
@@ -269,7 +253,7 @@
   font-size: 11px !important;
   font-weight: 700;
   color: #ece4bf !important;
-  min-height: 55px;
+  min-height: 44px;
   backdrop-filter: none;
   box-shadow: none;
   border-radius: 9px;
@@ -554,26 +538,11 @@
     width: 27px;
     height: 27px;
   }
-  .strategy-hud .world-objective {
+  .strategy-hud .world-dock {
     left: 12px;
-    top: 119px;
-    width: calc(100% - 80px);
-    padding: 8px 10px;
-    gap: 8px;
-  }
-  .strategy-hud .world-objective strong {
-    font-size: 13px;
-  }
-  .strategy-hud .world-objective > div > span {
-    font-size: 10px;
-  }
-  .strategy-hud .world-presence {
-    top: auto;
-    bottom: calc(max(14px, var(--tg-safe-bottom-ui, 0px)) + 83px);
-    left: 16px;
-    right: auto;
-    padding: 3px 6px;
-    font-size: 10px;
+    right: 12px;
+    padding-bottom: max(12px, var(--tg-safe-bottom-ui, 0px), env(safe-area-inset-bottom));
+    width: auto;
   }
   .strategy-hud .hud-map-button {
     top: 119px;
@@ -592,11 +561,6 @@
     display: none;
   }
   .strategy-hud .hud-location {
-    left: 12px;
-    right: 12px;
-    bottom: calc(max(14px, var(--tg-safe-bottom-ui, 0px)) + 107px);
-    width: auto;
-    max-width: none;
     padding: 12px 14px;
     border-radius: 12px;
   }
@@ -608,21 +572,15 @@
     padding-bottom: 6px;
   }
   .strategy-hud .marsh-toolbar {
-    left: 12px;
-    right: 12px;
-    bottom: max(14px, var(--tg-safe-bottom-ui, 0px));
-    width: auto;
-    gap: 4px;
-    padding: 6px;
-    border-radius: 13px;
+    border-radius: 12px;
   }
   .strategy-hud .marsh-toolbar button {
     font-size: 10px !important;
-    min-height: 53px;
+    min-height: 44px;
   }
   .strategy-hud .marsh-toolbar .world-icon {
-    width: 30px;
-    height: 30px;
+    width: 26px;
+    height: 26px;
   }
   .strategy-hud .hud-places {
     left: 12px;
@@ -900,9 +858,6 @@
   background: none;
 }
 @media (max-width: 700px) {
-  .strategy-hud .world-objective {
-    top: 132px;
-  }
   .construction-plan {
     padding: 18px;
   }
@@ -956,17 +911,9 @@
   border-radius: 10px;
 }
 
-.strategy-hud .world-objective {
-  transform: none;
-}
 .strategy-hud .marsh-toolbar .world-icon {
-  width: 30px;
-  height: 30px;
-}
-@media (min-width: 701px) {
-  .strategy-hud .hud-location {
-    bottom: 120px;
-  }
+  width: 26px;
+  height: 26px;
 }
 .delivery-setup {
   padding: 22px;
@@ -1076,27 +1023,6 @@
 .strategy-hud .hud-travel b {
   color: #324c35;
 }
-.plan-stages {
-  display: flex;
-  gap: 6px;
-  margin: 12px 0 20px;
-}
-.plan-stages span {
-  flex: 1;
-  border-top: 3px solid #c3c5a2;
-  padding-top: 8px;
-  font-size: 10px;
-  line-height: 1.4;
-  color: #718065;
-}
-.plan-stages .current {
-  border-color: #8b9e55;
-  color: #304d32;
-  font-weight: 700;
-}
-.plan-stages .done {
-  border-color: #536f43;
-}
 .mission-load-summary {
   display: grid;
   gap: 5px;
@@ -1156,16 +1082,8 @@
     bottom: auto;
     flex-direction: column;
   }
-  .strategy-hud .world-objective {
-    padding: 8px 12px;
-  }
-  .strategy-hud .world-objective small,
-  .strategy-hud .objective-mark {
-    display: none;
-  }
   .strategy-hud .hud-location {
     padding: 10px 12px;
-    bottom: 104px;
   }
   .strategy-hud .hud-location-heading {
     margin-bottom: 2px;
