@@ -4,7 +4,7 @@ import { assetUrl } from '../utils/assetUrl';
 
 const DIRT_SRC = assetUrl('/sprites/dirt.png');
 const POOP_SRC = assetUrl('/sprites/poop.png');
-const COMPLETION_THRESHOLD = 0.9;
+const COMPLETION_THRESHOLD = 0.65;
 const PROGRESS_SAMPLE_EVERY = 8;
 
 function clamp(value, min, max) {
