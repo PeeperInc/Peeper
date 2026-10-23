@@ -30,6 +30,7 @@ function stripSensitive(value) {
     'rewardSeed',
     'futureLoot',
     'intent',
+    'cardIntent',
   ]);
   return Object.keys(value).reduce((result, key) => {
     if (hiddenKeys.has(key)) return result;
@@ -44,6 +45,7 @@ function serializeExpedition(expedition) {
     ['id', expedition.id],
     ['familyId', expedition.familyId],
     ['themeId', expedition.themeId],
+    ['combatMode', expedition.map?.combatMode || 'dice'],
     ['status', expedition.status],
     ['sharedBuffs', stripSensitive(expedition.sharedBuffs || {})],
     ['startedBy', expedition.startedBy],

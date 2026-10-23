@@ -199,6 +199,8 @@ export const inviteFamilyMember = (targetUserId) => post('/family/invite', { tar
 export const getPendingInvites = () => get('/family/invites/pending');
 
 export const getExpeditionCurrent = () => get('/expeditions/current');
+export const expeditionCardCommand = (expeditionId, operation, payload) =>
+  post(`/expeditions/${expeditionId}/cards/${encodeURIComponent(operation)}`, payload);
 export const getExpeditionBadge = () => get('/expeditions/badge');
 export const startExpedition = (idempotencyKey) => post('/expeditions/start', { idempotencyKey });
 export const prepareExpedition = (expeditionId, { role, provisionId = null, artifactIds = [], idempotencyKey }) =>

@@ -735,6 +735,7 @@ db.exec(`
     WHERE acknowledged_at IS NULL;
 `);
 db.exec('DROP INDEX IF EXISTS idx_expedition_artifacts_user');
+require('./expeditions/cardSchema').installCardCombat(db);
 addColumnIfMissing('family_expedition_members', 'ap_regen_at', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('family_expedition_members', 'hero_hp', 'INTEGER NOT NULL DEFAULT 3');
 addColumnIfMissing('family_expedition_members', 'hero_recover_at', 'INTEGER');

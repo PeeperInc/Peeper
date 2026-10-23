@@ -32,9 +32,12 @@ const {
   serializePendingReward,
 } = require('../expeditions/serializer');
 const { listActiveRoomEffects } = require('../expeditions/roleEffects');
+const { cardCommand, viewCardCombat, isCardExpedition, isCombat, assertNoCardTurn } = require('../expeditions/cardCombat');
+const { CARD_ARTIFACT_COPY } = require('../expeditions/cardCatalog');
 const {
   isReservedIdempotencyKey,
   normalizeIdempotencyKey,
+  assertGlobalIdempotencyKeyUnused,
   readUserOpenAttempt,
 } = require('../expeditions/minigameAttempts');
 const {
@@ -267,7 +270,7 @@ function serializeFor(user, family, snapshot, canStart = false) {
   const attemptRoom = openAttempt
     ? snapshot.rooms.find(room => room.id === openAttempt.roomId)
     : null;
-  return serializeExpeditionState({
+  const result = serializeExpeditionState({
     userId: user.id,
     snapshot,
     memberEvents,
@@ -280,6 +283,13 @@ function serializeFor(user, family, snapshot, canStart = false) {
       : null,
     canStart,
   });
+  const cardCombat = snapshot?.expedition ? viewCardCombat(db, snapshot.expedition, user.id) : null;
+  if (cardCombat) {
+    result.cardCombat = cardCombat;
+    result.catalog.artifacts = result.catalog.artifacts.map(artifact => CARD_ARTIFACT_COPY[artifact.id]
+      ? { ...artifact, displayEffect: CARD_ARTIFACT_COPY[artifact.id], useHint: 'Activate before drawing a hand in an appropriate room.' } : artifact);
+  }
+  return result;
 }
 
 function requireIdempotencyKey(req, res) {
@@ -351,6 +361,7 @@ function roomState(expeditionId, roomKey) {
 
 function handleRouteError(res, error) {
   const message = error?.message || 'Expedition action failed';
+  if (error?.statusCode === 409) return res.status(409).json({ error: message });
   if (/room is already cleared/i.test(message)) {
     return res.status(409).json({ error: 'Room already cleared' });
   }
@@ -373,6 +384,40 @@ router.use((req, res, next) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   req.currentUser = user;
   return next();
+});
+
+router.post('/:id/cards/:operation', (req, res) => {
+  const idempotencyKey = requireIdempotencyKey(req, res);
+  if (!idempotencyKey) return;
+  const access = requireExpeditionAccess(req, res);
+  if (!access) return;
+  try {
+    const result = cardCommand(db, {
+      expeditionId: access.expeditionId, userId: req.currentUser.id,
+      operation: req.params.operation, idempotencyKey,
+      revision: req.body?.revision, roomKey: req.body?.roomKey || null,
+      instanceId: req.body?.instanceId || null, cardId: req.body?.cardId || null,
+    });
+    return res.json({ ...serializeFor(req.currentUser, access.family, readSnapshot(access.expeditionId)), visualEvents: result.events });
+  } catch (error) { return handleRouteError(res, error); }
+});
+
+// A paid hand cannot be escaped through an old client, another room, or an
+// overlapping mini-game. Noncombat challenges keep their existing rules.
+router.use('/:id/rooms/:roomKey', (req, res, next) => {
+  if (req.method !== 'POST') return next();
+  const expedition = rowToExpedition(db.prepare('SELECT * FROM family_expeditions WHERE id = ?').get(Number(req.params.id)));
+  if (!expedition || !isCardExpedition(expedition)) return next();
+  if (!requireExpeditionAccess(req, res)) return;
+  try {
+    if (req.path !== '/provision/use') assertNoCardTurn(db, expedition.id, req.currentUser.id);
+    const room = readSnapshot(expedition.id).rooms.find(candidate => candidate.key === req.params.roomKey);
+    if (isCombat(room) && ['/attempt', '/assist', '/role-ability'].includes(req.path)) {
+      assertGlobalIdempotencyKeyUnused(db, { userId: req.currentUser.id, idempotencyKey: req.body?.idempotencyKey });
+      throw new RangeError('Use your card hand in this expedition');
+    }
+    return next();
+  } catch (error) { return handleRouteError(res, error); }
 });
 
 router.get('/current', (req, res) => {
@@ -428,11 +473,14 @@ router.get('/badge', (req, res) => {
     apRegenDay: member.ap_regen_day,
     apRegenAt: member.ap_regen_at,
   }).ap : 0;
+  const savedCardTurn = member && isCardExpedition(expedition) && parseJson(db.prepare(`
+    SELECT state_json FROM family_expedition_card_states WHERE expedition_id = ? AND user_id = ?
+  `).get(expedition.id, req.currentUser.id)?.state_json, {}).active;
 
   return res.json({
     hasFamily: true,
     availableAp,
-    hasAvailableAp: availableAp > 0,
+    hasAvailableAp: availableAp > 0 || Boolean(savedCardTurn),
     canStart: false,
     canJoin: !member,
     needsEntry: !member,
@@ -469,6 +517,7 @@ router.post('/start', (req, res) => {
 
   const seed = `family:${family.id}:start:${idempotencyKey}`;
   const map = generateExpeditionMap(seed);
+  map.combatMode = 'cards_v1';
 
   try {
     const snapshot = db.transaction(() => {

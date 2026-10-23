@@ -1040,6 +1040,8 @@ test('Mage links the next ally attack and Knight blocks then retaliates for the 
   createFamilyWithMembers(['tg-owner', 'tg-mage', 'tg-actor']);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'start-combat-effects' });
   const expeditionId = started.body.expedition.id;
+  // This verifies the pre-card format, which existing expeditions retain.
+  db.prepare("UPDATE family_expeditions SET map_json = json_remove(map_json, '$.combatMode') WHERE id = ?").run(expeditionId);
   await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
     idempotencyKey: 'prepare-combat-knight',
     role: 'knight',

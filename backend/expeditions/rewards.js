@@ -242,7 +242,7 @@ function readRewardActivity(db, expeditionId) {
       WHERE expedition_id = ?
     `).all(expeditionId);
     for (const row of rows) {
-      if (['attempt', 'assist', 'event_minigame'].includes(row.actionType)) {
+      if (['attempt', 'assist', 'event_minigame', 'card_draw'].includes(row.actionType)) {
         addRoomActivity(activity, row.userId, row.roomId, 'actions', 1);
       }
       if (row.actionType === 'use_artifact') {

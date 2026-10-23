@@ -1794,6 +1794,9 @@ function attemptRoom(options) {
   if (room.state === 'cleared') throw new RangeError('room is already cleared');
   const encounterType = room.encounterType || room.type;
   const combatRoom = room.type === 'boss' || ['combat', 'boss'].includes(encounterType);
+  if (combatRoom && snapshot.expedition.map?.combatMode === 'cards_v1') {
+    throw new RangeError('Use your card hand in this expedition');
+  }
   let result = clone(resolveAttempt({
     expedition: {
       id: expeditionId,
@@ -2966,6 +2969,12 @@ function finishExpedition(options) {
 }
 
 module.exports = {
+  armedEffect,
+  consumeArmedEffect,
+  applyWearerDamageProtection,
+  updateRoom,
+  persistUnlocks,
+  insertAction,
   utcDayKey,
   regenerateAp,
   normalizeTeamAbilities,
