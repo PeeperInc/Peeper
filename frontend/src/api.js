@@ -224,8 +224,8 @@ export const useExpeditionRoleAbility = (expeditionId, roomKey, idempotencyKey) 
   post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/role-ability`, { idempotencyKey });
 export const useExpeditionProvision = (expeditionId, roomKey, idempotencyKey) =>
   post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/provision/use`, { idempotencyKey });
-export const useExpeditionArtifact = (expeditionId, roomKey, artifactId, idempotencyKey) =>
-  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/artifacts/${encodeURIComponent(artifactId)}/use`, { idempotencyKey });
+export const useExpeditionArtifact = (expeditionId, roomKey, artifactId, idempotencyKey, { cardId, revision } = {}) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/artifacts/${encodeURIComponent(artifactId)}/use`, { idempotencyKey, cardId, revision });
 export const startExpeditionMinigame = (expeditionId, roomKey, idempotencyKey) =>
   post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/minigame/start`, { idempotencyKey });
 export const finishExpeditionMinigame = (expeditionId, roomKey, attemptToken, { result, idempotencyKey } = {}) =>

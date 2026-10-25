@@ -36,8 +36,7 @@ function roomIsCurrent(state) {
   return Boolean(state.roomKey) && !['hidden', 'locked', 'cleared'].includes(state.roomState);
 }
 
-function artifactUseEligibility({ artifactId, state = {} } = {}) {
-  const artifact = ARTIFACTS[artifactId];
+function artifactUseEligibility({ artifactId, artifact = ARTIFACTS[artifactId], state = {} } = {}) {
   if (!artifact) return { allowed: false, reason: 'This artifact no longer exists.' };
   if (artifact.useType !== 'active') {
     return { allowed: false, reason: 'This is a passive artifact. It works automatically while equipped.' };
@@ -184,11 +183,10 @@ const ACTIVE_EFFECT_HANDLERS = Object.freeze({
   },
 });
 
-function applyActiveArtifact({ artifactId, state = {} } = {}) {
-  const artifact = ARTIFACTS[artifactId];
+function applyActiveArtifact({ artifactId, artifact = ARTIFACTS[artifactId], state = {} } = {}) {
   if (!artifact) throw new RangeError(`Unknown artifact: ${artifactId}`);
   if (artifact.useType !== 'active') throw new RangeError(`Artifact is not active: ${artifactId}`);
-  const eligibility = artifactUseEligibility({ artifactId, state });
+  const eligibility = artifactUseEligibility({ artifactId, artifact, state });
   if (!eligibility.allowed) {
     return {
       applied: false,

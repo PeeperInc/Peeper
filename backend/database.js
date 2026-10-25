@@ -1234,4 +1234,11 @@ if (!expeditionRewardsBackfilled) {
 
 require('./sausageQuest/schema').ensureSausageQuestSchema(db);
 
+// ExpUpdate closes the old runs once, preserving earned reward caches and
+// returning still-packed supplies before families can start card expeditions.
+const cardRollout = require('./expeditions/cardRollout').finishLegacyExpeditionsForCardRollout(db);
+if (cardRollout.closed > 0) {
+  console.log(`[expeditions] ExpUpdate rollout closed ${cardRollout.closed} legacy expedition(s); ${cardRollout.rewards} reward cache(s) preserved`);
+}
+
 module.exports = db;

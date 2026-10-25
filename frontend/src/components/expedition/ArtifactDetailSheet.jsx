@@ -31,6 +31,7 @@ export default function ArtifactDetailSheet({
   disabledReason,
   onConfirm,
   onClose,
+  children,
 }) {
   if (!artifact) return null;
 
@@ -60,7 +61,7 @@ export default function ArtifactDetailSheet({
   return (
     <BottomSheet
       onClose={onClose}
-      bodyClassName="sheet-body expedition-sheet-body"
+      bodyClassName={`sheet-body expedition-sheet-body${artifact.category ? ' expedition-card-relic-body' : ''}`}
       backdropClassName="sheet-backdrop expedition-sheet-backdrop"
     >
       <section className={`expedition-artifact-sheet rarity-${rarity}`}>
@@ -82,6 +83,7 @@ export default function ArtifactDetailSheet({
             <div className="expedition-artifact-meta">
               <span className={`expedition-rarity-chip rarity-${rarity}`}>{rarity}</span>
               <span className="expedition-type-chip">{USE_TYPE_COPY[useType] || useType.replaceAll('_', ' ')}</span>
+              {artifact.category && <span className="expedition-type-chip">{artifact.category}</span>}
             </div>
             <h3>{artifact.name || artifact.id || 'Unknown artifact'}</h3>
             <p className="expedition-artifact-effect">{effectText}</p>
@@ -107,6 +109,7 @@ export default function ArtifactDetailSheet({
         {disabledReason ? (
           <p className="expedition-sheet-disabled" role="status">{disabledReason}</p>
         ) : null}
+        {children}
 
         <div className="expedition-sheet-actions">
           {!isInspect ? (

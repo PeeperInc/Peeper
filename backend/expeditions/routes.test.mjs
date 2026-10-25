@@ -95,7 +95,7 @@ test.beforeEach(() => {
   resetDb();
 });
 
-test('artifact use route applies once, replays idempotently, and rejects stale concurrent use', async () => {
+test('legacy artifact use route applies once, replays idempotently, and rejects stale concurrent use', async () => {
   const { userIds } = createFamilyWithMembers();
   db.prepare(`
     INSERT INTO expedition_artifact_inventory (
@@ -104,6 +104,9 @@ test('artifact use route applies once, replays idempotently, and rejects stale c
   `).run(userIds[0]);
   const started = await request('POST', '/start', 'tg-owner', { idempotencyKey: 'artifact-route-start' });
   const expeditionId = started.body.expedition.id;
+  const legacyMap = JSON.parse(db.prepare('SELECT map_json FROM family_expeditions WHERE id=?').get(expeditionId).map_json);
+  legacyMap.combatMode = 'dice';
+  db.prepare('UPDATE family_expeditions SET map_json=? WHERE id=?').run(JSON.stringify(legacyMap),expeditionId);
   const prepared = await request('POST', `/${expeditionId}/prepare`, 'tg-owner', {
     idempotencyKey: 'artifact-route-prepare',
     role: 'scout',

@@ -2110,13 +2110,15 @@ function useProvisionForMember(options) {
     expectedExpeditionId: expeditionId,
     expectedIntent: intent,
   });
-  if (replay) return readSnapshot(transaction, replay.expeditionId);
+  if (replay) return { snapshot: readSnapshot(transaction, replay.expeditionId),
+    visualEvents: parseJson(replay.modifierJson, {}).events || [] };
 
   const snapshot = readSnapshot(transaction, expeditionId);
   assertExpeditionNotFinished(snapshot);
   const room = rowToRoom(getRoomRow(transaction, expeditionId, roomKey));
   if (room.state !== 'unlocked') throw new RangeError('provision requires the current open room');
-  const member = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
+  const recoveredMember = recoverHeroIfReady(rowToMember(getMemberRow(transaction, expeditionId, userId)), now);
+  const member = { ...recoveredMember, ...regenerateAp(recoveredMember, now) };
   assertHeroCanAct(member, now);
   if (!member.provisionId || !member.provisionState?.available || member.provisionState?.used) {
     throw new RangeError('provision is already used');
@@ -2126,6 +2128,24 @@ function useProvisionForMember(options) {
   const combatRoom = room.type === 'boss' || ['combat', 'boss'].includes(encounterType);
   const minigameRoom = Boolean(room.miniGame) && !combatRoom;
   const state = { available: false, used: true, usedAt: now, roomKey };
+  const cardMode = snapshot.expedition.map?.combatMode === 'cards_v1';
+  if (cardMode) {
+    const { cardProvisionReason } = require('./cardSupplies');
+    const { readCardSupplyState, applyCardSupply } = require('./cardCombat');
+    const reason = cardProvisionReason(member.provisionId, { member, room,
+      cardState: readCardSupplyState(transaction, expeditionId, userId, member.role) });
+    if (reason) throw new RangeError(reason);
+    state.cardRulesVersion = 2;
+    switch (member.provisionId) {
+      case 'carrot_rations': member.ap = Math.min(MAX_AP, member.ap + 2); break;
+      case 'tomato_soup': member.heroHp = 3; break;
+      case 'hearty_potato_meal': state.blockPerHand = { amount: 1, roomKey }; break;
+      case 'truffle_treat': state.upgradeLootRarity = { uses: 1, tiers: 1, mode: 'tier' }; break;
+      case 'magic_squash_pie': state.firstAttackBonus = { amount: 1 }; break;
+    }
+    applyCardSupply(transaction, { expeditionId, userId, role: member.role, roomKey,
+      kind: member.provisionId, now });
+  } else {
   switch (member.provisionId) {
     case 'carrot_rations':
       if (member.ap >= MAX_AP) throw new RangeError('AP is already full');
@@ -2158,6 +2178,7 @@ function useProvisionForMember(options) {
       break;
     default:
       throw new RangeError('unknown provision');
+  }
   }
   member.provisionState = state;
   updateMember(transaction, expeditionId, member);
@@ -2710,6 +2731,8 @@ function armedEffectFromState(artifact, roomKey, state) {
     effectKind: state.bonusArtifactRoll ? 'bonus_artifact_roll' : artifact.effect.kind,
     roomKey,
     remainingUses: uses,
+    ...(artifact.effect.amount != null ? { amount: artifact.effect.amount } : {}),
+    ...(artifact.effect.floor != null ? { floor: artifact.effect.floor } : {}),
     scope: 'armed',
   };
 }
@@ -2723,9 +2746,11 @@ function useArtifactForMember(options) {
     userId,
     roomKey,
     artifactId,
+    cardId = null,
+    cardRevision = null,
     now = Math.floor(Date.now() / 1000),
   } = options;
-  const intent = { expeditionId, userId, roomKey, artifactId };
+  const intent = { expeditionId, userId, roomKey, artifactId, ...(cardId ? { cardId, cardRevision } : {}) };
   const replay = findIdempotentAction(transaction, {
     userId,
     idempotencyKey,
@@ -2749,7 +2774,8 @@ function useArtifactForMember(options) {
   }, utcDayKey(now));
   const slotIndex = member.loadout.findIndex(slot => slot?.artifactId === artifactId);
   if (slotIndex < 0) throw new RangeError(`artifact is not equipped: ${artifactId}`);
-  const artifact = ARTIFACTS[artifactId];
+  const cardMode = snapshot.expedition.map?.combatMode === 'cards_v1';
+  const artifact = cardMode ? require('./cardSupplies').CARD_ARTIFACTS[artifactId] : ARTIFACTS[artifactId];
   if (!artifact) throw new RangeError(`Unknown artifact: ${artifactId}`);
   if (artifact.useType !== 'active') throw new RangeError(`Artifact is not active: ${artifactId}`);
   const encounterType = room.encounterType || room.type;
@@ -2780,8 +2806,22 @@ function useArtifactForMember(options) {
     bonusArtifactRoll: Boolean(armedEffect(member, 'bonus_artifact_roll', room.key)),
     scoutChoices: (room.scoutChoices || []).map(choice => choice.id),
   };
-  const applied = applyActiveArtifact({ artifactId, state });
+  if (cardMode) {
+    const { cardArtifactReason } = require('./cardSupplies');
+    const { readCardSupplyState } = require('./cardCombat');
+    const openAttempt = transaction.prepare(`SELECT 1 FROM family_expedition_minigame_attempts
+      WHERE expedition_id = ? AND user_id = ? AND status IN ('ready','active','retry') AND expires_at > ?`)
+      .get(expeditionId, userId, now);
+    const reason = cardArtifactReason(artifactId, { member, room, roomEffects, openAttempt,
+      cardState: readCardSupplyState(transaction, expeditionId, userId, member.role) });
+    if (reason) throw new RangeError(reason);
+  }
+  const applied = cardMode && artifactId === 'campfire_charm'
+    ? { applied: true, state, visualEvent: { type: 'artifact_used', artifactId, effectKind: 'recover_card' } }
+    : applyActiveArtifact({ artifactId, artifact, state });
   if (!applied.applied) throw new RangeError(applied.reason || 'This artifact cannot be used right now.');
+  if (cardMode) require('./cardCombat').applyCardSupply(transaction, { expeditionId, userId, role: member.role,
+    roomKey, kind: artifactId, cardId, revision: cardRevision, now });
 
   member.loadout[slotIndex] = null;
   member.heroHp = applied.state.heroHp ?? member.heroHp;

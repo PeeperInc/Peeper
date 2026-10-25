@@ -33,7 +33,7 @@ const {
 } = require('../expeditions/serializer');
 const { listActiveRoomEffects } = require('../expeditions/roleEffects');
 const { cardCommand, viewCardCombat, isCardExpedition, isCombat, assertNoCardTurn } = require('../expeditions/cardCombat');
-const { CARD_ARTIFACT_COPY } = require('../expeditions/cardCatalog');
+const { CARD_ARTIFACTS, CARD_PROVISIONS } = require('../expeditions/cardSupplies');
 const {
   isReservedIdempotencyKey,
   normalizeIdempotencyKey,
@@ -286,8 +286,11 @@ function serializeFor(user, family, snapshot, canStart = false) {
   const cardCombat = snapshot?.expedition ? viewCardCombat(db, snapshot.expedition, user.id) : null;
   if (cardCombat) {
     result.cardCombat = cardCombat;
-    result.catalog.artifacts = result.catalog.artifacts.map(artifact => CARD_ARTIFACT_COPY[artifact.id]
-      ? { ...artifact, displayEffect: CARD_ARTIFACT_COPY[artifact.id], useHint: 'Activate before drawing a hand in an appropriate room.' } : artifact);
+  }
+  if (!snapshot?.expedition || isCardExpedition(snapshot.expedition)) {
+    result.catalog.artifacts = result.catalog.artifacts.map(artifact => ({ ...artifact, ...CARD_ARTIFACTS[artifact.id] }));
+    result.catalog.provisions = Object.fromEntries(Object.entries(result.catalog.provisions).map(([id, provision]) =>
+      [id, { ...provision, ...CARD_PROVISIONS[id] }]));
   }
   return result;
 }
@@ -407,10 +410,17 @@ router.post('/:id/cards/:operation', (req, res) => {
 router.use('/:id/rooms/:roomKey', (req, res, next) => {
   if (req.method !== 'POST') return next();
   const expedition = rowToExpedition(db.prepare('SELECT * FROM family_expeditions WHERE id = ?').get(Number(req.params.id)));
+  if (expedition?.status === 'finished') {
+    const history = db.prepare('SELECT summary_json FROM family_expedition_history WHERE expedition_id=? ORDER BY id DESC LIMIT 1').get(expedition.id);
+    if (parseJson(history?.summary_json, {}).finishReason === 'expupdate_rollout') {
+      if (!requireExpeditionAccess(req, res)) return;
+      return res.status(409).json({ error: 'This expedition has ended. Refresh to start a new run.' });
+    }
+  }
   if (!expedition || !isCardExpedition(expedition)) return next();
   if (!requireExpeditionAccess(req, res)) return;
   try {
-    if (req.path !== '/provision/use') assertNoCardTurn(db, expedition.id, req.currentUser.id);
+    if (req.path !== '/provision/use' && !/^\/artifacts\/[^/]+\/use$/.test(req.path)) assertNoCardTurn(db, expedition.id, req.currentUser.id);
     const room = readSnapshot(expedition.id).rooms.find(candidate => candidate.key === req.params.roomKey);
     if (isCombat(room) && ['/attempt', '/assist', '/role-ability'].includes(req.path)) {
       assertGlobalIdempotencyKeyUnused(db, { userId: req.currentUser.id, idempotencyKey: req.body?.idempotencyKey });
@@ -732,6 +742,8 @@ router.post('/:id/rooms/:roomKey/artifacts/:artifactId/use', (req, res) => {
       userId: req.currentUser.id,
       roomKey: req.params.roomKey,
       artifactId: req.params.artifactId,
+      cardId: req.body?.cardId ?? null,
+      cardRevision: req.body?.revision ?? null,
     }))();
     return res.json({
       ...serializeFor(req.currentUser, access.family, result.snapshot, false),

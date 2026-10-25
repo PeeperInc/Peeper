@@ -1,4 +1,5 @@
 import { ScenePeeperContext } from "../src/frontier/ScenePeeper";
+import '../src/browserInteractions';
 // Development-only visual fixtures. No API, currency, or saved player state.
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";

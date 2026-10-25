@@ -301,7 +301,7 @@ export default function GlobalChatScreen({ onViewProfile, onSendGift, onOpenFami
     : '';
 
   return (
-    <main className="global-chat-screen">
+    <main className="global-chat-screen" data-native-text="true">
       <header className="global-chat-header">
         <div className="global-chat-header-mark" aria-hidden="true">
           <svg viewBox="0 0 32 32" fill="none">
