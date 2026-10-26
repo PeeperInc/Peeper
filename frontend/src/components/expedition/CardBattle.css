@@ -59,6 +59,13 @@
 .card-hand-tools { display:flex; align-items:center; gap:12px; }.card-hand-tools>span { letter-spacing:0; color:#96aa91; font-size:8px; }
 .card-hand { display:flex; gap:10px; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x proximity; padding:3px 13px 12px; min-height:214px; scrollbar-width:none; }
 .card-hand::-webkit-scrollbar { display:none; }
+.card-hand.is-dragging, .card-reward-choice>div.is-dragging { scroll-snap-type:none; cursor:grabbing; }
+.is-dragging .dungeon-playing-card { cursor:grabbing; }
+/* Disabled buttons must not swallow mouse gestures in Chromium WebViews. */
+.card-hand .dungeon-playing-card:disabled, .card-reward-choice .dungeon-playing-card:disabled { pointer-events:none; }
+@media (hover:hover) and (pointer:fine) {
+  .card-hand:not(.card-hand-rest):not(.is-dragging), .card-reward-choice>div:not(.is-dragging) { cursor:grab; }
+}
 .dungeon-playing-card { position:relative; display:flex; align-items:center; flex-direction:column; flex:0 0 160px; min-width:0; min-height:202px; overflow:hidden; text-align:center; scroll-snap-align:center; padding:8px 10px 7px; border:1px solid #d8bc7a; border-radius:10px 10px 8px 8px; color:var(--card-ink); background:radial-gradient(ellipse at 50% 25%,#f4e8c8,#ddcba4 75%); box-shadow:inset 0 0 0 3px #43483723,inset 0 0 0 5px #f1e3bc66,0 4px 0 #0b1915; transition:transform .18s,filter .18s; animation:card-dealt .3s ease both; }
 .dungeon-playing-card::before { content:''; position:absolute; inset:7px 7px auto; height:104px; border:1px solid #8c916354; border-radius:45% 45% 8px 8px; background:radial-gradient(ellipse,#546e6355,#64796611 75%); pointer-events:none; }
 .class-mage .dungeon-playing-card::before { background:radial-gradient(ellipse,#78659155,#a98cba11 75%); }
@@ -148,7 +155,7 @@
 @keyframes combat-scout { 25% { opacity:.2; transform:translateX(60px) scale(var(--hero-scale)); } 50% { opacity:1; transform:translateX(85px) rotate(-10deg) scale(var(--hero-scale)); } }
 @keyframes combat-caster { 45% { transform:translateY(-12px) rotate(-4deg) scale(var(--hero-scale)); filter:drop-shadow(0 0 13px var(--card-accent)); } }
 @keyframes combat-hurt { 25% { transform:translateX(-10px) rotate(8deg) scale(var(--hero-scale)); filter:sepia(.7) saturate(2); } }
-@media(min-width:650px) { .card-hand { justify-content:safe center; }.card-arena { height:215px; }.card-library-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.card-reward-choice>div { justify-content:center; } }
+@media(min-width:650px) { .card-hand { justify-content:safe center; }.card-arena { height:215px; }.card-library-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.card-reward-choice>div { justify-content:safe center; } }
 @media(max-width:649px) {
   .card-battle-heading { padding:10px 13px 11px; gap:12px; }.card-enemy-name h3 { font-size:21px; }.card-enemy-health { width:103px; }.card-enemy-health strong { font-size:24px; }
   .card-arena { height:clamp(145px,24vh,210px); }.card-arena-hero { --hero-scale:.76; left:-3%; bottom:-12px; }.card-arena-enemy { right:7%; width:46%; }

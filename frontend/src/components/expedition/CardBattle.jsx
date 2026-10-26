@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import PeeperSprite from '../PeeperSprite';
 import CardArt, { ClassCrest, CombatGlyph } from './CardArt';
 import CardBattleEffects, { cardEffectStyle } from './CardBattleEffects';
+import { enableMouseDragScroll } from '../../utils/mouseDragScroll.mjs';
 import './CardBattle.css';
 
 const RESOURCE_HINTS = {
@@ -51,6 +52,13 @@ function unavailableReason(card, {resource, hp, energy, recovering, mutating}) {
   if (card.effect === 'venom_finisher' && resource < card.comboCost) return 'Need 1 combo';
   if (card.effect === 'offering' && hp < 2) return 'Need 2 HP';
   return '';
+}
+
+function CardRow({children, className, scrollRef, ...props}) {
+  const localRef = useRef(null);
+  const ref = scrollRef || localRef;
+  useEffect(() => enableMouseDragScroll(ref.current), [ref]);
+  return <div ref={ref} className={className} {...props}>{children}</div>;
 }
 
 function PlayingCard({card, role, disabledReason, onPlay, reward = false, finisherBonus}) {
@@ -139,12 +147,12 @@ export default function CardBattle({ room, combat, member, mutating, onCommand, 
       {effect?.healed > 0 && <div key={`heal-${effect.revision}`} className="card-hit-number is-heal">+{effect.healed}</div>}
     </div>
     <div className="card-hand-caption"><span>{turn ? `YOUR HAND · ${turn.hand.length}` : 'YOUR NEXT MOVE'}</span><div className="card-hand-tools"><span>{turn ? 'Swipe →' : '4 cards · 3 energy'}</span><button type="button" className="card-deck-toggle" onClick={() => setShowDeck(true)}><CombatGlyph name="draw" /><span>Deck <b>{combat.deckSize}</b></span></button></div></div>
-    {turn && inThisRoom && !cleared ? <div className="card-hand" ref={handRef} aria-label="Your hand">
+    {turn && inThisRoom && !cleared ? <CardRow className="card-hand" scrollRef={handRef} aria-label="Your hand">
       {turn.hand.map(card => <PlayingCard key={card.instanceId} card={card} role={member.role} finisherBonus={turn.finisherBonus}
         disabledReason={unavailableReason(card, {resource, hp:member.heroHp, energy:turn.energy, recovering, mutating})}
         onPlay={() => call('play', {instanceId:card.instanceId})} />)}
       {!turn.hand.length && <div className="card-hand-empty"><ClassCrest role={member.role} /><strong>Hand played</strong><span>End your turn to resolve the response.</span></div>}
-    </div> : <div className="card-hand card-hand-rest"><div className="card-cardbacks" aria-hidden="true">{[0,1,2].map(i => <div key={i} style={{'--back-index':i}}><ClassCrest role={member.role} /></div>)}</div><div><strong>{cleared ? 'A path forward' : canRetarget ? 'Keep your hand' : 'Ready your cards'}</strong><p>{cleared ? 'Choose your reward, then move on.' : canRetarget ? 'Your remaining cards carry over for free.' : 'One AP. Four cards. Make them count.'}</p></div></div>}
+    </CardRow> : <div className="card-hand card-hand-rest"><div className="card-cardbacks" aria-hidden="true">{[0,1,2].map(i => <div key={i} style={{'--back-index':i}}><ClassCrest role={member.role} /></div>)}</div><div><strong>{cleared ? 'A path forward' : canRetarget ? 'Keep your hand' : 'Ready your cards'}</strong><p>{cleared ? 'Choose your reward, then move on.' : canRetarget ? 'Your remaining cards carry over for free.' : 'One AP. Four cards. Make them count.'}</p></div></div>}
     <div className={`card-hero-console${member.role === 'mage' && resource >= 4 ? ' is-overheated' : ''}`} aria-label="Hero status">
       <div className="hero-vitals"><small>HEALTH</small><div className="hero-hearts" aria-label={`${member.heroHp} of 3 HP`}>{[0,1,2].map(i => <CombatGlyph key={i} name="heart" className={member.heroHp > i ? 'is-filled' : ''} />)}</div><span>{recovering ? 'Recovering' : turn?.dodge ? 'Dodge ready' : member.role !== 'knight' && turn?.block ? `${turn.block} block` : turn?.faithReady ? 'Faith ready' : '\u00a0'}</span></div>
       <button type="button" className="hero-class-mechanic" onClick={() => setShowMechanic(value => !value)} aria-expanded={showMechanic} aria-label={`${combat.class.resource} ${resource}. About ${combat.class.name}`}><ClassCrest role={member.role} /><span className="class-resource-value">{resource}</span><strong className="class-resource-name">{combat.class.resource}</strong><span className="class-resource-role">{combat.class.name}<CombatGlyph name="info" /></span></button>
@@ -159,7 +167,7 @@ export default function CardBattle({ room, combat, member, mutating, onCommand, 
         {!inThisRoom && !turn.targetCleared && <p>Finish your saved hand in the previous room.</p>}
       </> : !cleared ? <button type="button" className="card-primary" disabled={mutating || recovering || member.ap < 1} onClick={() => call('draw')}><span>{recovering ? 'Hero recovering' : member.ap < 1 ? 'Waiting for AP' : 'Draw a hand'}</span><small>4 cards <i>·</i> 1 AP</small><b aria-hidden="true">→</b></button> : <button type="button" className="card-primary" onClick={onNext}>Next room <b>→</b></button>}
     </div>
-    {combat.reward && <div className="card-reward-choice"><small>ROOM CLEARED · ADD A CARD OR SKIP</small><div>{combat.reward.cards.map(card => <PlayingCard key={card.id} card={card} role={member.role} reward disabledReason={mutating ? 'Resolving' : ''} onPlay={() => onCommand('reward', {revision:combat.revision, roomKey:combat.reward.roomKey, cardId:card.id})} />)}</div><button type="button" className="card-reward-skip" disabled={mutating} onClick={() => onCommand('reward', {revision:combat.revision, roomKey:combat.reward.roomKey, cardId:'skip'})}>Skip · keep my deck small</button></div>}
+    {combat.reward && <div className="card-reward-choice"><small>ROOM CLEARED · ADD A CARD OR SKIP</small><CardRow>{combat.reward.cards.map(card => <PlayingCard key={card.id} card={card} role={member.role} reward disabledReason={mutating ? 'Resolving' : ''} onPlay={() => onCommand('reward', {revision:combat.revision, roomKey:combat.reward.roomKey, cardId:card.id})} />)}</CardRow><button type="button" className="card-reward-skip" disabled={mutating} onClick={() => onCommand('reward', {revision:combat.revision, roomKey:combat.reward.roomKey, cardId:'skip'})}>Skip · keep my deck small</button></div>}
     {showDeck && <div className="card-deck-list" role="dialog" aria-modal="true" aria-label="Your cards"><div className="card-library-header"><ClassCrest role={member.role} /><div><small>{combat.class.name.toUpperCase()}</small><h3>{library ? 'Class collection' : 'Your deck'}</h3></div><button type="button" onClick={() => setShowDeck(false)} aria-label="Close deck">×</button></div><div className="card-library-tabs"><button type="button" aria-pressed={!library} onClick={() => setLibrary(false)}>Deck · {combat.deckSize}</button><button type="button" aria-pressed={library} onClick={() => setLibrary(true)}>Class cards · 10</button></div><p>{RESOURCE_HINTS[member.role]}</p><div className="card-library-grid">{(library ? combat.classCards || [] : combat.deck).map(card => <div className="card-library-entry" key={card.id}><CardArt id={card.id} role={member.role} /><div><strong>{card.name}{card.copies > 1 ? ` ×${card.copies}` : ''}</strong><small>{card.cost} energy · {card.kind}</small><p>{card.text}</p></div></div>)}</div></div>}
   </section>;
 }
