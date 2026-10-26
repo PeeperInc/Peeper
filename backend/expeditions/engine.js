@@ -45,6 +45,8 @@ const {
   rollPersonalLoot,
 } = require('./loot');
 const { createPendingRewards } = require('./rewards');
+const { CARD_MODE } = require('./cardCatalog');
+const { balanceCardRoom, balanceCardMap } = require('./cardBalance');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_SUPPORT = 6;
@@ -1161,10 +1163,12 @@ function rowToRoom(row) {
 }
 
 function syncExpeditionRoomBalance(transaction, expeditionId) {
+  const map = parseJson(transaction.prepare('SELECT map_json FROM family_expeditions WHERE id = ?').get(expeditionId)?.map_json, {});
+  const cardMode = map.combatMode === CARD_MODE;
   const rows = transaction.prepare(`
     SELECT room_key, room_type, state, progress, progress_target, payload_json
     FROM family_expedition_rooms
-    WHERE expedition_id = ? AND room_type IN ('combat', 'boss')
+    WHERE expedition_id = ?
   `).all(expeditionId);
   const update = transaction.prepare(`
     UPDATE family_expedition_rooms
@@ -1174,25 +1178,30 @@ function syncExpeditionRoomBalance(transaction, expeditionId) {
 
   for (const row of rows) {
     const payload = parseJson(row.payload_json, {});
-    const template = row.room_type === 'boss'
+    const legacyTemplate = row.room_type === 'boss'
       ? ROOM_TEMPLATES.boss.find(candidate => candidate.phase === Number(payload.phase || 1))
-      : ROOM_TEMPLATES.combat.find(candidate => candidate.enemyId === payload.enemyId);
-    if (!template) continue;
+      : row.room_type === 'combat' ? ROOM_TEMPLATES.combat.find(candidate => candidate.enemyId === payload.enemyId) : null;
+    if (!legacyTemplate && !cardMode) continue;
+    const balancedPayload = cardMode ? balanceCardRoom({ ...payload, type: row.room_type, progressTarget: row.progress_target }) : payload;
+    const template = cardMode ? balanceCardRoom(legacyTemplate || { ...balancedPayload, progressTarget: row.progress_target }) : legacyTemplate;
     const progressTarget = Math.max(1, Number(template.progressTarget || row.progress_target || 1));
     const attackTarget = Number(template.attackTarget || payload.attackTarget || 0) || null;
     const progress = row.state === 'cleared'
       ? progressTarget
       : Math.max(0, Math.min(progressTarget, Number(row.progress || 0)));
     const needsAttackTarget = attackTarget && attackTarget !== payload.attackTarget;
+    const nextPayload = roomPayload(needsAttackTarget ? { ...balancedPayload, attackTarget } : balancedPayload);
+    const payloadJson = stringifyJson(nextPayload);
     if (
       progressTarget !== Number(row.progress_target)
       || progress !== Number(row.progress)
       || needsAttackTarget
+      || payloadJson !== row.payload_json
     ) {
       update.run(
         progress,
         progressTarget,
-        stringifyJson(needsAttackTarget ? { ...payload, attackTarget } : payload),
+        payloadJson,
         expeditionId,
         row.room_key,
       );
@@ -1281,7 +1290,10 @@ function readSnapshot(transaction, expeditionId) {
     SELECT * FROM family_expeditions WHERE id = ?
   `).get(expeditionId));
   if (!expedition) throw new RangeError(`Unknown expedition: ${expeditionId}`);
-  if (expedition.status !== 'finished') syncExpeditionRoomBalance(transaction, expeditionId);
+  if (expedition.status !== 'finished') {
+    expedition.map = balanceCardMap(expedition.map);
+    syncExpeditionRoomBalance(transaction, expeditionId);
+  }
   const rooms = transaction.prepare(`
     SELECT * FROM family_expedition_rooms WHERE expedition_id = ? ORDER BY id
   `).all(expeditionId).map(rowToRoom);
@@ -1611,15 +1623,16 @@ function createExpedition(options) {
   });
   if (replay) return readSnapshot(transaction, replay.expeditionId);
   if (!familyId || !startedBy || !map) throw new TypeError('familyId, userId, and map are required');
+  const balancedMap = balanceCardMap(map);
 
   const expeditionInfo = transaction.prepare(`
     INSERT INTO family_expeditions (
       family_id, theme_id, seed, status, map_json, shared_buffs_json, started_by, started_at
     ) VALUES (?, ?, ?, 'active', ?, '{}', ?, ?)
-  `).run(familyId, themeId, seed || String(now), stringifyJson(map), startedBy, now);
+  `).run(familyId, themeId, seed || String(now), stringifyJson(balancedMap), startedBy, now);
   const expeditionId = Number(expeditionInfo.lastInsertRowid);
 
-  for (const room of map.rooms || []) {
+  for (const room of balancedMap.rooms || []) {
     const state = defaultRoomState(room);
     transaction.prepare(`
       INSERT INTO family_expedition_rooms (
@@ -1979,7 +1992,8 @@ function chooseScoutRoom(options) {
       chosenAt: now,
     },
   };
-  const nextTarget = applyScoutChoiceToTarget(source, target, choice, userId, now);
+  const selectedTarget = applyScoutChoiceToTarget(source, target, choice, userId, now);
+  const nextTarget = snapshot.expedition.map?.combatMode === CARD_MODE ? balanceCardRoom(selectedTarget) : selectedTarget;
   scout.roleCharge = 0;
   scout.roleChargeProgress = 0;
   scout.roleChargeReadyAt = 0;

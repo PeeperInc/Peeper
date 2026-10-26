@@ -34,15 +34,19 @@ expedition completion retain their existing safe resolution/replay behavior.
 
 ## Verification
 
-- All 583 backend/frontend automated tests pass. Rollout tests cover rewards,
+- All 587 backend/frontend automated tests pass. Rollout tests cover rewards,
   refunds, zero contribution, former members, preexisting claimed caches,
   historical loadout shapes, rollback, real database startup, repeat restart,
   rejection of stale actions and starting a new card run.
-- A generated 25-room journey was exercised with all four classes, 86 paid card
+- A generated 25-room journey with the updated HP was exercised with all four classes, 211 paid card
   hands, 31 valid trial submissions, all boss phases, final rewards and duplicate
   claims. All 25 rooms cleared. Time was accelerated to exercise AP regeneration
   and recovery without rewriting HP/AP; this is a rules simulation, not evidence
   of balanced real-world pacing.
+- A separate 624-encounter rules simulation covers all enemy types, mixed classes,
+  shuffled hands, defensive play and supplies. Baseline means are about 10 family
+  hands for ordinary enemies, 14 for elites and 24–25 for the whole boss. Details
+  and the supply comparison are in [expupdate-card-combat.md](expupdate-card-combat.md#shared-encounter-pacing).
 - Browser checks cover four classes at 320x568, 375x667, 390x844 and 1280x850,
   actual card/supply interactions, animation expiry, reconnect and private hands.
 - Old combat-ability buttons are hidden in card-mode noncombat rooms; Scout

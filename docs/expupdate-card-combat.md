@@ -20,6 +20,42 @@ Release behavior and verification: [expupdate-release.md](expupdate-release.md).
 - Boss phase damage is capped to the remaining phase HP. Cards cannot repeatedly claim the same kill or reward.
 - Existing room challenges remain in noncombat rooms. They cannot overlap a paid card turn.
 
+## Shared encounter pacing
+
+Card encounters use `backend/expeditions/cardBalance.js`; dice-era HP stays in
+the legacy catalog. The targets count the family's combined paid hands, not
+turns per player: ordinary enemies 8–10, elites 12–14, and the entire three-phase
+boss 20–25. HP is fixed regardless of family size. Strong combinations, supplies
+and improved decks can finish sooner; defensive play and weak hands can take
+longer. There is no forced minimum turn count.
+
+- Ordinary enemies have 72–80 HP.
+- Rootbound Guard, Ossuary Golem and Rootbound Champion have 104, 108 and 112 HP.
+- Boss phases have 56, 64 and 72 HP: **192 HP total**.
+
+New map definitions, Scout Ahead previews, selected routes, room synchronization,
+boss phase transitions and poison-response forecasts share the same values.
+Updating an unfinished card run preserves damage already dealt, the current
+boss phase and cleared rooms. Finished runs retain their historical results.
+
+Rules simulation on 2026-10-26 covered all twelve enemies and the boss, twelve
+seeded shuffles each, two card-selection policies and two supply configurations
+(624 encounters). Each family had one of each class, alternating paid hands.
+The policy evaluated legal plays using actual transactional combat rules,
+valuing damage, protection, resource generation and card draws. A defensive
+variant valued protection more highly. It was a heuristic, not optimal play.
+
+| Configuration | Ordinary, mean hands | Elite, mean hands | Boss, mean hands |
+| --- | ---: | ---: | ---: |
+| Starter decks, no supplies | 9.9–10.2 | 13.8–13.9 | 24.3–24.7 |
+| Banner + relevant damage relic + eaten pie | 8.1 | 10.9 | 18.2–18.5 |
+
+These are means across enemies and shuffles, with the range spanning the two
+policies. Individual outcomes vary. The supplied configuration illustrates a
+deliberate build advantage rather than a required loadout. Simulated time advanced
+to exercise AP regeneration and knockout recovery. This validates rule execution
+and estimates AP cost; actual session duration and enjoyment need player testing.
+
 ## Classes
 
 Knight builds block, spends it on shield attacks, retains it with Shield Throw,

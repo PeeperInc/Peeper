@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const { CARD_MODE, ENERGY_PER_TURN, HAND_SIZE, MAX_DECK_SIZE, CARDS, CLASS_RULES, starterDeck, enemyIntent } = require('./cardCatalog');
-const { ROOM_TEMPLATES } = require('./catalog');
+const { cardBossPhase } = require('./cardBalance');
 const { regenerateAp, recoverHeroIfReady, updateRoom, persistUnlocks, insertAction,
   armedEffect, consumeArmedEffect, applyWearerDamageProtection } = require('./engine');
 const { consumeRoomEffect, listActiveRoomEffects, ROLE_EFFECT_TYPES } = require('./roleEffects');
@@ -82,7 +82,7 @@ function previewEnemyResponse(db, expeditionId, target, state, member) {
     poisonDamage = Math.min(room.cardSupport.poisonPower?.[member.user_id] || 2, room.progressTarget - room.progress);
     if (poisonDamage >= room.progressTarget - room.progress) {
       if (room.type === 'boss' && Number(room.phase || 1) < 3) {
-        const phase = ROOM_TEMPLATES.boss.find(phase => phase.phase === Number(room.phase || 1) + 1);
+        const phase = cardBossPhase(Number(room.phase || 1) + 1);
         room.phase = phase.phase; room.progressTarget = phase.progressTarget;
         room.attackTarget = phase.attackTarget; room.name = phase.name;
         room.progress = 0; room.cardSupport = {};
@@ -191,7 +191,7 @@ function roomDamage(db, expedition, room, damage, now) {
   room.progress += applied;
   if (room.progress >= room.progressTarget) {
     if (room.type === 'boss' && Number(room.phase || 1) < 3) {
-      const phase = ROOM_TEMPLATES.boss.find(template => template.phase === Number(room.phase || 1) + 1);
+      const phase = cardBossPhase(Number(room.phase || 1) + 1);
       room.phase = phase.phase; room.progress = 0; room.progressTarget = phase.progressTarget;
       room.attackTarget = phase.attackTarget; room.name = phase.name; room.cardSupport = {};
     } else {

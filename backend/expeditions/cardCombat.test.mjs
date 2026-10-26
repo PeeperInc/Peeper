@@ -14,6 +14,7 @@ const db = require('../database');
 const engine = require('./engine');
 const { viewCardCombat, cardCommand, RECOVERY_SECONDS } = require('./cardCombat');
 const { CARDS, CLASS_RULES, starterDeck } = require('./cardCatalog');
+const { CARD_BOSS_PHASE_HP } = require('./cardBalance');
 const { CARD_ARTIFACTS, CARD_PROVISIONS } = require('./cardSupplies');
 const NOW = Math.floor(Date.now() / 1000);
 let serial = 0;
@@ -392,7 +393,7 @@ test('Poison response forecast handles both a defeated enemy and a surviving nex
   const before=c.room('guard').payload_json; c.view(); assert.equal(c.room('guard').payload_json,before);
   c.command('end'); assert.equal(c.row().hero_hp,3);
   const boss=setup('scout'); boss.command('draw',{roomKey:'boss'}); boss.hand(['poisoned_blade']); boss.play('poisoned_blade',{roomKey:'boss'});
-  db.prepare("UPDATE family_expedition_rooms SET progress=49 WHERE expedition_id=? AND room_key='boss'").run(boss.expeditionId);
+  db.prepare("UPDATE family_expedition_rooms SET progress=progress_target-1 WHERE expedition_id=? AND room_key='boss'").run(boss.expeditionId);
   const forecast=boss.view().turn.response; assert.ok(Number.isFinite(forecast.damage)); assert.ok(forecast.intent);
   boss.command('end',{roomKey:'boss'}); assert.equal(boss.view().lastEvent.damage,forecast.damage);
 });
@@ -511,9 +512,10 @@ test('a living enemy cannot be escaped by switching rooms or retargeting', () =>
 
 test('damage and contribution are clamped to remaining HP; the boss advances exactly once', () => {
   const c = setup(); c.command('draw', { roomKey: 'boss' }); c.hand(['strike']);
-  db.prepare("UPDATE family_expedition_rooms SET progress = 49 WHERE expedition_id = ? AND room_key = 'boss'").run(c.expeditionId);
+  db.prepare("UPDATE family_expedition_rooms SET progress = progress_target-1 WHERE expedition_id = ? AND room_key = 'boss'").run(c.expeditionId);
   c.play('strike', { roomKey: 'boss' });
   const room = c.room('boss'); assert.equal(JSON.parse(room.payload_json).phase, 2);
+  assert.equal(room.progress_target, CARD_BOSS_PHASE_HP[1]);
   assert.equal(room.progress, 0); assert.equal(c.row().contribution_progress, 1);
 });
 
@@ -815,8 +817,9 @@ test('a curse is consumed by one paid hand, not permanent across the new expedit
 
 test('boss phase completion creates normal claimable rewards exactly once with AP-based contribution', () => {
   const c = setup(); c.command('draw', { roomKey: 'boss' }); c.hand(['strike', 'strike', 'strike']);
-  for (const remainingProgress of [49, 57, 65]) {
-    db.prepare("UPDATE family_expedition_rooms SET progress = ? WHERE expedition_id = ? AND room_key = 'boss'").run(remainingProgress, c.expeditionId);
+  for (let phase = 1; phase <= 3; phase++) {
+    assert.equal(c.room('boss').progress_target, CARD_BOSS_PHASE_HP[phase - 1]);
+    db.prepare("UPDATE family_expedition_rooms SET progress = progress_target-1 WHERE expedition_id = ? AND room_key = 'boss'").run(c.expeditionId);
     c.play('strike', { roomKey: 'boss' });
   }
   assert.equal(c.room('boss').state, 'cleared');
