@@ -199,6 +199,8 @@ export const inviteFamilyMember = (targetUserId) => post('/family/invite', { tar
 export const getPendingInvites = () => get('/family/invites/pending');
 
 export const getExpeditionCurrent = () => get('/expeditions/current');
+export const expeditionCardCommand = (expeditionId, operation, payload) =>
+  post(`/expeditions/${expeditionId}/cards/${encodeURIComponent(operation)}`, payload);
 export const getExpeditionBadge = () => get('/expeditions/badge');
 export const startExpedition = (idempotencyKey) => post('/expeditions/start', { idempotencyKey });
 export const prepareExpedition = (expeditionId, { role, provisionId = null, artifactIds = [], idempotencyKey }) =>
@@ -222,8 +224,8 @@ export const useExpeditionRoleAbility = (expeditionId, roomKey, idempotencyKey) 
   post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/role-ability`, { idempotencyKey });
 export const useExpeditionProvision = (expeditionId, roomKey, idempotencyKey) =>
   post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/provision/use`, { idempotencyKey });
-export const useExpeditionArtifact = (expeditionId, roomKey, artifactId, idempotencyKey) =>
-  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/artifacts/${encodeURIComponent(artifactId)}/use`, { idempotencyKey });
+export const useExpeditionArtifact = (expeditionId, roomKey, artifactId, idempotencyKey, { cardId, revision } = {}) =>
+  post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/artifacts/${encodeURIComponent(artifactId)}/use`, { idempotencyKey, cardId, revision });
 export const startExpeditionMinigame = (expeditionId, roomKey, idempotencyKey) =>
   post(`/expeditions/${expeditionId}/rooms/${encodeURIComponent(roomKey)}/minigame/start`, { idempotencyKey });
 export const finishExpeditionMinigame = (expeditionId, roomKey, attemptToken, { result, idempotencyKey } = {}) =>

@@ -1,4 +1,5 @@
 import { ScenePeeperContext } from "../src/frontier/ScenePeeper";
+import '../src/browserInteractions';
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import core from "@peeper/frontier-core";

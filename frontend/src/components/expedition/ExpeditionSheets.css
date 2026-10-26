@@ -613,3 +613,46 @@
     transform: none;
   }
 }
+
+.expedition-recover-cards {
+  display: grid;
+  gap: 8px;
+  max-height: 34vh;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+.expedition-recover-cards button {
+  display: grid;
+  gap: 5px;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1px solid #667453;
+  border-radius: 10px;
+  background: #25382b;
+  color: #f1e8cc;
+  text-align: left;
+}
+.expedition-recover-cards button[aria-pressed="true"] {
+  border-color: #e3bd68;
+  background: #3b4930;
+  box-shadow: inset 3px 0 #e3bd68;
+}
+.expedition-recover-cards small { color: #d0d3bd; line-height: 1.4; }
+
+.expedition-sheet-body.expedition-card-relic-body {
+  --sheet-accent: #dbbd7f;
+  --sheet-panel: #1a2d25;
+  border-color: #969d7666;
+  background: radial-gradient(ellipse at 15% 0, #354737, transparent 60%), #13251f;
+  scrollbar-color: #7c8660 transparent;
+}
+.expedition-card-relic-body .expedition-sheet-header { border-color: #9aa58044; }
+.expedition-card-relic-body .expedition-sheet-header h2,
+.expedition-card-relic-body .expedition-artifact-identity h3 { color: #f0e2bf; font-family: Georgia, serif; letter-spacing: 0; }
+.expedition-card-relic-body .expedition-artifact-hero { background: #24392c; border-color: #9aa58044; border-left-color: var(--rarity-color); }
+.expedition-card-relic-body .expedition-artifact-facts > div,
+.expedition-card-relic-body .expedition-artifact-usage { border-color: #9aa58033; }
+.expedition-card-relic-body .expedition-sheet-actions { background: linear-gradient(transparent, #13251f 35%); }
+.expedition-card-relic-body .expedition-sheet-primary { color: #24342b; border-color: #d9cba0; background: linear-gradient(#e9d8a8, #c8b67e); }
+.expedition-card-relic-body .expedition-sheet-secondary { color: #e6dfc4; border-color: #9aa58055; background: #263b2e; }
+.expedition-card-relic-body .expedition-sheet-close { width: 44px; height: 44px; flex-basis: 44px; background: #22392b; border-color: #9aa58055; }

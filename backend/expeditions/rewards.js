@@ -242,7 +242,7 @@ function readRewardActivity(db, expeditionId) {
       WHERE expedition_id = ?
     `).all(expeditionId);
     for (const row of rows) {
-      if (['attempt', 'assist', 'event_minigame'].includes(row.actionType)) {
+      if (['attempt', 'assist', 'event_minigame', 'card_draw'].includes(row.actionType)) {
         addRoomActivity(activity, row.userId, row.roomId, 'actions', 1);
       }
       if (row.actionType === 'use_artifact') {
@@ -317,11 +317,17 @@ function rollArtifactPayloads({ rooms, roomAp, compassRoomIds = new Set(), provi
   let upgradeUses = Math.max(0, Number(provisionState?.upgradeLootRarity?.uses || 0));
   const artifacts = rewardRooms.slice(0, MAX_EXPEDITION_RELICS).map(room => {
     let table = lootTableForRoom(room);
-    if (upgradeUses > 0) {
+    const tierUpgrade = upgradeUses > 0 && provisionState?.upgradeLootRarity?.mode === 'tier';
+    if (upgradeUses > 0 && !tierUpgrade) {
       table = upgradedLootTable(table.name);
       upgradeUses -= 1;
     }
-    const rarity = rollArtifactRarity(rng, table.table);
+    let rarity = rollArtifactRarity(rng, table.table);
+    if (tierUpgrade) {
+      const tiers = ['common', 'rare', 'epic', 'legendary'];
+      rarity = tiers[Math.min(3, tiers.indexOf(rarity) + 1)];
+      upgradeUses--;
+    }
     return { artifactId: selectArtifactByRarity(rarity, rng) };
   });
   return { artifacts, substitutionCoins: 0 };

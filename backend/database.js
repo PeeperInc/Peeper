@@ -735,6 +735,7 @@ db.exec(`
     WHERE acknowledged_at IS NULL;
 `);
 db.exec('DROP INDEX IF EXISTS idx_expedition_artifacts_user');
+require('./expeditions/cardSchema').installCardCombat(db);
 addColumnIfMissing('family_expedition_members', 'ap_regen_at', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('family_expedition_members', 'hero_hp', 'INTEGER NOT NULL DEFAULT 3');
 addColumnIfMissing('family_expedition_members', 'hero_recover_at', 'INTEGER');
@@ -1232,5 +1233,12 @@ if (!expeditionRewardsBackfilled) {
 }
 
 require('./sausageQuest/schema').ensureSausageQuestSchema(db);
+
+// ExpUpdate closes the old runs once, preserving earned reward caches and
+// returning still-packed supplies before families can start card expeditions.
+const cardRollout = require('./expeditions/cardRollout').finishLegacyExpeditionsForCardRollout(db);
+if (cardRollout.closed > 0) {
+  console.log(`[expeditions] ExpUpdate rollout closed ${cardRollout.closed} legacy expedition(s); ${cardRollout.rewards} reward cache(s) preserved`);
+}
 
 module.exports = db;

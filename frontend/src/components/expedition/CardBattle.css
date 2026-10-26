@@ -1,0 +1,204 @@
+.card-battle {
+  --card-accent:#dfbc79; --card-glow:#99b5a5; --card-paper:#e8d8b0; --card-ink:#293b38;
+  position:relative; overflow:hidden; isolation:isolate; border:1px solid #9b956655; border-radius:15px 15px 11px 11px;
+  color:#f0e4c6; background:radial-gradient(ellipse at 50% 70%,#2a3d35,#142722 70%); box-shadow:0 10px 30px #0003;
+}
+.card-battle.class-scout { --card-accent:#b4d88e; --card-glow:#64c3a3; }
+.card-battle.class-mage { --card-accent:#c6acf2; --card-glow:#b295e1; }
+.card-battle.class-cleric { --card-accent:#edcc83; --card-glow:#edc56e; }
+.expedition-shell.is-card-expedition { background:radial-gradient(ellipse at 50% 0,#3d4b3559,transparent 65%),radial-gradient(ellipse at 0 85%,#263e3555,transparent 60%),#101c18; background-size:auto; }
+.is-card-expedition .expedition-nav-button { color:#d9d8bb; border-color:#9b986354; border-radius:7px; background:linear-gradient(#294032,#213429); box-shadow:inset 0 1px #cbd3a91a; font-family:var(--font-sans); font-size:11px; font-weight:600; text-transform:none; }
+.is-card-expedition .expedition-game-title span { color:#a5b69b; font-family:var(--font-sans); font-size:8px; font-weight:500; letter-spacing:.05em; text-transform:none; }
+.is-card-expedition .expedition-game-title strong { color:#e0d1ac; font:700 17px/1.2 Georgia,serif; text-transform:none; }
+.is-card-expedition .expedition-game-topbar { margin-bottom:6px; }
+.is-card-expedition .expedition-dashboard { max-width:760px; margin-inline:auto; }
+.is-card-expedition .expedition-player-hud { display:flex; min-height:0; gap:6px; padding:0; background:none; border:0; margin-bottom:8px; }
+.is-card-expedition .expedition-hud-stat { flex:0 0 48px; padding:5px; }
+.is-card-expedition .expedition-hud-role { flex:1; padding:5px 8px; }
+.is-card-expedition .expedition-hud-role>span { font-size:12px; }
+.is-card-expedition .expedition-hud-provision { min-height:38px; width:48px; }
+.is-card-expedition .expedition-hud-relics { display:flex; align-items:center; gap:4px; }
+.is-card-expedition .expedition-hud-relics>button { width:30px; height:38px; }.is-card-expedition .expedition-hud-relics>span { display:none; }
+.card-battle button { font-family:inherit; touch-action:manipulation; cursor:pointer; }
+.card-battle button:disabled { cursor:default; }
+.card-battle button:focus-visible { outline:3px solid #f6e1a4; outline-offset:3px; }
+.card-battle-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 16px 12px; position:relative; background:linear-gradient(110deg,#233b31,#172e29); border-bottom:1px solid #b4a27455; }
+.card-battle-heading::after { content:''; position:absolute; left:15px; right:15px; bottom:-2px; height:3px; background:linear-gradient(90deg,#bfa06b,transparent 15%,transparent 85%,#bfa06b); }
+.card-enemy-name { min-width:0; }.card-enemy-name>small { display:block; font-size:7px; color:#b4bea5; letter-spacing:.16em; }
+.card-enemy-name h3 { margin:5px 0 0; font:700 22px/1.1 Georgia,serif; color:#f3e3bb; }
+.card-deck-toggle { display:flex; align-items:center; gap:5px; flex-shrink:0; min-height:34px; color:#d5d6b9; background:none; border:0; font-size:10px; padding:2px 4px; }
+.card-deck-toggle svg { width:18px; height:22px; color:#c1a16e; }.card-deck-toggle b { color:#eed9a1; margin-left:2px; }
+.card-arena { height:clamp(180px,27vh,265px); position:relative; isolation:isolate; overflow:hidden; background:radial-gradient(ellipse at 60% 60%,#61795a,#24392f); }
+.card-arena::after { content:''; position:absolute; inset:0; z-index:-1; background:linear-gradient(#11282044,transparent 45%,#172b24); }
+.card-arena-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 57%; z-index:-2; opacity:.8; }
+.card-arena-enemy { position:absolute; right:11%; bottom:2%; width:43%; max-width:230px; height:85%; object-fit:contain; filter:drop-shadow(0 12px 8px #0007); }
+.card-arena-hero { --hero-scale:.88; position:absolute; z-index:2; left:7%; bottom:-5px; transform:scale(var(--hero-scale)); transform-origin:50% 100%; }
+.card-enemy-placeholder { position:absolute; width:80px; height:100px; right:22%; bottom:20%; color:#a5b896; }
+.card-enemy-health { display:flex; flex-direction:column; align-items:flex-end; gap:3px; width:112px; flex-shrink:0; }
+.card-enemy-health>span { font-size:7px; letter-spacing:.14em; color:#c5baa0; }
+.card-enemy-health strong { color:#f1d9b5; font:700 25px/1 Georgia,serif; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.card-enemy-health strong small { color:#aab5a0; font:400 11px Georgia,serif; }
+.enemy-health-track { position:relative; width:100%; height:7px; padding:1px; margin-top:3px; border:1px solid #b29a6777; border-radius:3px; background:#0e201d; box-shadow:0 1px #dbbd7a14; overflow:hidden; }
+.enemy-health-track b,.enemy-health-track i { position:absolute; top:1px; left:1px; bottom:1px; max-width:calc(100% - 2px); border-radius:1px; }
+.enemy-health-track b { background:linear-gradient(#d28b75,#b85d54); box-shadow:0 0 6px #d7815c55; transition:width .23s ease; }.enemy-health-trail { background:#d3ba83; transition:width .8s .15s ease; }
+.card-enemy-intent { position:absolute; left:13px; top:10px; z-index:4; display:flex; flex-direction:column; align-items:stretch; width:145px; padding:7px 10px 6px; border:1px solid #9f8c635c; border-radius:3px 12px 3px 12px; background:linear-gradient(125deg,#152c28f2,#20332cda); box-shadow:0 4px 10px #06191444,inset 0 1px #e6ca9020; }
+.intent-route { display:flex; align-items:center; gap:5px; }
+.intent-weapon { display:flex; align-items:center; gap:4px; color:#dca08b; }
+.intent-weapon svg { width:19px; height:24px; filter:drop-shadow(0 2px #071d18); }.intent-weapon b { font:700 25px/1 Georgia,serif; }
+.intent-arrow { width:24px; height:11px; flex-shrink:0; color:#9aab8b; }
+.intent-outcome { display:flex; align-items:center; gap:3px; color:#efab92; }
+.intent-outcome>svg { width:13px; height:15px; flex-shrink:0; }.intent-outcome b { font:700 25px/1 Georgia,serif; font-variant-numeric:tabular-nums; }.intent-outcome small { width:14px; color:#bdc3aa; font-size:6px; line-height:1.2; text-align:left; letter-spacing:.04em; }
+.intent-reason { display:flex; align-items:center; gap:4px; margin-top:3px; font-size:7px; line-height:1.3; color:#c6cbb2; }.intent-reason>svg { width:10px; height:12px; flex-shrink:0; }
+.is-protected .intent-outcome { color:#bcdab9; }.is-protected .intent-reason { color:#bcd2b0; }
+.card-enemy-intent.is-danger { border-color:#bb8b6466; }.card-enemy-intent.is-protected { border-color:#85ac8866; }
+.card-enemy-intent.is-victory { display:flex; flex-direction:row; align-items:center; gap:8px; color:#d3dfac; font:700 15px Georgia,serif; }.is-victory>svg { width:26px; height:30px; }.is-victory small { display:block; font-family:inherit; font-size:8px; font-weight:400; line-height:1.5; color:#b8c4a5; margin-top:3px; }
+.card-arena-conditions { position:absolute; bottom:10px; right:12px; display:flex; gap:5px; z-index:5; flex-wrap:wrap; justify-content:flex-end; max-width:75%; }
+.card-arena-conditions>span { display:flex; align-items:center; gap:4px; background:#142b24dd; border:1px solid #a9bf7666; padding:4px 7px; border-radius:12px; font-size:9px; color:#d6e3b5; }
+.card-arena-conditions svg { width:13px; height:15px; }
+.card-hand-caption { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:1px 13px 0; color:#aebda7; font-size:8px; letter-spacing:.1em; }
+.card-hand-tools { display:flex; align-items:center; gap:12px; }.card-hand-tools>span { letter-spacing:0; color:#96aa91; font-size:8px; }
+.card-hand { display:flex; gap:10px; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x proximity; padding:3px 13px 12px; min-height:214px; scrollbar-width:none; }
+.card-hand::-webkit-scrollbar { display:none; }
+.dungeon-playing-card { position:relative; display:flex; align-items:center; flex-direction:column; flex:0 0 160px; min-width:0; min-height:202px; overflow:hidden; text-align:center; scroll-snap-align:center; padding:8px 10px 7px; border:1px solid #d8bc7a; border-radius:10px 10px 8px 8px; color:var(--card-ink); background:radial-gradient(ellipse at 50% 25%,#f4e8c8,#ddcba4 75%); box-shadow:inset 0 0 0 3px #43483723,inset 0 0 0 5px #f1e3bc66,0 4px 0 #0b1915; transition:transform .18s,filter .18s; animation:card-dealt .3s ease both; }
+.dungeon-playing-card::before { content:''; position:absolute; inset:7px 7px auto; height:104px; border:1px solid #8c916354; border-radius:45% 45% 8px 8px; background:radial-gradient(ellipse,#546e6355,#64796611 75%); pointer-events:none; }
+.class-mage .dungeon-playing-card::before { background:radial-gradient(ellipse,#78659155,#a98cba11 75%); }
+.class-scout .dungeon-playing-card::before { background:radial-gradient(ellipse,#428e6d55,#98b48711 75%); }
+.class-cleric .dungeon-playing-card::before { background:radial-gradient(ellipse,#c0914455,#e5c67711 75%); }
+.dungeon-playing-card:disabled { filter:saturate(.6); background-color:#bdbaa3; }.dungeon-playing-card:disabled .dungeon-card-picture { opacity:.65; }.dungeon-playing-card:disabled .dungeon-card-foot { color:#7c4b37; }
+.dungeon-playing-card:hover:not(:disabled) { transform:translateY(-3px); }.dungeon-playing-card:active:not(:disabled) { transform:translateY(-6px) rotate(-2deg); }
+.dungeon-card-cost { position:absolute; top:7px; left:7px; width:29px; height:33px; z-index:2; display:flex; align-items:center; justify-content:center; border:1px solid #edcf85; border-radius:45% 45% 45% 45%; color:#fff0c9; background:linear-gradient(130deg,#496d63,#243d36); box-shadow:0 2px 5px #102c2b55; font:700 21px Georgia,serif; }
+.dungeon-card-cost svg { position:absolute; right:-3px; bottom:-2px; width:10px; height:13px; color:#e7c475; }
+.dungeon-card-kind { position:absolute; top:10px; right:12px; font-size:7px; text-transform:uppercase; letter-spacing:.09em; color:#5b6652; }
+.dungeon-card-picture { display:block; position:relative; width:104px; height:104px; margin-bottom:8px; flex-shrink:0; }
+.card-illustration { display:block; width:100%; height:100%; overflow:visible; filter:drop-shadow(0 3px 2px #21322b44); }
+.art-metal { fill:var(--art-metal); }.art-gold { fill:var(--art-gold); }.art-gem { fill:var(--art-gem); }.art-shadow { fill:var(--art-dark); opacity:.8; }.art-light { fill:#fff1c8; }.art-fire { fill:#ed8a49; }.art-heart { fill:#d78f79; }.art-grip { fill:#354843; }.art-highlight { fill:none; stroke:#fff2c5; stroke-width:2; opacity:.8; }.art-engrave { fill:none; stroke:var(--art-dark); stroke-width:2; }.art-air { fill:none; stroke:var(--art-gem); stroke-width:4; }.art-rays { fill:none; stroke:var(--art-gold); stroke-width:2.4; }.art-ring { fill:none; stroke:var(--art-gold); stroke-width:2; }.art-banner { fill:var(--art-gem); stroke:var(--art-dark); stroke-width:3; }.art-laurel { fill:var(--art-gold); stroke:var(--art-gold); stroke-width:1.5; }
+.dungeon-playing-card>strong { font:700 16px/1.1 Georgia,serif; position:relative; margin:0 0 5px; }
+.dungeon-card-copy { display:block; position:relative; font-size:10.5px; line-height:1.35; color:#35463a; flex:1; }
+.dungeon-card-foot { font-size:7px; text-transform:uppercase; letter-spacing:.12em; color:#667054; margin-top:9px; }
+.card-hand-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; gap:5px; color:#c0cbb1; }
+.card-hand-empty .class-crest { width:68px; height:68px; opacity:.7; }.card-hand-empty strong { font:700 19px Georgia,serif; }.card-hand-empty>span { font-size:11px; }
+.card-hand-rest { align-items:center; justify-content:center; gap:25px; padding-top:12px; }
+.card-hand-rest>div:last-child { max-width:180px; }.card-hand-rest strong { font:700 21px Georgia,serif; color:#e4d8b2; }.card-hand-rest p { font-size:11px; line-height:1.5; color:#b5c3aa; }
+.card-cardbacks { position:relative; width:109px; height:157px; flex-shrink:0; }
+.card-cardbacks>div { position:absolute; inset:0; display:grid; place-items:center; border:1px solid #aa9d68; border-radius:9px; background:repeating-linear-gradient(45deg,#2b473b 0 4px,#294336 4px 8px); box-shadow:inset 0 0 0 5px #21382c,inset 0 0 0 6px #8c9a5955,0 3px 8px #0004; transform:translateX(calc((var(--back-index) - 1)*12px)) rotate(calc((var(--back-index) - 1)*9deg)); }
+.card-cardbacks .class-crest { width:68px; height:68px; }
+.class-crest { position:relative; display:block; width:80px; height:80px; flex-shrink:0; color:var(--card-accent); }
+.class-crest>svg:first-child { position:absolute; inset:0; width:100%; height:100%; }.class-crest>svg:last-child { position:absolute; left:31%; top:25%; width:38%; height:43%; filter:drop-shadow(0 2px 2px #0008); }
+.card-hero-console { position:relative; display:grid; grid-template-columns:1fr 108px 1fr; align-items:start; justify-items:center; padding:3px 12px 7px; background:radial-gradient(ellipse at 50% 40%,#3b514039,transparent 70%); }
+.hero-vitals,.hero-energy { display:flex; flex-direction:column; align-items:center; min-width:0; padding-top:12px; }
+.hero-vitals>small,.hero-energy>small { font-size:8px; letter-spacing:.14em; color:#afbea4; }
+.hero-hearts { display:flex; align-items:center; gap:5px; height:37px; }
+.hero-hearts svg { width:22px; height:24px; color:#526354; }.hero-hearts svg.is-filled { color:#df8c79; filter:drop-shadow(0 2px 0 #734e3e); }
+.hero-vitals>span,.hero-energy>span { color:#c3cdb4; font-size:9px; margin-top:1px; text-align:center; }
+.hero-class-mechanic { display:flex; flex-direction:column; align-items:center; position:relative; padding:0; border:0; border-radius:9px; color:inherit; background:none; min-width:90px; }
+.hero-class-mechanic .class-crest { width:72px; height:72px; }.hero-class-mechanic .class-crest>svg:last-child { top:17%; height:33%; }
+.class-resource-value { position:absolute; top:34px; color:#fff1c7; font:700 25px/1 Georgia,serif; text-shadow:0 1px 4px #000; }
+.hero-class-mechanic>.class-resource-name { font-family:inherit; font-weight:700; font-size:11px; line-height:1.1; margin:3px 0 0; color:var(--card-accent); text-transform:uppercase; letter-spacing:.14em; }
+.class-resource-role { display:flex; align-items:center; gap:4px; color:#a6b59b; font-size:9px; margin-top:4px; }.class-resource-role svg { width:11px; height:12px; opacity:.7; }
+.energy-crystal { display:flex; align-items:center; gap:3px; height:37px; color:#e9ca7d; }.energy-crystal svg { width:21px; height:27px; filter:drop-shadow(0 0 7px #e8bb4944); }.energy-crystal b { font:700 31px/1 Georgia,serif; color:#f5dfab; }
+.is-overheated .class-resource-value,.is-overheated .class-resource-name { color:#f3a17e; }
+.card-mechanic-note { position:absolute; bottom:calc(100% + 8px); left:12px; right:12px; z-index:9; display:flex; align-items:flex-start; gap:10px; padding:13px; border:1px solid #a3ad7988; border-radius:10px; background:#213b30; box-shadow:0 8px 24px #071a18cc; }
+.card-mechanic-note>svg { width:27px; height:30px; flex-shrink:0; color:var(--card-accent); }.card-mechanic-note strong { font:700 18px Georgia,serif; color:var(--card-accent); }.card-mechanic-note p { font-size:12px; line-height:1.5; margin:5px 0; color:#e0e1c7; }.card-mechanic-note small { font-size:10px; line-height:1.4; color:#bac9ad; }.card-mechanic-note>button { flex-shrink:0; width:32px; height:32px; margin:-5px -5px 0 auto; border:0; background:none; color:#d9dfbd; font-size:24px; }
+.card-battle-feedback { min-height:14px; text-align:center; margin:3px 12px 5px; font-size:10px; line-height:1.4; color:var(--card-accent); }
+.card-turn-controls { position:sticky; bottom:0; z-index:6; display:grid; gap:7px; padding:7px 12px 11px; background:linear-gradient(#142722d9,#142722); }
+.card-turn-controls button { min-height:48px; display:flex; align-items:center; gap:8px; position:relative; width:100%; border:1px solid #b7bd8088; border-radius:8px; padding:10px 14px; font-size:14px; font-weight:800; text-align:left; box-shadow:inset 0 1px #e4e3b41a,0 3px 0 #0d1f16; }
+.card-primary { color:#f9efd3; background:linear-gradient(120deg,#66885a,#446747); }
+.card-end-turn { background:linear-gradient(120deg,#385547,#2a443b); color:#eddfbb; }
+.card-turn-controls button>small { display:flex; align-items:center; gap:5px; font-size:10px; font-weight:500; margin-left:auto; color:#e4d9b7; }.card-turn-controls small svg { width:12px; height:13px; color:#df9a83; }.card-turn-controls button>b { font-size:21px; line-height:1; margin-left:auto; }.card-turn-controls button>small+b { margin-left:4px; }
+.card-turn-controls button:disabled { opacity:.5; box-shadow:none; }
+.card-reward-choice { padding:14px 12px; background:#304132; border-top:1px solid #bbaa6c55; }
+.card-reward-choice>small { display:block; text-align:center; font-size:8px; letter-spacing:.1em; color:#e6ce90; }.card-reward-choice>div { display:flex; overflow:auto; gap:10px; padding:12px 1px; scrollbar-width:thin; }.card-reward-choice .dungeon-playing-card { flex-basis:145px; }
+.card-reward-skip { width:100%; min-height:42px; padding:9px; background:#203628; color:#d9dec1; border:1px solid #84956777; border-radius:6px; }
+.card-deck-list { position:absolute; inset:0; z-index:20; overflow:auto; padding:14px; background:#172c25; }
+.card-library-header { position:sticky; top:-14px; z-index:2; display:flex; align-items:center; gap:8px; background:#172c25; padding:8px 0; }.card-library-header .class-crest { width:50px; height:50px; }.card-library-header small { font-size:8px; letter-spacing:.15em; color:var(--card-accent); }.card-library-header h3 { font:700 23px Georgia,serif; margin:3px 0; }.card-library-header button { display:grid; place-items:center; margin-left:auto; width:44px; height:44px; border:1px solid #9caa6977; border-radius:50%; color:#e9dbb7; background:#263e30; font-size:26px; }
+.card-library-tabs { display:flex; gap:7px; margin:8px 0; }.card-library-tabs button { flex:1; min-height:40px; padding:8px; background:none; border:1px solid #76875b66; color:#b8c3a6; border-radius:6px; font-size:11px; }.card-library-tabs [aria-pressed=true] { color:#f0dfb2; background:#344d38; border-color:#b7b17d; }
+.card-deck-list>p { font-size:11px; line-height:1.5; color:#aebb9e; }.card-library-grid { display:grid; gap:8px; }.card-library-entry { display:flex; gap:12px; align-items:center; padding:10px 8px; border:1px solid #75806144; background:#23382e; border-radius:8px; }.card-library-entry>.card-illustration { width:72px; height:72px; flex-shrink:0; }.card-library-entry strong { font:700 16px Georgia,serif; color:#efdfb6; }.card-library-entry small { display:block; color:var(--card-accent); font-size:9px; margin-top:3px; }.card-library-entry p { font-size:11px; line-height:1.4; color:#bdc8ae; margin:5px 0 0; }
+/* Short, event-driven effects; the last server event does not loop on polling. */
+.battle-vfx { position:absolute; inset:0; z-index:3; pointer-events:none; color:var(--card-accent); overflow:hidden; }
+.vfx-drawing { position:absolute; inset:0; width:100%; height:100%; }
+.vfx-impact { transform-box:fill-box; transform-origin:center; animation:combat-impact .85s ease-out both; }
+.vfx-cuts path { stroke-dasharray:240; stroke-dashoffset:240; animation:combat-cut .55s ease-out both; }.vfx-cuts path:nth-child(2) { animation-delay:.07s; }.vfx-cuts path:nth-child(3) { animation-delay:.14s; }.vfx-cuts path:nth-child(4) { animation-delay:.2s; }
+.vfx-lightning { animation:combat-lightning .7s steps(2) both; filter:drop-shadow(0 0 7px currentColor); }
+.vfx-runes { transform-box:fill-box; transform-origin:50% 100%; animation:combat-runes 1s ease-out both; }
+.vfx-sunbeam { animation:combat-beam .9s ease-out both; filter:drop-shadow(0 0 9px #ffe09d); }
+.vfx-venom { stroke-dasharray:240; animation:combat-venom .95s ease-out both; }
+.vfx-projectile { position:absolute; left:18%; top:28%; width:85px; height:85px; animation:combat-projectile .75s cubic-bezier(.2,.5,.1,1) both; filter:drop-shadow(0 0 12px currentColor); }.vfx-shield .vfx-projectile { animation-name:combat-shield; }.vfx-frost.vfx-self .vfx-projectile { animation-name:combat-frost; }
+.vfx-target-mark { position:absolute; left:61%; top:25%; width:65px; height:65px; animation:combat-runes .9s ease-out both; filter:drop-shadow(0 0 10px currentColor); }
+.vfx-spark { position:absolute; top:54%; width:5px; height:5px; border-radius:50%; background:currentColor; box-shadow:0 0 6px currentColor; animation:combat-spark .8s ease-out var(--spark-delay) both; }
+.vfx-venom { color:#b4ed86; }.vfx-flame { color:#ffba70; }.vfx-frost { color:#a7edfa; }.vfx-lightning,.vfx-arcane { color:#dfc7ff; }.vfx-radiant,.vfx-blessing { color:#ffe4a0; }.vfx-sacrifice,.vfx-enemy { color:#e99b8c; }.vfx-enemy .vfx-cuts { transform:translate(-220px,15px); }
+.card-hit-number { position:absolute; z-index:5; top:36%; left:65%; pointer-events:none; color:#fff1bc; text-shadow:0 3px #504231,0 0 12px #f0be77; font:700 35px Georgia,serif; animation:combat-number 1s ease-out both; }
+.card-hit-number.is-hurt,.card-hit-number.is-heal { left:24%; }.card-hit-number.is-hurt { color:#ffb09a; }.card-hit-number.is-heal { color:#d8f6ad; }
+.card-arena-enemy.taking-hit { animation:combat-enemy .55s ease-out; }
+.card-arena-hero.attacking { animation:combat-hero .6s ease-out; }.class-scout .card-arena-hero.attacking { animation-name:combat-scout; }.class-mage .card-arena-hero.attacking,.class-cleric .card-arena-hero.attacking { animation-name:combat-caster; }.card-arena-hero.hurt { animation:combat-hurt .5s ease-out; }
+.card-arena-hero.casting { animation:combat-caster .6s ease-out; }
+@keyframes card-dealt { from { opacity:0; transform:translateY(10px) rotate(2deg); } to { opacity:1; transform:none; } }
+@keyframes combat-cut { 0% { stroke-dashoffset:240; opacity:0; } 15% { opacity:1; } 60% { stroke-dashoffset:0; opacity:1; } 100% { stroke-dashoffset:0; opacity:0; } }
+@keyframes combat-impact { 0% { opacity:0; transform:scale(.3); } 30% { opacity:.8; transform:scale(1); } 100% { opacity:0; transform:scale(1.2); } }
+@keyframes combat-lightning { 0%,20%,40% { opacity:0; } 10%,30%,50% { opacity:1; } 100% { opacity:0; } }
+@keyframes combat-runes { 0% { opacity:0; transform:scale(.6); } 30% { opacity:1; transform:scale(1); } 100% { opacity:0; transform:translateY(-10px) scale(1.1); } }
+@keyframes combat-beam { 0% { opacity:0; transform:translateY(-50%); } 20% { opacity:1; transform:none; } 65% { opacity:.8; } 100% { opacity:0; } }
+@keyframes combat-venom { 0% { opacity:0; stroke-dashoffset:240; } 30% { opacity:1; } 65% { stroke-dashoffset:0; opacity:1; } 100% { opacity:0; } }
+@keyframes combat-projectile { 0% { opacity:0; transform:scale(.4); } 15% { opacity:1; } 60% { opacity:1; transform:translateX(180%) scale(1.3) rotate(20deg); } 100% { opacity:0; transform:translateX(210%) scale(1.8); } }
+@keyframes combat-shield { 0% { opacity:0; transform:scale(.4) rotate(-60deg); } 20% { opacity:1; } 65% { opacity:1; transform:translateX(180%) scale(1) rotate(300deg); } 100% { opacity:0; transform:translateX(210%) scale(.5) rotate(420deg); } }
+@keyframes combat-frost { 0% { opacity:0; transform:scale(.3); } 40% { opacity:1; transform:scale(1.3) translateY(-15px); } 100% { opacity:0; transform:scale(1.7) translateY(-30px); } }
+@keyframes combat-spark { 0% { opacity:0; transform:scale(0); } 25% { opacity:1; } 100% { opacity:0; transform:translate(var(--spark-x),var(--spark-y)) scale(.2); } }
+@keyframes combat-number { 0% { opacity:0; transform:scale(.5); } 25% { opacity:1; transform:translateY(-5px) scale(1.15); } 70% { opacity:1; } 100% { opacity:0; transform:translateY(-35px); } }
+@keyframes combat-enemy { 20% { transform:translateX(9px) rotate(4deg); filter:brightness(1.7) drop-shadow(0 0 10px #ffe6a8); } 50% { transform:translateX(-4px) rotate(-2deg); } }
+@keyframes combat-hero { 20% { transform:translateX(-5px) scale(var(--hero-scale)); } 50% { transform:translateX(22px) rotate(-8deg) scale(var(--hero-scale)); } }
+@keyframes combat-scout { 25% { opacity:.2; transform:translateX(60px) scale(var(--hero-scale)); } 50% { opacity:1; transform:translateX(85px) rotate(-10deg) scale(var(--hero-scale)); } }
+@keyframes combat-caster { 45% { transform:translateY(-12px) rotate(-4deg) scale(var(--hero-scale)); filter:drop-shadow(0 0 13px var(--card-accent)); } }
+@keyframes combat-hurt { 25% { transform:translateX(-10px) rotate(8deg) scale(var(--hero-scale)); filter:sepia(.7) saturate(2); } }
+@media(min-width:650px) { .card-hand { justify-content:safe center; }.card-arena { height:215px; }.card-library-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.card-reward-choice>div { justify-content:center; } }
+@media(max-width:649px) {
+  .card-battle-heading { padding:10px 13px 11px; gap:12px; }.card-enemy-name h3 { font-size:21px; }.card-enemy-health { width:103px; }.card-enemy-health strong { font-size:24px; }
+  .card-arena { height:clamp(145px,24vh,210px); }.card-arena-hero { --hero-scale:.76; left:-3%; bottom:-12px; }.card-arena-enemy { right:7%; width:46%; }
+  .card-enemy-intent { left:10px; top:8px; width:139px; padding:6px 9px; }.intent-weapon b,.intent-outcome b { font-size:23px; }.intent-arrow { width:22px; }
+  .card-hand { min-height:211px; gap:9px; }.dungeon-playing-card { flex-basis:43%; min-height:199px; }.dungeon-card-picture { width:96px; height:96px; }.dungeon-playing-card::before { height:97px; }.dungeon-playing-card>strong { font-size:16px; }
+  .card-cardbacks { width:94px; height:143px; }.card-hand-rest { gap:22px; }.card-hand-rest>div:last-child { max-width:146px; }.card-hand-rest strong { font-size:19px; }
+  .card-hero-console { grid-template-columns:1fr 98px 1fr; padding-inline:8px; }.vfx-projectile { width:65px; height:65px; }
+}
+@media(max-height:700px) and (max-width:649px) {
+  .card-battle-heading { padding:8px 12px 9px; }.card-enemy-name h3 { font-size:19px; }.card-enemy-health strong { font-size:22px; }.card-enemy-health { width:96px; }.card-deck-toggle { min-height:32px; }
+  .card-arena { height:130px; }.card-hand { min-height:185px; padding-bottom:10px; }.dungeon-playing-card { min-height:175px; padding:7px 9px 6px; }.dungeon-card-picture { width:77px; height:77px; margin-bottom:7px; }.dungeon-playing-card::before { height:78px; }.dungeon-playing-card>strong { font-size:15px; }.dungeon-card-copy { font-size:10px; }.dungeon-card-foot { font-size:6px; margin-top:7px; }
+  .hero-class-mechanic .class-crest { width:61px; height:61px; }.class-resource-value { top:29px; font-size:21px; }.hero-vitals,.hero-energy { padding-top:8px; }.hero-hearts,.energy-crystal { height:33px; }.card-battle-feedback { margin-bottom:3px; font-size:9px; }.card-turn-controls { padding-top:4px; }.card-turn-controls button { min-height:44px; padding:9px 12px; font-size:13px; }
+  .card-cardbacks { width:83px; height:122px; }.card-hand-rest { padding-block:9px; }.card-arena-hero { --hero-scale:.65; left:-6%; bottom:-13px; }
+}
+@media(max-height:590px) and (max-width:649px) {
+  .is-card-expedition { padding:5px 8px 8px; }.is-card-expedition .expedition-game-topbar { margin-bottom:4px; }
+  .card-arena { height:110px; }.card-enemy-health { width:86px; }.card-enemy-health strong { font-size:20px; }.card-enemy-name h3 { font-size:18px; }.card-enemy-name>small { font-size:6px; }.card-enemy-intent { width:128px; top:4px; padding:5px 7px; }.intent-weapon b,.intent-outcome b { font-size:21px; }.intent-arrow { width:18px; }.intent-weapon svg { width:16px; height:20px; }.intent-reason { font-size:6.5px; }.card-arena-hero { --hero-scale:.52; bottom:-16px; left:-8%; }
+  .card-hand { min-height:169px; }.dungeon-playing-card { min-height:159px; flex-basis:45%; }.dungeon-card-picture { width:62px; height:62px; }.dungeon-playing-card::before { height:65px; }.dungeon-playing-card>strong { font-size:14px; }.dungeon-card-cost { width:25px; height:28px; font-size:18px; }.dungeon-card-copy { font-size:9.5px; }
+  .card-hero-console { padding-top:0; }.hero-class-mechanic .class-crest { width:44px; height:44px; }.class-resource-value { top:20px; font-size:17px; }.hero-class-mechanic>.class-resource-name { font-size:9px; }.class-resource-role { font-size:8px; }.hero-hearts { gap:3px; }.hero-hearts svg { width:18px; height:21px; }.hero-vitals>small,.hero-energy>small { font-size:7px; }.hero-vitals>span,.hero-energy>span { font-size:8px; }.hero-hearts,.energy-crystal { height:29px; }.energy-crystal b { font-size:27px; }.energy-crystal svg { width:17px; height:24px; }.card-battle-feedback { margin-top:1px; margin-bottom:2px; font-size:8px; }.card-turn-controls { padding:4px 10px 7px; }.card-turn-controls button { min-height:42px; }.card-cardbacks { height:108px; width:73px; }
+  .card-hand { min-height:155px; padding-bottom:7px; }.dungeon-playing-card { min-height:148px; }.dungeon-card-picture { width:55px; height:55px; margin-bottom:5px; }.dungeon-playing-card::before { height:58px; }.dungeon-card-foot { margin-top:5px; }.card-battle-heading { padding-block:6px; }.card-hand-caption { padding-block:0; }.card-hand-tools { gap:8px; }.card-hand-tools>span { display:none; }.card-deck-toggle { min-height:29px; }
+}
+.is-card-expedition .expedition-prep-selector,
+.is-card-expedition .expedition-prep-artifact-block { border-color: #8a987355; border-radius: 12px; background: #20362b; }
+.is-card-expedition .expedition-prep-selector strong,
+.is-card-expedition .expedition-prep-header h2 { font-family: Georgia, serif; text-transform: none; color: #eee1bd; }
+.is-card-expedition .expedition-prep-selector > b { color: #dfc88e; text-transform: none; }
+.is-card-expedition .expedition-overlay-panel { border-color: #8a987366; border-radius: 14px; background: radial-gradient(ellipse at 80% 0, #3b4933, transparent 65%), #182b22; }
+.is-card-expedition .expedition-overlay-header h2 { font-family: Georgia, serif; text-transform: none; line-height: 1.15; }
+.is-card-expedition .expedition-picker-list > button { padding: 10px; border-radius: 10px; border-color: #89977244; background: #23392c; }
+.is-card-expedition .expedition-picker-list > button.selected { border-color: #dfc88e; background: #3d4b30; }
+.is-card-expedition .expedition-picker-list strong { font-family: Georgia, serif; text-transform: none; color: #f0e2bc; }
+.is-card-expedition .expedition-picker-list small { color: #c7b98c; font-weight: 600; text-transform: none; }
+.is-card-expedition .expedition-picker-list p { color: #d1d5be; line-height: 1.4; }
+.is-card-expedition .expedition-overlay .expedition-icon-button { min-height: 44px; color: #e6dfc4; background: #263b2e; border-color: #9aa58055; border-radius: 7px; }
+@media(prefers-reduced-motion:reduce) { .card-battle *, .card-battle *::after { animation:none!important; transition:none!important; }.battle-vfx { display:none; } }
+.dungeon-card-foot.has-relic-bonus { color: #485f30; font-weight: 800; }
+.card-supply-bonuses { position: absolute; top: 7px; right: 7px; z-index: 7; max-width: min(65%, 230px); padding: 0 9px; border: 1px solid #83957977; border-radius: 8px; background: #1b3029f5; color: #d6d9be; font-size: 10px; }
+.card-supply-bonuses summary { min-height: 36px; display: flex; align-items: center; cursor: pointer; }
+.card-supply-bonuses[open] { box-shadow: 0 6px 18px #0008; }
+.card-supply-bonuses ul { display: grid; gap: 6px; padding: 4px 5px 10px 14px; margin: 0; line-height: 1.4; }
+.is-card-expedition .expedition-inline-supplies { display: flex; align-items: center; justify-content: center; gap: 3px; flex: 1; min-width: 0; }
+.is-card-expedition .expedition-inline-supplies .expedition-hud-provision { flex: 0 0 44px; width: 44px; height: 44px; min-height: 44px; padding: 1px; border: 1px solid #a7b47766; border-radius: 7px; }
+.is-card-expedition .expedition-inline-supplies .expedition-hud-provision img { width: 27px; height: 27px; }
+.is-card-expedition .expedition-inline-supplies .expedition-hud-provision small { font: 600 8px/1 sans-serif; }
+.is-card-expedition .expedition-inline-supplies .expedition-hud-relics { gap: 3px; }
+.is-card-expedition .expedition-inline-supplies .expedition-hud-relics > button { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 7px; background: #22392c; }
+.is-card-expedition .expedition-inline-supplies .expedition-hud-relics img { width: 34px; height: 34px; }
+.is-card-expedition .has-battle-supplies .expedition-game-topbar { gap: 4px; }
+.is-card-expedition .has-battle-supplies .expedition-nav-button { padding-inline: 8px; }
+@media(max-height:590px) and (max-width:649px) {
+  .has-battle-supplies .card-arena { height: 100px; }
+  .card-turn-controls { padding-top: 0; }
+}

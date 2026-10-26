@@ -7,6 +7,7 @@ import ExpeditionCombatFx from '../components/expedition/ExpeditionCombatFx';
 import PersistedRoomMiniGame from '../components/expedition/PersistedRoomMiniGame';
 import RewardClaimSheet from '../components/expedition/RewardClaimSheet';
 import RoomEffectsBar from '../components/expedition/RoomEffectsBar';
+import CardBattle from '../components/expedition/CardBattle';
 import { preferredExpeditionRoomKey } from '../utils/expeditionRoomSelection.mjs';
 import './FamilyExpeditionTab.css';
 
@@ -403,7 +404,7 @@ function buildRoomLayout(rooms = [], edges = []) {
   return { positions, paths, height };
 }
 
-function useCatalogMaps(canonicalArtifacts = []) {
+function useCatalogMaps(canonicalArtifacts = [], canonicalProvisions = {}) {
   return useMemo(() => {
     const canonical = Array.isArray(canonicalArtifacts) ? canonicalArtifacts : [];
     const artifactSource = canonical.length > 0 ? canonical : (assetCatalog.artifacts || []);
@@ -413,8 +414,9 @@ function useCatalogMaps(canonicalArtifacts = []) {
       { ...(assetMetadata.get(item.id) || {}), ...item },
     ]));
     const provisions = new Map((assetCatalog.provisions || []).map(item => [item.id, item]));
+    normalizeEntries(canonicalProvisions).forEach(([id, item]) => provisions.set(id, { ...provisions.get(id), ...item }));
     return { artifacts, provisions };
-  }, [canonicalArtifacts]);
+  }, [canonicalArtifacts, canonicalProvisions]);
 }
 
 function ExpeditionIntro({ loading, onStart, permissions }) {
@@ -423,8 +425,7 @@ function ExpeditionIntro({ loading, onStart, permissions }) {
       <div className="expedition-kicker">Family Expedition</div>
       <h2>The Root King's dungeon waits below.</h2>
       <p>
-        Rally your family, pick roles, pack provisions, and prepare a three-artifact loadout before
-        the next build opens the full dungeon map.
+        Choose a class, one meal and up to three relics. Explore together whenever you have time.
       </p>
       <div className="expedition-intro-stats">
         <span>4 roles</span>
@@ -444,7 +445,7 @@ function ExpeditionIntro({ loading, onStart, permissions }) {
 }
 
 function PreparationFlow({ state, loading, onPrepare }) {
-  const { artifacts, provisions: provisionNames } = useCatalogMaps(state.catalog?.artifacts);
+  const { artifacts, provisions: provisionNames } = useCatalogMaps(state.catalog?.artifacts, state.catalog?.provisions);
   const roleEntries = normalizeEntries(state.catalog?.roles);
   const provisionEntries = normalizeEntries(state.catalog?.provisions);
   const [role, setRole] = useState(() => roleEntries[0]?.[0] || 'knight');
@@ -466,15 +467,11 @@ function PreparationFlow({ state, loading, onPrepare }) {
     mage: ['ARC', 'Link the next ally', 'Queue Arcane Link for another hero: +3 to their next combat d20 and +2 damage on that same attack. Recharges after 3 hours.'],
     cleric: ['HP', 'Restore the whole party', 'Heal every family hero by 1 HP, including yourself, and shorten active knockouts by 15%. Recharges after 3 hours.'],
   });
-  const provisionCopy = {
-    carrot_rations: 'Restore all AP, up to 5/5.',
-    tomato_soup: 'Restore all HP, up to 3/3.',
-    hearty_potato_meal: 'Add +2 damage to every successful attack in the current combat room.',
-    lucky_breakfast: 'Gain +1 extra room progress on every successful mini-game attempt in the current room.',
-    warm_milk: 'Immediately restore your class ability.',
-    truffle_treat: 'Upgrade the rarity table of your next artifact reward.',
-    magic_squash_pie: 'Add +3 damage to every successful attack for the rest of the expedition.',
-  };
+  if (state.cardCombat?.enabled) {
+    for (const [id, rules] of Object.entries(state.cardCombat.classes || {})) {
+      roleCopy[id] = [roleCopy[id]?.[0], rules.resource, rules.description];
+    }
+  }
 
   const selectedRole = roleEntries.find(([id]) => id === role)?.[1] || {};
   const selectedProvision = provisionEntries.find(([id]) => id === provisionId)?.[1] || null;
@@ -505,7 +502,7 @@ function PreparationFlow({ state, loading, onPrepare }) {
         </button>
         <button type="button" className="expedition-prep-selector" onClick={() => setPicker('provision')}>
           {provisionId && assetById(provisionImages, provisionId) ? <img src={assetById(provisionImages, provisionId)} alt="" /> : <span>🍲</span>}
-          <div><small>Provision</small><strong>{selectedProvision?.name || provisionNames.get(provisionId)?.name || 'Travel Light'}</strong><em>{provisionId ? provisionCopy[provisionId] : 'Enter without a consumable meal.'}</em></div>
+          <div><small>One meal · single use</small><strong>{selectedProvision?.name || provisionNames.get(provisionId)?.name || 'Travel Light'}</strong><em>{provisionId ? selectedProvision?.description : 'Enter without a consumable meal.'}</em></div>
           <b>Choose</b>
         </button>
         <div className="expedition-prep-artifact-block">
@@ -550,7 +547,7 @@ function PreparationFlow({ state, loading, onPrepare }) {
               return (
                 <button type="button" key={id} className={provisionId === id ? 'selected' : ''} disabled={unavailable} onClick={() => { setProvisionId(id); setPicker(null); }}>
                   {assetById(provisionImages, id) ? <img src={assetById(provisionImages, id)} alt="" /> : <span>🍲</span>}
-                  <div><strong>{meta?.name || titleize(id)}</strong><small>{recipe ? `${meta.ownedQuantity || 0}/${recipe.quantity} ${titleize(recipe.productId)}` : ''}</small><p>{unavailable ? 'You need more farm products.' : provisionCopy[id]}</p></div>
+                  <div><strong>{meta?.name || titleize(id)}</strong><small>{recipe ? `${meta.ownedQuantity || 0}/${recipe.quantity} ${titleize(recipe.productId)}` : ''}</small><p>{meta.description}</p>{unavailable && <small>You need more farm products.</small>}</div>
                 </button>
               );
             })}
@@ -563,7 +560,7 @@ function PreparationFlow({ state, loading, onPrepare }) {
             <button type="button" onClick={() => { setArtifactIds(previous => previous.map((value, index) => index === artifactSlot ? null : value)); setPicker(null); }}><span>×</span><div><strong>Leave Empty</strong><p>Save this slot for an artifact found during the run.</p></div></button>
             {inventory.map(item => {
               const meta = artifacts.get(item.artifactId);
-              return <button type="button" key={item.artifactId} onClick={() => setArtifactDetailId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<div><strong>{meta?.name || titleize(item.artifactId)}</strong><small>{titleize(meta?.rarity || 'common')} · owned {item.quantity ?? 0}</small><p>{meta?.displayEffect || meta?.effect}</p></div></button>;
+              return <button type="button" key={item.artifactId} onClick={() => setArtifactDetailId(item.artifactId)}>{artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}<div><strong>{meta?.name || titleize(item.artifactId)}</strong><small>{titleize(meta?.rarity || 'common')} · {titleize(meta?.category || meta?.useType)} · owned {item.quantity ?? 0}</small><p>{meta?.displayEffect || meta?.effect}</p></div></button>;
             })}
           </div>
         </ExpeditionOverlay>
@@ -837,7 +834,7 @@ function ScoutMinigamePreview({ miniGame = {} }) {
   return <img className="expedition-scout-minigame timing" src={scoutTimingWindowPreview} alt="Timing Window preview" />;
 }
 
-function ScoutChoicePreview({ choice, selected, onSelect }) {
+function ScoutChoicePreview({ choice, selected, onSelect, cardMode = false }) {
   const choiceRoom = choice.room || {};
   const roomArt = useLazyAsset(roomImages, roomArtFile(choiceRoom));
   const enemyArt = useLazyAsset(enemyImages, enemyArtFile(choiceRoom));
@@ -856,7 +853,7 @@ function ScoutChoicePreview({ choice, selected, onSelect }) {
         <small>{combat ? 'Combat room' : 'Room challenge'}</small>
         <strong>{choice.label || choiceRoom.name || titleize(choiceRoom.type || 'Path')}</strong>
         {combat ? (
-          <em>{titleize(choiceRoom.enemyId || 'Dungeon enemy')} · AC {choiceRoom.attackTarget || 10}</em>
+          <em>{titleize(choiceRoom.enemyId || 'Dungeon enemy')} · {cardMode ? `${choiceRoom.progressTarget || 1} HP` : `AC ${choiceRoom.attackTarget || 10}`}</em>
         ) : (
           <em>{choiceRoom.miniGame?.label || titleize(choiceRoom.miniGame?.kind || 'Unknown challenge')}</em>
         )}
@@ -865,7 +862,7 @@ function ScoutChoicePreview({ choice, selected, onSelect }) {
   );
 }
 
-function ScoutChoicePanel({ room, member, roles, mutating, onScoutChoice }) {
+function ScoutChoicePanel({ room, member, roles, mutating, onScoutChoice, cardMode = false }) {
   const choices = Array.isArray(room?.scoutChoices) ? room.scoutChoices : [];
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
@@ -906,6 +903,7 @@ function ScoutChoicePanel({ room, member, roles, mutating, onScoutChoice }) {
                 <ScoutChoicePreview
                   key={choice.id}
                   choice={choice}
+                  cardMode={cardMode}
                   selected={selectedId === choice.id}
                   onSelect={() => setSelectedId(choice.id)}
                 />
@@ -1962,16 +1960,17 @@ function RoomPanel({
                 roles={roles}
                 mutating={mutating}
                 onScoutChoice={onScoutChoice}
+                cardMode={expedition?.combatMode === 'cards_v1'}
               />
 
-              <div className="expedition-power-grid">
+              {expedition?.combatMode !== 'cards_v1' && <div className="expedition-power-grid">
                 <RoleAbilityControl
                   member={member}
                   room={room}
                   mutating={mutating}
                   onUse={onRoleAbility}
                 />
-              </div>
+              </div>}
 
               {eventRoom ? (
                 <PersistedRoomMiniGame
@@ -2055,11 +2054,19 @@ function RoomPanel({
   );
 }
 
+function CardRoomPanel({ room, ...props }) {
+  const roomArt = useLazyAsset(roomImages, roomArtFile(room));
+  const bossArt = useLazyAsset(bossImages, bossArtFile(room));
+  const enemyArt = useLazyAsset(enemyImages, enemyArtFile(room));
+  return <CardBattle {...props} room={room} roomArt={roomArt} enemyArt={bossArt || enemyArt} />;
+}
+
 function ExpeditionDashboard({
   state,
   archive,
   mutating,
   onAttempt,
+  onCardCommand,
   onScoutChoice,
   onMinigameStart,
   onMinigameFinish,
@@ -2070,7 +2077,7 @@ function ExpeditionDashboard({
   finishMessage,
   onClose,
 }) {
-  const { artifacts, provisions } = useCatalogMaps(state.catalog?.artifacts);
+  const { artifacts, provisions } = useCatalogMaps(state.catalog?.artifacts, state.catalog?.provisions);
   const memberNameById = useMemo(() => new Map(
     (state.familyMembers || []).map(member => [member.userId, member.firstName || member.username || 'Family']),
   ), [state.familyMembers]);
@@ -2081,6 +2088,7 @@ function ExpeditionDashboard({
   const [showGuide, setShowGuide] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [artifactUseId, setArtifactUseId] = useState(null);
+  const [recoverCardId, setRecoverCardId] = useState(null);
   const [showProvision, setShowProvision] = useState(false);
   const rooms = state.map?.rooms || [];
   const edges = state.map?.edges || [];
@@ -2094,7 +2102,14 @@ function ExpeditionDashboard({
   const provision = member?.provisionId ? provisions.get(member.provisionId) : null;
   const provisionAvailable = Boolean(member?.provisionId && member?.provisionState?.available && !member?.provisionState?.used);
   const selectedRoom = rooms.find(room => room.key === selectedRoomKey) || null;
-  const provisionDisabledReason = provisionUseReason({
+  const savedCardRoom = rooms.find(room => room.key === state.cardCombat?.turn?.roomKey);
+  const cardRoom = state.cardCombat?.enabled
+    ? (selectedRoom && isCombatRoom(selectedRoom) && !['hidden', 'locked'].includes(selectedRoom.state) ? selectedRoom : state.cardCombat.turn ? savedCardRoom : null)
+    : null;
+  const supplyStatus = state.cardCombat?.supplies?.[selectedRoom?.key];
+  const provisionDisabledReason = state.cardCombat?.enabled
+    ? mutating ? 'Resolving…' : supplyStatus?.provisionReason ?? 'Choose a current open room.'
+    : provisionUseReason({
     provisionId: member?.provisionId,
     available: provisionAvailable,
     member,
@@ -2113,13 +2128,17 @@ function ExpeditionDashboard({
 
   useEffect(() => {
     if (lastRoll?.pending || roomTransition) return;
+    if (savedCardRoom?.state === 'unlocked' && state.cardCombat?.turn) {
+      if (selectedRoomKey !== savedCardRoom.key) setSelectedRoomKey(savedCardRoom.key);
+      return;
+    }
     const preferred = preferredExpeditionRoomKey(
       rooms,
       selectedRoomKey,
       currentMinigameAttempt?.roomKey || null,
     );
     if (preferred !== selectedRoomKey) setSelectedRoomKey(preferred);
-  }, [rooms, selectedRoomKey, currentMinigameAttempt?.roomKey, lastRoll?.pending, roomTransition]);
+  }, [rooms, selectedRoomKey, currentMinigameAttempt?.roomKey, lastRoll?.pending, roomTransition, savedCardRoom?.key, savedCardRoom?.state, state.cardCombat?.turn?.number]);
 
   useEffect(() => {
     if (selectedRoom?.miniGame && lastRoll?.actionType === 'attempt') setLastRoll(null);
@@ -2184,35 +2203,56 @@ function ExpeditionDashboard({
     }
   }
 
+  useEffect(() => { setRecoverCardId(null); }, [artifactUseId]);
+
   async function handleUseArtifact(artifactId) {
     if (!selectedRoom?.key) return;
-    const next = await onUseArtifact(selectedRoom.key, artifactId);
+    const next = await onUseArtifact(selectedRoom.key, artifactId, state.cardCombat?.enabled && artifactId === 'campfire_charm'
+      ? { cardId: recoverCardId, revision: state.cardCombat.revision } : {});
     if (next) setArtifactUseId(null);
   }
 
   const artifactUse = equippedRelics.find(item => item?.artifactId === artifactUseId);
-  const artifactUseDisabledReason = artifactUseReason({
+  const needsCardChoice = state.cardCombat?.enabled && artifactUseId === 'campfire_charm';
+  const discardChoices = state.cardCombat?.discardChoices || [];
+  const artifactUseDisabledReason = artifactUse?.meta.useType !== 'active' ? '' : state.cardCombat?.enabled
+    ? mutating ? 'Resolving…' : supplyStatus?.artifactReasons?.[artifactUseId] ?? 'Choose a current open room.'
+    : artifactUseReason({
     artifact: artifactUse ? { id: artifactUse.artifactId, ...artifactUse.meta } : null,
     room: selectedRoom,
     member,
     mutating,
   });
+  const headerSupplies = cardRoom && (member?.provisionId || equippedRelics.some(Boolean));
+  const supplyButtons = <>
+    {(!state.cardCombat?.enabled || member?.provisionId) && <button type="button" className={`expedition-hud-provision${provisionAvailable ? ' ready' : ''}`} onClick={() => setShowProvision(true)} disabled={!member?.provisionId}>
+      {member?.provisionId && assetById(provisionImages, member.provisionId) ? <img src={assetById(provisionImages, member.provisionId)} alt="" /> : <span>🍲</span>}
+      <small>{provisionAvailable ? 'Food' : 'Used'}</small>
+    </button>}
+    {(!state.cardCombat?.enabled || equippedRelics.some(Boolean)) && <div className="expedition-hud-relics" aria-label="Equipped relics">
+      {equippedRelics.map((item, slotIndex) => item ? <button type="button" key={`${item.artifactId}-${slotIndex}`}
+        className={`rarity-${item.meta.rarity || 'common'}`} onClick={() => setArtifactUseId(item.artifactId)} aria-label={`${item.meta.name || titleize(item.artifactId)} relic`}>
+        {artifactImage(item.artifactId) ? <img src={artifactImage(item.artifactId)} alt="" /> : <span>R</span>}
+        {item.meta.useType === 'active' && <i aria-hidden="true" />}
+      </button> : <span key={`empty-relic-${slotIndex}`} aria-label="Empty relic slot" />)}
+    </div>}
+  </>;
 
   return (
-    <div className="expedition-dashboard">
+    <div className={`expedition-dashboard${headerSupplies ? ' has-battle-supplies' : ''}`}>
       <div className="expedition-game-topbar">
         <button type="button" className="expedition-nav-button" onClick={onClose}>Back</button>
-        <div className="expedition-game-title">
+        {headerSupplies ? <div className="expedition-inline-supplies" aria-label="Battle supplies">{supplyButtons}</div> : <div className="expedition-game-title">
           <span>Family Expedition</span>
           <strong>Root King</strong>
-        </div>
+        </div>}
         <div className="expedition-game-actions">
           <button type="button" className="expedition-nav-button" onClick={() => setShowMenu(true)}>Menu</button>
         </div>
       </div>
 
-      <div className="expedition-player-hud">
-        <div className={`expedition-hud-stat hp${heroRecovering ? ' danger' : ''}`}>
+      {!cardRoom && <div className="expedition-player-hud">
+        {!cardRoom && <><div className={`expedition-hud-stat hp${heroRecovering ? ' danger' : ''}`}>
           <span>HP</span>
           <strong>{heroRecovering ? 'KO' : `${member?.heroHp ?? 3}/3`}</strong>
         </div>
@@ -2223,30 +2263,9 @@ function ExpeditionDashboard({
         <div className="expedition-hud-role">
           <span>⚔️ {titleize(member?.role || 'Hero')}</span>
           <small>Class</small>
-        </div>
-        <button type="button" className={`expedition-hud-provision${provisionAvailable ? ' ready' : ''}`} onClick={() => setShowProvision(true)} disabled={!member?.provisionId}>
-          {member?.provisionId && assetById(provisionImages, member.provisionId) ? <img src={assetById(provisionImages, member.provisionId)} alt="" /> : <span>🍲</span>}
-          <small>Food</small>
-        </button>
-        <div className="expedition-hud-relics" aria-label="Equipped relics">
-          {equippedRelics.map((item, slotIndex) => item ? (
-            <button
-              type="button"
-              key={`${item.artifactId}-${slotIndex}`}
-              className={`rarity-${item.meta.rarity || 'common'}`}
-              onClick={() => setArtifactUseId(item.artifactId)}
-              aria-label={`${item.meta.name || titleize(item.artifactId)} relic`}
-            >
-              {artifactImage(item.artifactId)
-                ? <img src={artifactImage(item.artifactId)} alt="" />
-                : <span>R</span>}
-              {item.meta.useType === 'active' && <i aria-hidden="true" />}
-            </button>
-          ) : (
-            <span key={`empty-relic-${slotIndex}`} aria-label="Empty relic slot" />
-          ))}
-        </div>
-      </div>
+        </div></>}
+        {supplyButtons}
+      </div>}
 
       {state.permissions?.canFinish && (
         <button
@@ -2261,7 +2280,8 @@ function ExpeditionDashboard({
 
       {finishMessage && <p className="expedition-finish-hint">Expedition archived. History will show the final family record.</p>}
 
-      <RoomPanel
+      {cardRoom ? <CardRoomPanel room={cardRoom} combat={state.cardCombat} member={member} mutating={mutating} onCommand={onCardCommand}
+        onNext={() => setSelectedRoomKey(preferredExpeditionRoomKey(rooms, cardRoom.key))} /> : <RoomPanel
         room={selectedRoom}
         rooms={rooms}
         edges={edges}
@@ -2280,7 +2300,7 @@ function ExpeditionDashboard({
         onRollFxComplete={() => {}}
         currentMinigameAttempt={currentMinigameAttempt}
         transitionPhase={roomTransition?.roomKey === selectedRoomKey ? roomTransition.phase : null}
-      />
+      />}
 
       {showMenu && (
         <ExpeditionOverlay title="Expedition Menu" kicker="Records & rules" onClose={() => setShowMenu(false)}>
@@ -2359,7 +2379,7 @@ function ExpeditionDashboard({
 
       {showGuide && (
         <ExpeditionOverlay title="How Expeditions Work" kicker="Guide" onClose={() => setShowGuide(false)}>
-          <ExpeditionGuidePanel />
+          {state.cardCombat?.enabled ? <div className="expedition-mobile-menu"><p>One AP draws four cards and gives three energy. Play cards in any order, then end your turn to resolve the shown enemy attack. Your hand is saved when you leave.</p><p>The family shares enemy HP. Allies never trigger attacks against you. A defeated enemy lets you carry your remaining cards into another open combat room for free.</p><p>{state.cardCombat.class?.description} After helping clear an enemy room, choose a new card or skip to keep your deck small.</p></div> : <ExpeditionGuidePanel />}
         </ExpeditionOverlay>
       )}
 
@@ -2371,18 +2391,22 @@ function ExpeditionDashboard({
             quantity: 1,
           }}
           mode={artifactUse.meta.useType === 'active' ? 'use' : 'inspect'}
-          disabledReason={artifactUseDisabledReason}
+          disabledReason={artifactUseDisabledReason || (needsCardChoice && !discardChoices.some(card => card.id === recoverCardId) ? 'Choose a card from your discard.' : '')}
           onConfirm={() => handleUseArtifact(artifactUse.artifactId)}
           onClose={() => setArtifactUseId(null)}
-        />
+        >
+          {needsCardChoice && <div className="expedition-recover-cards" role="group" aria-label="Choose a discarded card">
+            {discardChoices.map(card => <button type="button" key={card.id} aria-pressed={recoverCardId === card.id} onClick={() => setRecoverCardId(card.id)}>
+              <strong>{card.name}{card.copies > 1 ? ` ×${card.copies}` : ''}</strong><small>{card.cost} energy · {card.text}</small>
+            </button>)}
+          </div>}
+        </ArtifactDetailSheet>
       )}
       {showProvision && member?.provisionId && (
         <ExpeditionOverlay title={provision?.name || titleize(member.provisionId)} kicker="Expedition provision" onClose={() => setShowProvision(false)}>
           <div className="expedition-provision-use">
             {assetById(provisionImages, member.provisionId) && <img src={assetById(provisionImages, member.provisionId)} alt="" />}
-            <p>{provision?.description || {
-              carrot_rations: 'Restore all AP now.', tomato_soup: 'Restore all HP now.', hearty_potato_meal: 'Add +2 damage to every successful attack in this combat room.', lucky_breakfast: 'Gain +1 extra progress on every successful mini-game attempt in this room.', warm_milk: 'Restore your class ability immediately.', truffle_treat: 'Upgrade your next artifact reward.', magic_squash_pie: 'Add +3 damage to every successful attack for the rest of this expedition.',
-            }[member.provisionId]}</p>
+            <p>{provision?.description}</p>
             {provisionDisabledReason && <p className="expedition-provision-reason">{provisionDisabledReason}</p>}
             <button type="button" className="btn btn-primary btn-full" disabled={Boolean(provisionDisabledReason)} onClick={async () => { const next = await onUseProvision(selectedRoom.key); if (next) setShowProvision(false); }}>
               {provisionAvailable ? 'Use Provision' : 'Already Used'}
@@ -2466,6 +2490,8 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   const prepareIdempotencyKeyRef = useRef(null);
   const finishIdempotencyKeyRef = useRef(null);
   const attemptIdempotencyKeysRef = useRef(new Map());
+  const cardIdempotencyKeysRef = useRef(new Map());
+  const cardMutationBusyRef = useRef(false);
   const scoutChoiceIdempotencyKeysRef = useRef(new Map());
   const minigameStartIdempotencyKeysRef = useRef(new Map());
   const minigameFinishIdempotencyKeysRef = useRef(new Map());
@@ -2549,7 +2575,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
 
   useEffect(() => {
     function refreshIfVisible() {
-      if (document.visibilityState !== 'visible' || mutating) return;
+      if (document.visibilityState !== 'visible' || mutating || cardMutationBusyRef.current) return;
       load({ silent: true });
     }
 
@@ -2641,6 +2667,19 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
     }
   }
 
+  async function handleCardCommand(operation, payload) {
+    if (cardMutationBusyRef.current) return null;
+    cardMutationBusyRef.current = true;
+    const signature = JSON.stringify({ expeditionId: state?.expedition?.id, operation, ...payload });
+    try {
+      const next = await mutateExpedition(expeditionId => api.expeditionCardCommand(expeditionId, operation, {
+        ...payload, idempotencyKey: getPendingMutationKey(cardIdempotencyKeysRef, signature, 'expedition-card'),
+      }), 'Could not play this card');
+      if (next) clearPendingMutationKey(cardIdempotencyKeysRef, signature);
+      return next;
+    } finally { cardMutationBusyRef.current = false; }
+  }
+
   async function handleAttemptRoom(roomKey, actionId, options = {}) {
     const payload = {
       actionId,
@@ -2730,8 +2769,8 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
     }
   }
 
-  async function handleUseArtifact(roomKey, artifactId) {
-    const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, roomKey, artifactId });
+  async function handleUseArtifact(roomKey, artifactId, selection = {}) {
+    const signature = JSON.stringify({ expeditionId: state?.expedition?.id || null, roomKey, artifactId, ...selection });
     if (!state?.expedition?.id) return null;
     loadSequenceRef.current += 1;
     setMutating(true);
@@ -2742,6 +2781,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
         roomKey,
         artifactId,
         getPendingMutationKey(artifactUseIdempotencyKeysRef, signature, 'expedition-artifact'),
+        selection,
       );
       setState(next);
       setState(await api.getExpeditionCurrent());
@@ -2862,7 +2902,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
   const isPrepared = hasExpedition && Boolean(state?.member);
 
   return (
-    <div className="expedition-shell">
+    <div className={`expedition-shell${state?.cardCombat?.enabled ? ' is-card-expedition' : ''}`}>
       {!isPrepared && (
         <div className="expedition-entry-topbar">
           <button type="button" className="expedition-nav-button" onClick={onClose}>Back</button>
@@ -2954,6 +2994,7 @@ export default function FamilyExpeditionTab({ onExpeditionChange, onClose } = {}
           archive={archive}
           mutating={mutating}
           onAttempt={handleAttemptRoom}
+          onCardCommand={handleCardCommand}
           onScoutChoice={handleScoutChoice}
           onMinigameStart={handleMinigameStart}
           onMinigameFinish={handleMinigameFinish}

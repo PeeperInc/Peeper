@@ -166,6 +166,42 @@ function inTx(db, fn) {
   return db.transaction(fn)();
 }
 
+test('card loot supplies affect final rewards: one actual rarity upgrade, paid-room compass rolls and Mimic coin share',()=>{
+  const db=rewardDb();addUser(db,10);
+  db.exec(`CREATE TABLE family_expedition_actions (
+    id INTEGER PRIMARY KEY, expedition_id INTEGER, room_id INTEGER, user_id INTEGER, action_type TEXT, modifier_json TEXT
+  )`);
+  const expeditionId=createFinishedExpedition(db,{
+    rooms:['a','b','unused'].map(key=>({key,type:'combat',state:'cleared',loot:{coins:{min:10,max:10},artifactRolls:0}})),
+    members:[{userId:10,contributionAp:2,loadout:[{artifactId:'mimic_tooth'}]}],
+  });
+  const rows=db.prepare('SELECT id, room_key FROM family_expedition_rooms WHERE expedition_id=? ORDER BY id').all(expeditionId);
+  for(const room of rows) {
+    if(room.room_key!=='unused') db.prepare("INSERT INTO family_expedition_actions (expedition_id,room_id,user_id,action_type,modifier_json) VALUES (?,?,10,'card_draw','{}')").run(expeditionId,room.id);
+    db.prepare("INSERT INTO family_expedition_actions (expedition_id,room_id,user_id,action_type,modifier_json) VALUES (?,?,10,'use_artifact',?)")
+      .run(expeditionId,room.id,JSON.stringify({artifactId:'crooked_compass'}));
+  }
+  db.prepare('UPDATE family_expedition_members SET provision_state_json=? WHERE expedition_id=?')
+    .run(JSON.stringify({used:true,upgradeLootRarity:{uses:1,tiers:1,mode:'tier'}}),expeditionId);
+  const [reward]=inTx(db,()=>createPendingRewards(db,{expeditionId,now:11000,rng:()=>0.99}));
+  const {ARTIFACTS}=require('./catalog');
+  assert.deepEqual(reward.payload.artifacts.map(item=>ARTIFACTS[item.artifactId].rarity),['rare','common']);
+  assert.equal(reward.payload.roomCoins,90);
+  assert.deepEqual(inTx(db,()=>createPendingRewards(db,{expeditionId,now:11001,rng:()=>0}))[0].payload,reward.payload);
+  db.close();
+});
+
+test('card truffle rarity upgrade caps at legendary while legacy food keeps weighted-table behavior',()=>{
+  for(const [mode,rng,expected] of [['tier',()=>0,'legendary'],['tier',()=>0.99,'rare'],[undefined,()=>0.99,'common']]) {
+    const db=rewardDb();addUser(db,10);
+    const expeditionId=createFinishedExpedition(db,{members:[{userId:10,contributionAp:3}]});
+    db.prepare('UPDATE family_expedition_members SET provision_state_json=? WHERE expedition_id=?')
+      .run(JSON.stringify({upgradeLootRarity:{uses:1,tiers:1,mode}}),expeditionId);
+    const [reward]=inTx(db,()=>createPendingRewards(db,{expeditionId,now:11000,rng}));
+    const {ARTIFACTS}=require('./catalog');assert.equal(ARTIFACTS[reward.payload.artifacts[0].artifactId].rarity,expected);db.close();
+  }
+});
+
 test('zero contribution creates no pending reward and exports only the public helpers', () => {
   assert.deepEqual(Object.keys(require('./rewards.js')).sort(), [
     'backfillLegacyRewards',

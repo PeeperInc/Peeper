@@ -850,7 +850,7 @@ function ChatTab({ family, currentUserId, onMessagesRead }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
+    <div data-native-text="true" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
       {/* Messages */}
       <div
         ref={messagesRef}
