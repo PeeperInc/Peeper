@@ -207,6 +207,22 @@ test('full pets and mismatched recipients do not receive hunger widgets', async 
   assert.equal(calls, 0);
 });
 
+test('an administrative preview can resend a fed pet without changing its state', async () => {
+  const full = player({ hunger: 100, coins: 5200, fridge: true });
+  const originalPet = pet(full.id);
+  let payload;
+  const result = await sendHungerWidget(full.id, full.telegramId, {
+    onlyIfHungry: false,
+    call: async (_method, body) => { payload = body; return { ok: true, result: { message_id: 123456 } }; },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(JSON.parse(payload.chat_data).h, 100);
+  assert.equal(balance(full.id), 5200);
+  assert.equal(pet(full.id).last_fed, originalPet.last_fed);
+  assert.equal(pet(full.id).fridge_food_until, originalPet.fridge_food_until);
+  assert.equal((await sendHungerWidget(full.id, '1', { onlyIfHungry: false })).ok, false);
+});
+
 test('notifier preserves hunger thresholds, preferences, delivery retries and cooldowns', async () => {
   const { checkHungerNotification } = require('./notifier')._notificationInternals;
   const { toggleNotificationSetting } = require('./notificationSettings');

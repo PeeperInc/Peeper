@@ -79,22 +79,23 @@ function caption(state) {
   const name = escapeHtml(state.name);
   if (!state.a) return `🐸 <b>${name}</b> needs you. Open Peeper to check on your pet.`;
   const status = state.h <= 0 ? 'is starving!' : state.h <= 30 ? 'is getting hungry!' : 'has been fed.';
-  return `🍽 <b>${name} ${status}</b>\nHunger: ${Math.round(state.h)}% · HP: ${Math.round(state.p)}% · Balance: ${state.c} ✦\n${state.h <= 0 ? 'HP is draining! Feed your Peeper or stock your Fridge below.' : state.h <= 70 ? 'Feed your Peeper or stock your Fridge below.' : state.fr.a ? 'Your Fridge is stocked.' : 'Your Peeper is not hungry yet.'}`;
+  return `🍽 <b>${name} ${status}</b>${state.h <= 30 ? ` (${Math.round(state.h)}%)` : ''}${state.h <= 0 ? ' HP is draining!' : ''}`;
 }
 
-async function sendHungerWidget(userId, telegramId, { token, call = callTelegram, now = ts() } = {}) {
+async function sendHungerWidget(userId, telegramId, { token, call = callTelegram, now = ts(), onlyIfHungry = true } = {}) {
   const user = db.prepare('SELECT telegram_id FROM users WHERE id = ?').get(userId);
   if (!user || String(user.telegram_id) !== String(telegramId)) return { ok: false };
   db.prepare('DELETE FROM hunger_widgets WHERE expires_at <= ?').run(now);
   const row = { nonce: randomBytes(8).toString('hex'), user_id: userId, chat_id: String(telegramId), revision: 0, expires_at: now + WIDGET_TTL };
   const state = snapshot(row, now);
-  if (!state.a || state.h > 30) return { ok: false };
+  // Administrative previews may show a fed pet without changing its live state.
+  if (!state.a || (onlyIfHungry && state.h > 30)) return { ok: false };
   db.prepare('INSERT INTO hunger_widgets (nonce, user_id, chat_id, expires_at) VALUES (?, ?, ?, ?)')
     .run(row.nonce, userId, row.chat_id, row.expires_at);
   let result;
   try {
     result = await call('sendWidget', {
-      chat_id: telegramId, html: HUNGER_WIDGET_HTML, allow_queries: true,
+      chat_id: telegramId, html: HUNGER_WIDGET_HTML, width: 300, allow_queries: true,
       chat_data: JSON.stringify(state), caption: caption(state), parse_mode: 'HTML',
       reply_markup: { inline_keyboard: [[{ text: '🐸 Open Peeper', web_app: { url: APP_URL }, style: 'success' }]] },
     }, token);
