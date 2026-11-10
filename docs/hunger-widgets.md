@@ -24,4 +24,6 @@ Tests cover purchases, balance/state changes, catalog parity, duplicate and stal
 
 Initial live delivery, fridge purchasing and state updates were verified in production on November 10, 2026. Layout revisions still need checking in Telegram: local browser rendering emulates `TelegramWidget` and does not replace testing Telegram's native renderer.
 
+Telegram Desktop has a reported ru-RU JSON parsing bug ([tdesktop#31597](https://github.com/telegramdesktop/tdesktop/issues/31597)): adjacent numbers such as `1,30` or `3,150` are read as `1.3,30` and `3.15,150`. The snapshot sends meal display prices and plan day counts as strings, preventing numeric adjacency in catalog arrays. Feeding effects, balances, revisions and server-side purchase rules retain their numeric types. This works with already-sent layouts as well as new messages. Widget typography inherits the client's chat font instead of forcing a generic family, with regular-weight small labels; native text antialiasing remains controlled by Telegram.
+
 References: [Telegram Widgets](https://core.telegram.org/bots/widgets), [sendWidget](https://core.telegram.org/bots/api#sendwidget), [widget queries](https://core.telegram.org/bots/api#widgetquery).

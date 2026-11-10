@@ -68,9 +68,12 @@ function snapshot(row, now = ts()) {
     n: row.nonce, r: row.revision, t: now,
     name: shortText(Array.from(peeper?.name || 'Peeper').slice(0, 24).join(''), 96),
     c: user?.coins || 0, a: stats.alive, h: stats.hunger, p: stats.hp,
-    f: Object.entries(FOOD_TYPES).map(([type, food]) => [type, food.label, food.emoji, food.cost, food.hunger]),
+    // Desktop ru-RU can parse adjacent JSON numbers 1,30 as 1.3,30
+    // (tdesktop#31597). Keep display prices/days as text so old widgets also
+    // receive unambiguous values without changing server-side money rules.
+    f: Object.entries(FOOD_TYPES).map(([type, food]) => [type, food.label, food.emoji, String(food.cost), food.hunger]),
     fr: { o: fridge.owned, a: fridge.active, u: fridge.foodUntil, c: fridge.purchaseCost,
-      plans: fridge.plans.map(plan => [plan.type, plan.days, plan.cost]) },
+      plans: fridge.plans.map(plan => [plan.type, String(plan.days), plan.cost]) },
   };
 }
 

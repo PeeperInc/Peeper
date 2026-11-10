@@ -68,10 +68,34 @@ test('notification contains the game food catalog, prices and both fridge plans'
   const { sent, state } = await notification({ fridge: true });
   assert.equal(sent.allow_queries, true);
   assert.equal(sent.html, HUNGER_WIDGET_HTML);
-  assert.deepEqual(state.f, Object.entries(FOOD_TYPES).map(([key, food]) => [key, food.label, food.emoji, food.cost, food.hunger]));
-  assert.deepEqual(state.fr.plans, Object.values(FRIDGE_PLANS).map(p => [p.type, p.days, p.cost]));
+  assert.deepEqual(state.f, Object.entries(FOOD_TYPES).map(([key, food]) => [key, food.label, food.emoji, String(food.cost), food.hunger]));
+  assert.deepEqual(state.fr.plans, Object.values(FRIDGE_PLANS).map(p => [p.type, String(p.days), p.cost]));
   assert.equal(state.fr.o, true);
   assert.ok(Buffer.byteLength(sent.chat_data) <= 1024);
+});
+
+test('decimal-comma Desktop parsing cannot merge meal prices with effects or fridge days with costs', async () => {
+  // Reproduce tdesktop#31597: the JSON tokenizer keeps the array length,
+  // but a number conversion reads the following comma/digits as decimals.
+  function desktopParse(json) {
+    return JSON.parse(json.replace(/"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?/g, (token, offset) => {
+      if (token.startsWith('"')) return token;
+      const next = json.slice(offset + token.length).match(/^,(\d+)/);
+      return next ? String(Number(`${token}.${next[1]}`)) : token;
+    }));
+  }
+  assert.deepEqual(desktopParse('[1,30]'), [1.3, 30]);
+  assert.deepEqual(desktopParse('[3,150]'), [3.15, 150]);
+  const f = await notification({ fridge: true });
+  const check = state => {
+    assert.deepEqual(state.f.map(meal => meal[3]), ['1', '2', '3']);
+    assert.deepEqual(state.fr.plans.map(plan => plan[1]), ['3', '7']);
+    assert.deepEqual(state.f.map(meal => meal[4]), [30, 60, 100]);
+  };
+  check(desktopParse(f.sent.chat_data));
+  await f.ask('refresh');
+  check(desktopParse(f.calls.find(c => c.method === 'answerWidgetQuery').body.data).s);
+  check(desktopParse(f.calls.find(c => c.method === 'editMessageWidgetData').body.chat_data));
 });
 
 test('feeding updates this message and debits once across concurrent duplicate queries', async () => {
