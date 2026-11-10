@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../database');
 const { validateTelegramInit } = require('../auth');
-const { liveStats, calcEnergy, FOOD_TYPES, HUNGER_DRAIN, FUN_DRAIN } = require('../gameLogic');
+const { liveStats, calcEnergy, FUN_DRAIN } = require('../gameLogic');
 const {
   DIRTY_STATES,
   ts,
@@ -14,7 +14,7 @@ const {
   syncOwnedPeeper,
   syncPeeperRow,
 } = require('../peeperState');
-const { getHomeSummary, grantFridgeHomeDecor } = require('../homeState');
+const { getHomeSummary } = require('../homeState');
 const {
   getPublicAppSettings,
   getCasinoJackpot,
@@ -30,12 +30,8 @@ const {
   getEnergyDrinkState,
   getEnergyDrinkUsage,
 } = require('../energyDrinkState');
-const {
-  FRIDGE_PURCHASE_COST,
-  getFridgePlan,
-  getFridgeState,
-  extendFridgeFoodUntil,
-} = require('../fridgeState');
+const { getFridgeState } = require('../fridgeState');
+const { performCareAction } = require('../careActions');
 const { getFarmSummary } = require('../farmState');
 const { getSupporterSummary } = require('../supportState');
 const { getNextDirtyAt } = require('../dirtyCycle');
@@ -80,10 +76,6 @@ const CASINO_NORMAL_SYMBOLS = [
 ];
 const CASINO_SPECIAL_SYMBOL = 'sino';
 
-// Convert desired hunger% back to a last_fed timestamp
-function hungerToLastFed(newHunger, now) {
-  return now - Math.round(HUNGER_DRAIN * (1 - newHunger / 100));
-}
 // Convert desired fun% back to a last_played timestamp
 function funToLastPlayed(newFun, now) {
   return now - Math.round(FUN_DRAIN * (1 - newFun / 100));
@@ -317,10 +309,16 @@ router.get('/casino/state', validateTelegramInit, (req, res) => {
 // ── POST /api/game/feed ──────────────────────────────────────────────────────
 router.post('/feed', validateTelegramInit, (req, res) => {
   const requestedType = req.body.foodType;
-  const fridgePlan = getFridgePlan(requestedType);
-  const isFridgeAction = requestedType === 'fridge_buy' || Boolean(fridgePlan);
-  if (requestedType !== 'energy_drink' && !FOOD_TYPES[requestedType] && !isFridgeAction) {
-    return res.status(400).json({ error: 'Invalid food type' });
+  if (requestedType !== 'energy_drink') {
+    const user = getUser(req);
+    const result = performCareAction(user?.id ?? -1, requestedType);
+    if (result.error) {
+      return res.status(result.statusCode).json({
+        error: result.error,
+        ...(result.includeState && user ? buildResponse(user.id) : {}),
+      });
+    }
+    return res.json({ ...result, ...buildResponse(user.id) });
   }
 
   const user   = getUser(req);
@@ -333,70 +331,6 @@ router.post('/feed', validateTelegramInit, (req, res) => {
   if (!live.alive) {
     applyDeath(user.id, true);
     return res.status(400).json({ error: `Your Peeper has passed away ${CRYING_FACE_SYMBOL}` });
-  }
-
-  if (requestedType === 'fridge_buy') {
-    if (Number(peeper.fridge_owned) === 1) {
-      return res.status(400).json({ error: 'You already own a Fridge.', ...buildResponse(user.id) });
-    }
-
-    if (user.coins < FRIDGE_PURCHASE_COST) {
-      return res.status(400).json({
-        error: `Not enough coins! Need ${FRIDGE_PURCHASE_COST} ${COIN_SYMBOL}`,
-        ...buildResponse(user.id),
-      });
-    }
-
-    const now = ts();
-    db.transaction(() => {
-      db.prepare(`
-        UPDATE peepers
-        SET fridge_owned = 1,
-            fridge_purchased_at = ?
-        WHERE user_id = ?
-      `).run(now, user.id);
-      db.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').run(FRIDGE_PURCHASE_COST, user.id);
-      grantFridgeHomeDecor(user.id);
-    })();
-
-    return res.json({
-      message: `Fridge purchased! Stock it with food to keep ${peeper.name || 'Peeper'} full while you are away.`,
-      coinsSpent: FRIDGE_PURCHASE_COST,
-      ...buildResponse(user.id),
-    });
-  }
-
-  if (fridgePlan) {
-    if (Number(peeper.fridge_owned) !== 1) {
-      return res.status(400).json({ error: 'Buy a Fridge first.', ...buildResponse(user.id) });
-    }
-
-    if (user.coins < fridgePlan.cost) {
-      return res.status(400).json({
-        error: `Not enough coins! Need ${fridgePlan.cost} ${COIN_SYMBOL}`,
-        ...buildResponse(user.id),
-      });
-    }
-
-    const now = ts();
-    const newFoodUntil = extendFridgeFoodUntil(peeper.fridge_food_until, fridgePlan.days, now);
-
-    db.transaction(() => {
-      db.prepare(`
-        UPDATE peepers
-        SET hp = ?,
-            last_fed = ?,
-            fridge_food_until = ?
-        WHERE user_id = ?
-      `).run(live.hp, now, newFoodUntil, user.id);
-      db.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').run(fridgePlan.cost, user.id);
-    })();
-
-    return res.json({
-      message: `Fridge stocked for ${fridgePlan.days} days.`,
-      coinsSpent: fridgePlan.cost,
-      ...buildResponse(user.id),
-    });
   }
 
   if (requestedType === 'energy_drink') {
@@ -447,22 +381,6 @@ router.post('/feed', validateTelegramInit, (req, res) => {
       ...buildResponse(user.id),
     });
   }
-
-  const food = FOOD_TYPES[requestedType];
-  if (live.hunger > 70) return res.status(400).json({ error: `${peeper.name || 'Peeper'} is not hungry yet! (${Math.round(live.hunger)}%)` });
-  if (user.coins < food.cost) return res.status(400).json({ error: `Not enough coins! Need ${food.cost} ${COIN_SYMBOL}` });
-
-  const now        = ts();
-  const newHunger  = Math.min(100, live.hunger + food.hunger);
-  const newLastFed = hungerToLastFed(newHunger, now);
-
-  // Save current live HP as the new snapshot (hp = HP at new last_fed)
-  db.transaction(() => {
-    db.prepare('UPDATE peepers SET hp=?, last_fed=? WHERE user_id=?').run(live.hp, newLastFed, user.id);
-    db.prepare('UPDATE users SET coins=coins-? WHERE id=?').run(food.cost, user.id);
-  })();
-
-  res.json({ message: `${food.emoji} Yum! ${peeper.name || 'Peeper'} enjoyed the ${food.label}!`, coinsSpent: food.cost, ...buildResponse(user.id) });
 });
 
 // ── POST /api/game/play ──────────────────────────────────────────────────────

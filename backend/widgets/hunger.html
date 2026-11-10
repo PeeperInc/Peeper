@@ -1,0 +1,52 @@
+<style>
+body{margin:0;padding:14px;font-family:system-ui,sans-serif;color:var(--tg-theme-text-color);font-size:14px}
+*{box-sizing:border-box}[hidden]{display:none!important}button{font-family:inherit;cursor:pointer}button:disabled{cursor:default}
+.heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.heading strong{font-size:18px;font-weight:800}.coins{background:rgba(243,156,18,.12);color:#d78a0a;padding:3px 10px;border-radius:99px;font-size:13px;font-weight:700}
+.hint{font-size:12px;color:var(--tg-theme-hint-color);margin:6px 0 14px;overflow-wrap:anywhere}.list{display:flex;flex-direction:column;gap:10px}
+.meal{display:flex;align-items:center;gap:14px;width:100%;padding:14px 16px;border-radius:16px;background:var(--tg-theme-secondary-bg-color);border:2px solid var(--edge);text-align:left;color:var(--tg-theme-text-color)}
+.icon{font-size:36px;line-height:1.1}.detail{flex:1;min-width:0}.name{font-size:15px;font-weight:700;display:block}.effect{font-size:12px;color:var(--tg-theme-hint-color);display:block;margin-top:2px}.price{background:var(--tint);color:var(--food);padding:6px 12px;border-radius:10px;font-weight:800;font-size:15px;white-space:nowrap}.bar{height:3px;background:var(--tg-theme-section-separator-color);border-radius:99px;margin-top:6px}.fill{height:100%;border-radius:99px;background:var(--food)}
+.meal:disabled{border-color:var(--tg-theme-section-separator-color);opacity:.6}.meal:active:not(:disabled){transform:scale(.99)}
+.fridge{padding:14px;border:2px solid rgba(122,198,255,.34);border-radius:16px;background:linear-gradient(135deg,rgba(122,198,255,.16),rgba(39,174,96,.1))}.fridge .name{font-weight:800}.fridge .icon{font-size:30px}.row{display:flex;align-items:center;gap:12px}.plans{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.plan{min-height:42px;border-radius:13px;border:1px solid rgba(74,163,255,.28);background:rgba(74,163,255,.12);color:#4aa3ff;font-size:13px;font-weight:800;padding:8px}.plan:disabled{color:var(--tg-theme-hint-color);opacity:.55}.buy{--food:#4aa3ff;--edge:rgba(122,198,255,.34);--tint:rgba(122,198,255,.16)}
+.status{display:flex;align-items:center;gap:8px;margin-top:10px}#note{flex:1;font-size:12px;line-height:1.4;margin:0;color:var(--tg-theme-hint-color);overflow-wrap:anywhere}.refresh{background:transparent;border:0;color:var(--tg-theme-link-color);font-size:12px;min-height:36px;padding:6px}.confirm p{font-size:13px;line-height:1.55;color:var(--tg-theme-hint-color)}.actions{display:flex;gap:10px}.actions button{flex:1}.primary{background:var(--tg-theme-button-color);color:var(--tg-theme-button-text-color)}
+@media(max-width:270px){body{padding:10px}.meal{padding:10px;gap:8px}.icon{font-size:26px}.price{padding:6px 8px;font-size:13px}.heading strong{font-size:16px}.effect{font-size:11px}.list{gap:8px}.hint{margin-bottom:10px}.fridge{padding:10px}.plans{gap:6px}.plan{font-size:12px;padding:7px 4px}.confirm p{font-size:12px;line-height:1.4;margin:10px 0}}
+@media(prefers-reduced-motion:reduce){.meal:active:not(:disabled){transform:none}}
+</style>
+<div class="heading"><strong id="title">Feed your Peeper 🍽</strong><span class="coins" id="coins"></span></div>
+<div class="hint" id="summary"></div><main id="menu" class="list"></main><section id="confirm" class="confirm" hidden></section><div class="status"><p id="note"></p><button class="refresh" id="refresh" data-action="refresh">Refresh</button></div>
+<script>
+const W=window.TelegramWidget;
+let s={},busy=false,confirmBuy=false,note='',lastRefresh=0;
+const $=id=>document.getElementById(id);
+const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const colors={apple:['#e74c3c','#e74c3c40','#e74c3c22'],chicken:['#e67e22','#e67e2240','#e67e2222'],pizza:['#27ae60','#27ae6040','#27ae6022']};
+function remaining(until){const m=Math.max(1,Math.ceil((until-Date.now()/1000)/60));return m>=1440?Math.floor(m/1440)+'d '+Math.floor(m%1440/60)+'h':m>=60?Math.floor(m/60)+'h '+m%60+'m':m+'m'}
+function render(){
+ const locked=busy||!s.a||s.x;
+ $('title').textContent=confirmBuy?'Buy Fridge?':s.a?'Feed your Peeper 🍽':'Peeper needs you';
+ $('coins').textContent='✦ '+(s.c||0);
+ $('summary').textContent='Hunger: '+Math.round(s.h||0)+'% · HP: '+Math.round(s.p||0)+'%';
+ $('menu').hidden=confirmBuy;$('confirm').hidden=!confirmBuy;
+ if(confirmBuy){
+  $('confirm').innerHTML='<div class="row"><span class="icon">🧊</span><strong>'+s.fr.c+' ✦</strong></div><p>Fridge is permanent, but it does not feed Peeper by itself. After buying it, you can stock food for <strong>3 days</strong> or <strong>7 days</strong>.</p><p>'+s.fr.plans.map(p=>p[1]+' days stock costs '+p[2]+' ✦').join('<br>')+'<br>While stocked, Peeper stays full and cannot die from hunger.<br>When stock ends, hunger starts draining from that moment.</p><div class="actions"><button class="plan" data-action="cancel" '+(busy?'disabled':'')+'>Cancel</button><button class="plan primary" data-action="fridge_buy" '+(locked||s.c<s.fr.c?'disabled':'')+'>'+(busy?'Buying...':'Buy Fridge · '+s.fr.c+' ✦')+'</button></div>';
+ }else if(s.f){
+  let html=s.f.map(f=>{const c=colors[f[0]],fill=Math.min(100,s.h+f[4]);return '<button class="meal" style="--food:'+c[0]+';--edge:'+c[1]+';--tint:'+c[2]+'" data-action="'+f[0]+'" '+(locked||s.c<f[3]||s.h>70?'disabled':'')+'><span class="icon">'+esc(f[2])+'</span><span class="detail"><span class="name">'+esc(f[1])+'</span><span class="effect">+'+f[4]+'% hunger → '+Math.round(fill)+'%</span><span class="bar" style="display:block"><span class="fill" style="display:block;width:'+fill+'%"></span></span></span><span class="price">'+f[3]+' ✦</span></button>'}).join('');
+  if(s.fr.o){html+='<div class="fridge"><div class="row"><span class="icon">🧊</span><span><span class="name">Fridge</span><span class="effect">'+(s.fr.a?'Stocked for '+remaining(s.fr.u):'Empty')+'</span></span></div>'+(s.fr.a?'':'<div class="plans">'+s.fr.plans.map(p=>'<button class="plan" data-action="'+p[0]+'" '+(locked||s.c<p[2]?'disabled':'')+'>'+p[1]+' days · '+p[2]+' ✦</button>').join('')+'</div>')+'</div>'}
+  else html+='<button class="meal buy" data-action="buy" '+(locked?'disabled':'')+'><span class="icon">🧊</span><span class="detail"><span class="name">Fridge</span><span class="effect">Unlock food stock for 3 or 7 days</span></span><span class="price">'+s.fr.c+' ✦</span></button>';
+  $('menu').innerHTML=html;
+ }
+ $('note').textContent=busy?'Updating…':note||(confirmBuy&&s.c<s.fr.c?'Not enough coins. You have '+s.c+' ✦.':!s.a?'Open Peeper to take care of your pet.':s.fr&&s.fr.a?'Fridge keeps Peeper full.':s.h>70?'Your Peeper is not hungry yet.':s.h<=0?'HP is draining — feed your Peeper.':'Choose your meal — the price is in coins.');
+ $('refresh').disabled=busy||Boolean(s.x);
+}
+function accept(next){if(next&&(s.r===undefined||next.r>s.r||next.r===s.r&&next.t>=s.t)){s=next;if(s.fr.o)confirmBuy=false}}
+function read(){try{accept(JSON.parse(W.chatData))}catch(e){}render()}
+function request(action){
+ if(busy||!W||!s.n||s.x)return;
+ busy=true;note='';render();
+ W.request('care:'+s.n+':'+(action==='refresh'?'refresh':s.r+':'+action)).then(a=>{
+  const result=JSON.parse(a.result||'{}');accept(result.s);if(result.x)s.x=true;note=result.m||'';
+ },e=>{note=({BUSY:'Please wait, then try again.',RATE_LIMITED:'Too many requests. Wait a few seconds.',TIMEOUT:'No reply yet. Refresh before trying again.',NOT_ALLOWED:'Open this notification in your private chat with Peeper.',FAILED:'Could not connect. Please refresh.',INVALID_ANSWER:'Could not read the reply. Please refresh.'})[e.code]||'Could not update. Please refresh.'}).catch(()=>{note='Could not read the reply. Please refresh.'}).finally(()=>{busy=false;render()});
+}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;const a=b.dataset.action;if(a==='buy'){confirmBuy=true;render()}else if(a==='cancel'){confirmBuy=false;render()}else request(a)});
+function refresh(){if(W&&!busy&&!document.hidden&&Date.now()-lastRefresh>5000){lastRefresh=Date.now();request('refresh')}}
+if(W){W.onEvent('chatDataChanged',read);W.onEvent('activated',refresh);read();W.ready();refresh();setInterval(refresh,60000)}
+</script>

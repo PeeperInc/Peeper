@@ -33,7 +33,7 @@ function getFridgeState(peeper, nowTs = ts()) {
 }
 
 function getFridgePlan(type) {
-  return FRIDGE_PLANS[type] || null;
+  return Object.hasOwn(FRIDGE_PLANS, type) ? FRIDGE_PLANS[type] : null;
 }
 
 function extendFridgeFoodUntil(currentFoodUntil, days, nowTs = ts()) {

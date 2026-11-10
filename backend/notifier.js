@@ -13,6 +13,7 @@
 
 const db      = require('./database');
 const { liveStats } = require('./gameLogic');
+const { sendHungerWidget } = require('./hungerWidgets');
 const { isNotificationEnabled } = require('./notificationSettings');
 const { getFarmCropReadiness, getFarmAnimalReadiness } = require('./farmState');
 const { regenerateAp } = require('./expeditions/engine');
@@ -91,6 +92,15 @@ async function sendMessage(telegramId, text, token = botToken) {
 async function sendCareNotification(userId, telegramId, text) {
   if (!isNotificationEnabled(userId, 'care_notifications')) return;
   await sendMessage(telegramId, text);
+}
+
+async function checkHungerNotification({ userId, telegramId, live, token = botToken, send = sendHungerWidget }) {
+  if (live.hunger > 40) clearFlag(userId, 'hunger_30');
+  if (live.hunger > 5) clearFlag(userId, 'hunger_zero');
+  const type = live.hunger <= 0 ? 'hunger_zero' : live.hunger <= 30 ? 'hunger_30' : null;
+  if (!type || !shouldSend(userId, type) || !isNotificationEnabled(userId, 'care_notifications')) return;
+  const delivered = await send(userId, telegramId, { token });
+  if (delivered.ok) markSent(userId, type);
 }
 
 async function sendFarmNotification(userId, telegramId, text) {
@@ -343,29 +353,9 @@ async function checkAll() {
       clearFlag(userId, 'fun_zero');
     }
 
-    // ── HUNGER ≤ 30% ─────────────────────────────────────────────────
-    if (live.hunger <= 30 && live.hunger > 0) {
-      if (shouldSend(userId, 'hunger_30')) {
-        await sendCareNotification(userId, telegramId,
-          `🍽 <b>${name} is getting hungry! (${Math.round(live.hunger)}%)</b>\n\nFeed soon — if hunger hits 0, HP starts draining. 🍎`
-        );
-        markSent(userId, 'hunger_30');
-      }
-    } else if (live.hunger > 40) {
-      clearFlag(userId, 'hunger_30');
-    }
-
-    // ── HUNGER = 0 ────────────────────────────────────────────────────
-    if (live.hunger <= 0) {
-      if (shouldSend(userId, 'hunger_zero')) {
-        await sendCareNotification(userId, telegramId,
-          `🚨 <b>${name} is starving!</b>\n\nHunger is 0 — HP is draining now. Feed immediately or ${name} will die in ~36 hours! 🍕`
-        );
-        markSent(userId, 'hunger_zero');
-      }
-    } else if (live.hunger > 5) {
-      clearFlag(userId, 'hunger_zero');
-    }
+    // Hunger alerts are interactive HTML widgets with the game's food menu.
+    // Mark delivered only after Telegram accepted the widget.
+    await checkHungerNotification({ userId, telegramId, live });
 
     // ── HP ≤ 50% ──────────────────────────────────────────────────────
     if (live.hp <= 50 && live.hp > 10) {
@@ -420,7 +410,7 @@ module.exports = {
   stop,
   checkExpeditionNotifications,
   checkFrontierNotifications,
-  _notificationInternals: { sendMessage },
+  _notificationInternals: { sendMessage, checkHungerNotification },
   _expeditionNotificationInternals: {
     getExpeditionApFullRows,
     getExpeditionFinishedRows,

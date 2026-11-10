@@ -84,7 +84,7 @@ const httpServer = app.listen(PORT, () => {
       body:    JSON.stringify({
         url: webhookUrl,
         secret_token: webhookSecret,
-        allowed_updates: ['message', 'callback_query', 'inline_query', 'pre_checkout_query'],
+        allowed_updates: ['message', 'callback_query', 'widget_query', 'inline_query', 'pre_checkout_query'],
       }),
     })
       .then(r => r.json())

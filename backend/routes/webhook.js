@@ -27,6 +27,7 @@ const {
   resolveTargetUser,
 } = require('../telegramCommandTarget');
 const { liveStats } = require('../gameLogic');
+const { handleHungerWidgetQuery } = require('../hungerWidgets');
 const { getFullHomeState } = require('../homeState');
 const { syncOwnedPeeper } = require('../peeperState');
 const { renderHomeScene, renderVisitHomeScene } = require('../homeRenderer');
@@ -1644,6 +1645,11 @@ router.post('/', express.json(), async (req, res) => {
 
   try {
     const update  = req.body;
+
+    if (update?.widget_query) {
+      await handleHungerWidgetQuery(update.widget_query);
+      return;
+    }
 
     if (update?.inline_query) {
       await handleInlineQuery(update.inline_query);
