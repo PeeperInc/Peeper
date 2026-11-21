@@ -47,7 +47,7 @@ async function callTelegram(method, body, token = process.env.BOT_TOKEN) {
       // Repeating the same state edit is success, including after a delivery retry.
       if (method.startsWith('edit') && /message is not modified/i.test(result.description || '')) return { ok: true };
       if (code !== 403) console.warn(`[hunger-widget] ${method} rejected:`, code);
-      return { ok: false, permanent: [400, 403, 404].includes(code),
+      return { ok: false, code, permanent: [400, 403, 404].includes(code),
         ...(code === 429 ? { retryAfter: Math.max(1, Number(result.parameters?.retry_after) || 60) } : {}) };
     }
     return result;

@@ -94,13 +94,39 @@ async function sendCareNotification(userId, telegramId, text) {
   await sendMessage(telegramId, text);
 }
 
-async function checkHungerNotification({ userId, telegramId, live, token = botToken, send = sendHungerWidget }) {
+async function checkHungerNotification({ userId, telegramId, live, token = botToken, send = sendHungerWidget, sendText = sendMessage }) {
   if (live.hunger > 40) clearFlag(userId, 'hunger_30');
   if (live.hunger > 5) clearFlag(userId, 'hunger_zero');
   const type = live.hunger <= 0 ? 'hunger_zero' : live.hunger <= 30 ? 'hunger_30' : null;
-  if (!type || !shouldSend(userId, type) || !isNotificationEnabled(userId, 'care_notifications')) return;
-  const delivered = await send(userId, telegramId, { token });
-  if (delivered.ok) markSent(userId, type);
+  if (!type || !telegramId || live.alive === false || !claimHungerAlert(userId, type)) return;
+  try {
+    const latestStatus = () => {
+      const pet = db.prepare('SELECT * FROM peepers WHERE user_id = ?').get(userId);
+      return pet && isNotificationEnabled(userId, 'care_notifications') ? liveStats(pet) : null;
+    };
+    let status = latestStatus();
+    if (!status?.alive || status.hunger > 30) return;
+
+    let delivered = await send(userId, telegramId, { token });
+    // Fall back only after a definite rejection. A timeout can have delivered
+    // the widget, and sending plain text would duplicate it.
+    if (!delivered.ok && [400, 404].includes(delivered.code)) {
+      status = latestStatus();
+      if (!status?.alive || status.hunger > 30) return;
+      const text = status.hunger <= 0
+        ? '🚨 <b>Your Peeper is starving!</b>\nSatiety is at 0% and health is dropping. Open Peeper to feed your pet.'
+        : `🍽 <b>Your Peeper is getting hungry!</b>\nSatiety: ${Math.round(status.hunger)}%. Open Peeper to feed your pet.`;
+      delivered = await sendText(telegramId, text, token);
+      if (delivered.ok) delivered = { ...delivered, format: 'text' };
+    }
+    if (delivered.ok) {
+      markSent(userId, type);
+      if (type !== 'hunger_zero' && status.hunger <= 0) markSent(userId, 'hunger_zero');
+    }
+    return delivered;
+  } finally {
+    clearFlag(userId, HUNGER_ALERT_CLAIM);
+  }
 }
 
 async function sendFarmNotification(userId, telegramId, text) {
@@ -145,6 +171,17 @@ function shouldSend(userId, type) {
   if (cooldown === 0) return false;           // one-shot until cleared
   return (ts() - sentAt) >= cooldown;
 }
+
+// Share the claim between the worker and a manual resend. A crash releases it
+// after 60 seconds, past the combined Telegram request deadlines.
+const HUNGER_ALERT_CLAIM = 'hunger_alert_claim';
+const claimHungerAlert = db.transaction((userId, type) => {
+  if (!shouldSend(userId, type) || !isNotificationEnabled(userId, 'care_notifications')) return false;
+  const claimedAt = getSentAt(userId, HUNGER_ALERT_CLAIM);
+  if (claimedAt !== null && ts() - claimedAt < 60) return false;
+  markSent(userId, HUNGER_ALERT_CLAIM);
+  return true;
+}).immediate;
 
 function expeditionNotificationType(baseType, expeditionId) {
   return `${baseType}:${expeditionId}`;
@@ -353,8 +390,7 @@ async function checkAll() {
       clearFlag(userId, 'fun_zero');
     }
 
-    // Hunger alerts are interactive HTML widgets with the game's food menu.
-    // Mark delivered only after Telegram accepted the widget.
+    // Mark hunger alerts only after Telegram accepts a widget or its text fallback.
     await checkHungerNotification({ userId, telegramId, live });
 
     // ── HP ≤ 50% ──────────────────────────────────────────────────────

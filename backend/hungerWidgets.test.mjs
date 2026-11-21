@@ -271,6 +271,47 @@ test('notifier preserves hunger thresholds, preferences, delivery retries and co
   assert.deepEqual(flags(), []);
 });
 
+test('a rejected widget falls back to one text alert across concurrent scans', async () => {
+  const { checkHungerNotification } = require('./notifier')._notificationInternals;
+  const user = player({ hunger: 0 });
+  let widgets = 0;
+  let messages = 0;
+  const options = {
+    userId: user.id, telegramId: user.telegramId, live: { hunger: 0 },
+    send: async () => { widgets++; return { ok: false, code: 400, permanent: true }; },
+    sendText: async (chatId, text) => {
+      assert.equal(chatId, user.telegramId);
+      assert.match(text, /starving/);
+      messages++;
+      return { ok: true };
+    },
+  };
+  await Promise.all([checkHungerNotification(options), checkHungerNotification(options)]);
+  await checkHungerNotification(options);
+  assert.equal(widgets, 1);
+  assert.equal(messages, 1);
+  assert.ok(db.prepare("SELECT 1 FROM notifications_sent WHERE user_id = ? AND type = 'hunger_zero'").get(user.id));
+  assert.equal(db.prepare("SELECT 1 FROM notifications_sent WHERE user_id = ? AND type = 'hunger_alert_claim'").get(user.id), undefined);
+});
+
+test('fallback delivery failures remain retryable and a rate limit does not send text', async () => {
+  const { checkHungerNotification } = require('./notifier')._notificationInternals;
+  const user = player();
+  let messages = 0;
+  const options = {
+    userId: user.id, telegramId: user.telegramId, live: { hunger: 22 },
+    send: async () => ({ ok: false, code: 429, retryAfter: 30 }),
+    sendText: async () => { messages++; return { ok: false }; },
+  };
+  assert.equal((await checkHungerNotification(options)).retryAfter, 30);
+  assert.equal(messages, 0);
+  options.send = async () => ({ ok: false, code: 400 });
+  await checkHungerNotification(options);
+  await checkHungerNotification(options);
+  assert.equal(messages, 2);
+  assert.equal(db.prepare('SELECT 1 FROM notifications_sent WHERE user_id = ?').get(user.id), undefined);
+});
+
 test('Mini App feed endpoint retains response shape, validation and Energy Drink behavior', async () => {
   const express = require('express');
   const app = express();
